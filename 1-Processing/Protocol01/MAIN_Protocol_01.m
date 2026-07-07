@@ -33,9 +33,9 @@ disp(' ');
 % SET FOLDERS
 % ------------------------------------------------------------------------
 MainFolder           = 'C:\Users\franc\Desktop\Programming\01_Projects\E02_Classification_rTSA';
-Folder.toolbox       = [MainFolder,'\Hugo_dev\1-Processing\Protocol01'];
+Folder.toolbox       = [MainFolder,'\Shoulder_Dev\1-Processing\Protocol01'];
 Folder.data          = uigetdir(); 
-Folder.dependencies  = [MainFolder,'\Hugo_dev\1-Processing\dependencies'];
+Folder.dependencies  = [MainFolder,'\Shoulder_Dev\1-Processing\dependencies'];
 addpath(Folder.toolbox);
 addpath(genpath(Folder.dependencies));
 addpath(fullfile(Folder.toolbox, 'Core'));
