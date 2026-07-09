@@ -18,14 +18,14 @@
 % -------------------------------------------------------------------------
 
 clearvars; close all; warning off; clc;
-disp('Pipeline multi-patients — Rapport humérothoracique (GH/ST/TX)');
+disp('Pipeline multi-patients');
 
 % -------------------------------------------------------------------------
 % CONFIGURATION
 % -------------------------------------------------------------------------
 MainFolder     = 'C:\Users\franc\Desktop\Programming\01_Projects\E02_Classification_rTSA';
-Folder.toolbox = [MainFolder, '\KLAB_ShoulderAnalysis_Toolbox\1-Processing\Protocol01'];
-Folder.deps    = [MainFolder, '\KLAB_ShoulderAnalysis_Toolbox\1-Processing\dependencies'];
+Folder.toolbox = [MainFolder, '\Shoulder_Dev\1-Processing\Protocol01'];
+Folder.deps    = [MainFolder, '\Shoulder_Dev\1-Processing\dependencies'];
 addpath(fullfile(Folder.toolbox, 'Multi'));
 
 run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DataFolder, PatientSelection, OutputFile
