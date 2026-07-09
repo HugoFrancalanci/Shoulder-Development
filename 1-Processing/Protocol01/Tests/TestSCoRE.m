@@ -11,8 +11,10 @@
 % Description:   Unit test for the SCoRE glenohumeral CoR calibration
 %                (Session.SCoRE, computed by Core/ComputeSCoRE.m).
 %
-%                CoR residual (mm) : agreement, on the ANALYTIC1-4
-%                calibration frames, between the CoR estimated via the
+%                CoR residual (mm) : agreement, on the calibration frames
+%                (default ANALYTIC2+ANALYTIC4+FUNCTIONAL1+FUNCTIONAL3, see
+%                Core/ComputeSCoRE.m header for why this combo was chosen
+%                over the earlier ANALYTIC1-4 pool), between the CoR estimated via the
 %                scapula technical frame and via the humerus technical
 %                frame (Ehrig et al. 2006 quality metric — a true ball
 %                joint gives near-zero residual).
@@ -36,7 +38,7 @@ function TestSCoRE(Session)
 disp(' ');
 disp('------------------------------------------------------------------');
 disp('Test unitaire (calibration SCoRE - centre glenohumeral)');
-disp('Reference : residu de coincidence du CoR (Ehrig et al. 2006), ANALYTIC1-4');
+disp('Reference : residu de coincidence du CoR (Ehrig et al. 2006), ANALYTIC2+ANALYTIC4+FUNCTIONAL1+FUNCTIONAL3');
 disp(' ');
 
 if ~isfield(Session, 'SCoRE') || isempty(Session.SCoRE)

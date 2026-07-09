@@ -16,9 +16,24 @@
 %
 %                Static reference pose  : CALIBRATION1 (Static_reference1),
 %                same reference-trial convention as Core/AddACMLandmarks.m.
-%                Calibration frames     : ANALYTIC1-4 pooled (covers all DOFs).
+%                Calibration frames     : taskList, pooled. Default
+%                {ANALYTIC2, ANALYTIC4, FUNCTIONAL1, FUNCTIONAL3} — chosen
+%                via Tests/ExploreSCoRECombos.m, validated against a CT
+%                gold standard (glenosphere, patient 558792 / Jurg Muller,
+%                see Core/ComputeCTGoldStandardCoR.m) : 21.5mm mean distance
+%                to CT on ANALYTIC1, vs 27.9mm for the previous default
+%                (ANALYTIC1-4). The single best-scoring combo on that same
+%                validation was FUNCTIONAL1 alone (20.8mm), but a 4-trial
+%                pool spanning both ANALYTIC and FUNCTIONAL movement types
+%                was preferred for robustness (less reliant on any one
+%                trial's specific conditions). Re-run ExploreSCoRECombos.m
+%                if CT data becomes available for other patients, to check
+%                this default still holds.
 % -------------------------------------------------------------------------
 % Inputs  : folderData (char) patient folder containing 'Processed\*.c3d'
+%           taskList   (cell, optional) trial name substrings to pool as
+%                       calibration input. Default {'ANALYTIC2','ANALYTIC4',
+%                       'FUNCTIONAL1','FUNCTIONAL3'}.
 % Outputs : SCoRE (struct)
 %             .xRef.RS/.RA/.LS/.LA   [k x 3] static reference cluster pose
 %             .R/.L.rCsi             [3x1] CoR in scapula technical frame
@@ -29,7 +44,8 @@
 %             .R/.L.clusterRMS       .scapula_mm/.humerus_mm mean soder
 %                                     rigid-fit RMS residual (mm)
 % -------------------------------------------------------------------------
-% Dependencies : BuildTechnicalTransform.m, SCoRE_array3.m, SetUnits.m
+% Dependencies : GetCalibrationReferencePose.m, LoadTechnicalFramesForTask.m,
+%                DropNanFrames.m, SCoRE_array3.m
 % -------------------------------------------------------------------------
 % This work is licensed under the Creative Commons Attribution -
 % NonCommercial 4.0 International License. To view a copy of this license,
@@ -37,11 +53,18 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function SCoRE = ComputeSCoRE(folderData)
+function SCoRE = ComputeSCoRE(folderData, taskList)
+
+if nargin < 2 || isempty(taskList)
+    % Best-performing combo tested against the CT gold standard (patient
+    % 558792) via Tests/ExploreSCoRECombos.m — see header comment above.
+    taskList = {'ANALYTIC2', 'ANALYTIC4', 'FUNCTIONAL1', 'FUNCTIONAL3'};
+end
 
 disp(' ');
 disp('------------------------------------------------------------------');
 disp('SCoRE calibration (glenohumeral CoR, Ehrig et al. 2006)');
+disp(['Calibration trials : ', strjoin(taskList, ', ')]);
 disp('------------------------------------------------------------------');
 
 % Same convention as MAIN_Protocol_01.m / runProtocol01.m : cd into the
@@ -50,68 +73,36 @@ disp('------------------------------------------------------------------');
 % make btkReadAcquisition fail with "File doesn't exist").
 oldDir  = cd(fullfile(folderData, 'Processed'));
 cleanUp = onCleanup(@() cd(oldDir)); %#ok<NASGU>
-c3dFiles = dir('*.c3d');
-
-clusterLabels.RS = {'Cluster_RS_01', 'Cluster_RS_02', 'Cluster_RS_03'};
-clusterLabels.RA = {'Cluster_RA_01', 'Cluster_RA_02', 'Cluster_RA_03', 'Cluster_RA_04', 'Cluster_RA_05'};
-clusterLabels.LS = {'Cluster_LS_01', 'Cluster_LS_02', 'Cluster_LS_03'};
-clusterLabels.LA = {'Cluster_LA_01', 'Cluster_LA_02', 'Cluster_LA_03', 'Cluster_LA_04', 'Cluster_LA_05'};
 
 % -------------------------------------------------------------------------
 % STATIC REFERENCE POSE (CALIBRATION1)
 % -------------------------------------------------------------------------
-calib1Idx = find(contains({c3dFiles.name}, 'CALIBRATION1'), 1);
-if isempty(calib1Idx)
-    error('ComputeSCoRE:noCalibration1', ...
-          'CALIBRATION1.c3d not found in %s -> cannot build the SCoRE static reference.', folderData);
-end
-acq    = btkReadAcquisition(c3dFiles(calib1Idx).name);
-ratio  = getUnitRatio(acq);
-Marker = btkGetMarkers(acq);
-
-xRef.RS = clusterReferencePose(Marker, clusterLabels.RS, ratio);
-xRef.RA = clusterReferencePose(Marker, clusterLabels.RA, ratio);
-xRef.LS = clusterReferencePose(Marker, clusterLabels.LS, ratio);
-xRef.LA = clusterReferencePose(Marker, clusterLabels.LA, ratio);
+xRef = GetCalibrationReferencePose();
 
 % -------------------------------------------------------------------------
-% ANALYTIC1-4 CALIBRATION FRAMES
+% CALIBRATION FRAMES (pooled across taskList)
 % -------------------------------------------------------------------------
 Ti_R = []; Tj_R = []; Ti_L = []; Tj_L = [];
 rmsTi_R = []; rmsTj_R = []; rmsTi_L = []; rmsTj_L = [];
-for itask = 1:4
-    taskName = sprintf('ANALYTIC%d', itask);
-    idx = find(contains({c3dFiles.name}, taskName), 1);
-    if isempty(idx)
-        warning('ComputeSCoRE:missingTrial', '%s not found -> excluded from SCoRE calibration.', taskName);
-        continue;
-    end
-    acq    = btkReadAcquisition(c3dFiles(idx).name);
-    ratio  = getUnitRatio(acq);
-    Marker = btkGetMarkers(acq);
-
-    clRS = clusterTrajectories(Marker, clusterLabels.RS, ratio);
-    clRA = clusterTrajectories(Marker, clusterLabels.RA, ratio);
-    clLS = clusterTrajectories(Marker, clusterLabels.LS, ratio);
-    clLA = clusterTrajectories(Marker, clusterLabels.LA, ratio);
-
-    [Ti_R_trial, rms_Ti_R] = BuildTechnicalTransform(xRef.RS, clRS);
-    [Tj_R_trial, rms_Tj_R] = BuildTechnicalTransform(xRef.RA, clRA);
-    [Ti_L_trial, rms_Ti_L] = BuildTechnicalTransform(xRef.LS, clLS);
-    [Tj_L_trial, rms_Tj_L] = BuildTechnicalTransform(xRef.LA, clLA);
+for it = 1:numel(taskList)
+    [Ti_R_trial, Tj_R_trial, Ti_L_trial, Tj_L_trial, rms] = LoadTechnicalFramesForTask(taskList{it}, xRef);
+    if isempty(Ti_R_trial), continue; end
 
     Ti_R = cat(3, Ti_R, Ti_R_trial); Tj_R = cat(3, Tj_R, Tj_R_trial);
     Ti_L = cat(3, Ti_L, Ti_L_trial); Tj_L = cat(3, Tj_L, Tj_L_trial);
-    rmsTi_R = [rmsTi_R, rms_Ti_R]; rmsTj_R = [rmsTj_R, rms_Tj_R]; %#ok<AGROW>
-    rmsTi_L = [rmsTi_L, rms_Ti_L]; rmsTj_L = [rmsTj_L, rms_Tj_L]; %#ok<AGROW>
+    rmsTi_R = [rmsTi_R, rms.TiR]; rmsTj_R = [rmsTj_R, rms.TjR]; %#ok<AGROW>
+    rmsTi_L = [rmsTi_L, rms.TiL]; rmsTj_L = [rmsTj_L, rms.TjL]; %#ok<AGROW>
+end
 
-    disp(['  - ', taskName, ' loaded (', num2str(size(clRA{1}, 3)), ' frames)']);
+if isempty(Ti_R)
+    error('ComputeSCoRE:noCalibrationFrames', ...
+          'None of the requested trials (%s) were found -> no SCoRE calibration possible.', strjoin(taskList, ', '));
 end
 
 % Drop frames with a missing marker on either segment of the pair
 % (a single NaN would otherwise corrupt the whole pinv solution, not just that frame)
-[Ti_R, Tj_R] = dropNanFrames(Ti_R, Tj_R);
-[Ti_L, Tj_L] = dropNanFrames(Ti_L, Tj_L);
+[Ti_R, Tj_R] = DropNanFrames(Ti_R, Tj_R);
+[Ti_L, Tj_L] = DropNanFrames(Ti_L, Tj_L);
 
 % -------------------------------------------------------------------------
 % SCoRE (Ehrig et al. 2006)
@@ -144,46 +135,6 @@ disp(['  Left  CoR residual (mm) : mean=', num2str(mean(SCoRE.L.residual_mm), '%
       '  max=', num2str(max(SCoRE.L.residual_mm), '%.2f')]);
 disp(' ');
 
-end
-
-% -------------------------------------------------------------------------
-%  UNIT RATIO (mm -> m), same convention as SetUnits.m
-% -------------------------------------------------------------------------
-function ratio = getUnitRatio(acq)
-tmpTrial(1).btk = acq;
-Units           = SetUnits(tmpTrial);
-ratio           = Units.ratio;
-end
-
-% -------------------------------------------------------------------------
-%  CLUSTER TRAJECTORIES ON A TRIAL -> {[3x1xN], ...}
-% -------------------------------------------------------------------------
-function traj = clusterTrajectories(Marker, labels, ratio)
-traj = cell(1, numel(labels));
-for i = 1:numel(labels)
-    traj{i} = permute(Marker.(labels{i}), [2, 3, 1]) * ratio;
-end
-end
-
-% -------------------------------------------------------------------------
-%  STATIC REFERENCE POSE (mean marker position over CALIBRATION1)
-% -------------------------------------------------------------------------
-function xRef = clusterReferencePose(Marker, labels, ratio)
-xRef = nan(numel(labels), 3);
-for i = 1:numel(labels)
-    m           = Marker.(labels{i}) * ratio; % [N x 3]
-    xRef(i, :)  = mean(m, 1, 'omitnan');
-end
-end
-
-% -------------------------------------------------------------------------
-%  DROP FRAMES WHERE Ti OR Tj COULD NOT BE BUILT (missing marker)
-% -------------------------------------------------------------------------
-function [Ti, Tj] = dropNanFrames(Ti, Tj)
-valid = ~squeeze(any(any(isnan(Ti(1:3, :, :)), 1), 2)) & ...
-        ~squeeze(any(any(isnan(Tj(1:3, :, :)), 1), 2));
-Ti = Ti(:, :, valid);
-Tj = Tj(:, :, valid);
 end
 
 % -------------------------------------------------------------------------

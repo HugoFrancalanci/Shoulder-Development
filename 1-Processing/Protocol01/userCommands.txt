@@ -180,7 +180,11 @@ Processing.Marker.smethod.parameter = 15;
 %                                 2006), scapula/humerus clusters,
 %                                 computed once per patient from
 %                                 CALIBRATION1 (static reference) and
-%                                 ANALYTIC1-4 (calibration movement).
+%                                 ANALYTIC2+ANALYTIC4+FUNCTIONAL1+FUNCTIONAL3
+%                                 (calibration movement — default trial
+%                                 combo in Core/ComputeSCoRE.m, chosen via
+%                                 Tests/ExploreSCoRECombos.m against a CT
+%                                 gold standard, see that file's header).
 Processing.GJC.method = 'SCoRE';
 
 % -------------------------------------------------------------------------
