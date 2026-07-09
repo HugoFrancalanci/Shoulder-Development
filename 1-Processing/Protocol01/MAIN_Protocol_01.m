@@ -62,6 +62,15 @@ cd(Folder.toolbox);
 txtFile      = 'userCommands.txt';
 userCommands = fileread(txtFile);
 eval(userCommands);
+
+% -------------------------------------------------------------------------
+% SCoRE CALIBRATION
+% -------------------------------------------------------------------------
+if strcmpi(Processing.GJC.method,'SCoRE')
+    Session.SCoRE = ComputeSCoRE(Folder.data);
+    TestSCoRE(Session);
+end
+
 % Load data
 cd([Folder.data,'\Processed\']);
 c3dFiles   = dir('*.c3d');
@@ -130,7 +139,7 @@ for i = orderedIdx
                 % Initialise joints
                 Trial(k)         = InitialiseJoints(Trial(k));
                 % Define body segments (and joint centres)
-                Trial(k)         = DefineSegments(c3dFiles(i),Session,Trial(k));   
+                Trial(k)         = DefineSegments(c3dFiles(i),Session,Trial(k),Processing);   
                 % Compute inverse kinematics
                 Trial(k)         = ComputeKinematics(c3dFiles(i),Trial(k));
                 % Compute Thorax
@@ -167,7 +176,7 @@ PlotHumeroGravitaire(Trial, Pathology); % HG for ANALYTIC
 % -------------------------------------------------------------------------
 % PLOT comparaison
 % -------------------------------------------------------------------------
-% PlotComparison(Trial, Folder.data, Pathology); % Comparaison with .mat from original K-LAB toolbox
+PlotComparison(Trial, Folder.data, Pathology); % Comparaison with .mat from original K-LAB toolbox
 % 3rd argument : 'C:\...\auteur_data.xlsx' (for future comparaison with other study)
 
 % -------------------------------------------------------------------------
@@ -175,6 +184,16 @@ PlotHumeroGravitaire(Trial, Pathology); % HG for ANALYTIC
 % -------------------------------------------------------------------------
 TestICS(Trial); % Validation posture
 TestHG(Trial); % Validation HG angles
+
+% SCoRE validation report on ANALYTIC1
+if strcmpi(Processing.GJC.method,'SCoRE')
+    kAnalytic1 = find(contains({Trial.file},'ANALYTIC1'),1);
+    if ~isempty(kAnalytic1)
+        CompareScoreRab(struct('name',Trial(kAnalytic1).file), Session, Trial(kAnalytic1));
+    else
+        warning('MAIN_Protocol_01:noAnalytic1','ANALYTIC1 not found -> SCoRE validation report skipped.');
+    end
+end
 
 % -------------------------------------------------------------------------
 % Export
@@ -186,7 +205,7 @@ ExportKinematicsSummary(Trial);
 % Data available for each patients
 % -------------------------------------------------------------------------
 ReportDataAvailability(Trial, Patient, Session, Pathology, c3dFiles);
-close all
+% close all
 
 % -------------------------------------------------------------------------
 % END

@@ -18,7 +18,11 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function Trial = DefineSegments(c3dFiles,Session,Trial)
+function Trial = DefineSegments(c3dFiles,Session,Trial,Processing)
+
+if nargin < 4 || ~isfield(Processing,'GJC') || ~isfield(Processing.GJC,'method')
+    Processing.GJC.method = 'Rab'; % Default : unchanged behaviour
+end
 
 % -------------------------------------------------------------------------
 % Thorax parameters
@@ -65,13 +69,24 @@ RUSP          = Trial.Marker(31).Trajectory.full;
 REJC                              = (RHME+RHLE)/2;
 Trial.Vmarker(10).Trajectory.full = REJC;
 % Define glenohumeral joint centre
-% Method 1: Rab's regression (Rab et al. 2002)
-referenceMarker                   = RCAJ;
-referenceLength                   = mean(sqrt(sum(abs(RCAJ-LCAJ).^2,1)),3);
-offset                            = -0.17*referenceLength; % -17%
-thoraxSIaxis                      = (CV7+SJN)/2-(TV8+SXS)/2;
-thoraxSIaxis                      = thoraxSIaxis./sqrt(sum(abs(thoraxSIaxis).^2,1));
-RGJC                              = referenceMarker+(offset+Session.markerHeight1)*thoraxSIaxis;
+switch Processing.GJC.method
+    case 'Rab'
+        % Method 1: Rab's regression (Rab et al. 2002)
+        referenceMarker = RCAJ;
+        referenceLength = mean(sqrt(sum(abs(RCAJ-LCAJ).^2,1)),3);
+        offset          = -0.17*referenceLength; % -17%
+        thoraxSIaxis    = (CV7+SJN)/2-(TV8+SXS)/2;
+        thoraxSIaxis    = thoraxSIaxis./sqrt(sum(abs(thoraxSIaxis).^2,1));
+        RGJC            = referenceMarker+(offset+Session.markerHeight1)*thoraxSIaxis;
+    case 'SCoRE'
+        % Method 2: SCoRE functional calibration (Ehrig et al. 2006)
+        % Constant local CoR (Session.SCoRE.R.rCsj), re-expressed in the
+        % global frame via this trial's humerus technical cluster frame.
+        Tj_trial = BuildTechnicalTransform(Session.SCoRE.xRef.RA, ...
+                       {Cluster_RA_01,Cluster_RA_02,Cluster_RA_03,Cluster_RA_04,Cluster_RA_05});
+        RGJC     = Mprod_array3(Tj_trial, repmat([Session.SCoRE.R.rCsj;1],[1,1,size(SJN,3)]));
+        RGJC(4,:,:) = [];
+end
 Trial.Vmarker(11).Trajectory.full = RGJC;
 % Segment axes (Wu et al. 2005)
 O1 = RGJC;
@@ -141,13 +156,24 @@ LUSP          = Trial.Marker(54).Trajectory.full;
 LEJC                              = (LHME+LHLE)/2;
 Trial.Vmarker(12).Trajectory.full = LEJC;
 % Define glenohumeral joint centre
-% Method 1: Rab's regression (Rab et al. 2002)
-referenceMarker                   = LCAJ;
-referenceLength                   = mean(sqrt(sum(abs(RCAJ-LCAJ).^2,1)),3);
-offset                            = -0.17*referenceLength; % -17%
-thoraxSIaxis                      = (CV7+SJN)/2-(TV8+SXS)/2;
-thoraxSIaxis                      = thoraxSIaxis./sqrt(sum(abs(thoraxSIaxis).^2,1));
-LGJC                              = referenceMarker+(offset+Session.markerHeight1)*thoraxSIaxis;
+switch Processing.GJC.method
+    case 'Rab'
+        % Method 1: Rab's regression (Rab et al. 2002)
+        referenceMarker = LCAJ;
+        referenceLength = mean(sqrt(sum(abs(RCAJ-LCAJ).^2,1)),3);
+        offset          = -0.17*referenceLength; % -17%
+        thoraxSIaxis    = (CV7+SJN)/2-(TV8+SXS)/2;
+        thoraxSIaxis    = thoraxSIaxis./sqrt(sum(abs(thoraxSIaxis).^2,1));
+        LGJC            = referenceMarker+(offset+Session.markerHeight1)*thoraxSIaxis;
+    case 'SCoRE'
+        % Method 2: SCoRE functional calibration (Ehrig et al. 2006)
+        % Constant local CoR (Session.SCoRE.L.rCsj), re-expressed in the
+        % global frame via this trial's humerus technical cluster frame.
+        Tj_trial = BuildTechnicalTransform(Session.SCoRE.xRef.LA, ...
+                       {Cluster_LA_01,Cluster_LA_02,Cluster_LA_03,Cluster_LA_04,Cluster_LA_05});
+        LGJC     = Mprod_array3(Tj_trial, repmat([Session.SCoRE.L.rCsj;1],[1,1,size(SJN,3)]));
+        LGJC(4,:,:) = [];
+end
 Trial.Vmarker(13).Trajectory.full = LGJC;
 % Segment axes (Wu et al. 2005)
 O5 = LGJC;

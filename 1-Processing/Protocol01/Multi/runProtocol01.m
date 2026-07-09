@@ -52,6 +52,14 @@ userCommands = fileread(txtFile);
 eval(userCommands);
 
 % -------------------------------------------------------------------------
+% CALIBRATION SCoRE (une fois par patient, si selectionnee dans userCommands.txt)
+% -------------------------------------------------------------------------
+if strcmpi(Processing.GJC.method,'SCoRE')
+    Session.SCoRE = ComputeSCoRE(Folder.data);
+    TestSCoRE(Session);
+end
+
+% -------------------------------------------------------------------------
 % CHARGEMENT DES FICHIERS C3D
 % -------------------------------------------------------------------------
 cd(fullfile(Folder.data, 'Processed'));
@@ -119,7 +127,7 @@ for i = orderedIdx
             if i ~= 8 % Not applicable
                 Trial(k) = InitialiseSegments(Trial(k));
                 Trial(k) = InitialiseJoints(Trial(k));
-                Trial(k) = DefineSegments(c3dFiles(i), Session, Trial(k));
+                Trial(k) = DefineSegments(c3dFiles(i), Session, Trial(k), Processing);
                 Trial(k) = ComputeKinematics(c3dFiles(i), Trial(k));
                 Trial(k) = ComputeThoraxPosture(Trial(k));
                 Trial(k) = CutCycles(c3dFiles(i), Trial(k), Folder.data);

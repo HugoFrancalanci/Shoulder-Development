@@ -169,6 +169,21 @@ Processing.Marker.smethod.type      = 'movmean';
 Processing.Marker.smethod.parameter = 15; 
 
 % -------------------------------------------------------------------------
+% GLENOHUMERAL JOINT CENTRE (GJC)
+% -------------------------------------------------------------------------
+% Processing.GJC.method: Method used to locate the glenohumeral joint
+%                        centre (RGJC/LGJC) in DefineSegments.m
+%                        'Rab':   Regression from acromion markers
+%                                 (Rab et al. 2002). Single trial, no
+%                                 calibration step.
+%                        'SCoRE': Functional calibration (Ehrig et al.
+%                                 2006), scapula/humerus clusters,
+%                                 computed once per patient from
+%                                 CALIBRATION1 (static reference) and
+%                                 ANALYTIC1-4 (calibration movement).
+Processing.GJC.method = 'SCoRE';
+
+% -------------------------------------------------------------------------
 % EMG
 % -------------------------------------------------------------------------
 % emg:               Active (1) or Inactive (0)
