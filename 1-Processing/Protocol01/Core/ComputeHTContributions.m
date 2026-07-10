@@ -22,9 +22,17 @@
 %                ExportKinematicsSummary.m (single-patient console report),
 %                kept as a separate implementation there on purpose.
 %
+%                HT_curve/GH_curve/ST_curve : courbe moyenne (sur les
+%                cycles) angle vs % cycle (0-100%), même nombre de points
+%                que la normalisation de cycle faite par CutCycles.m.
+%                Sert au tracé PRE/POST (courbes individuelles + moyenne
+%                en gras) dans MAIN_MULTI_Protocol_01.m /
+%                Plot/PlotHTContributionsCurves.m.
+%
 % Inputs  : Trial (struct array) all trials from runProtocol01/MAIN_Protocol_01
 % Outputs : Contrib (1x2 struct array, one row per side 'R'/'L') with fields
-%           task, side, HT_range, GH_range, GH_pct, ST_range, ST_pct, TX_range, TX_pct
+%           task, side, HT_range, GH_range, GH_pct, ST_range, ST_pct, TX_range, TX_pct,
+%           HT_curve, GH_curve, ST_curve
 %           Empty (0x0) struct array if ANALYTIC2 is not found in Trial.
 % -------------------------------------------------------------------------
 % Dependencies : None
@@ -39,7 +47,8 @@ function Contrib = ComputeHTContributions(Trial)
 
 Contrib = struct('task', {}, 'side', {}, 'HT_range', {}, ...
                   'GH_range', {}, 'GH_pct', {}, 'ST_range', {}, 'ST_pct', {}, ...
-                  'TX_range', {}, 'TX_pct', {});
+                  'TX_range', {}, 'TX_pct', {}, ...
+                  'HT_curve', {}, 'GH_curve', {}, 'ST_curve', {});
 
 task = 'ANALYTIC2';
 tidx = [];
@@ -73,6 +82,10 @@ for iS = 1:length(sideDef)
     Contrib(iS).ST_pct   = safePct(st, ht);
     Contrib(iS).TX_range = tx;
     Contrib(iS).TX_pct   = safePct(tx, ht);
+
+    Contrib(iS).HT_curve = getCurveCycle(t, s.jiHT, dofHT, s.cycField);
+    Contrib(iS).GH_curve = getCurveCycle(t, s.jiGH, dofGH, s.cycField);
+    Contrib(iS).ST_curve = getCurveCycle(t, s.jiST, dofST, s.cycField);
 end
 
 end
@@ -98,6 +111,16 @@ data = abs(squeeze(t.Joint(ji).Euler.(cf)(1, dof, :, :)));
 if isvector(data), data = data(:); end
 ranges = max(data, [], 1) - min(data, [], 1);
 r = mean(ranges, 'omitnan');
+end
+
+function c = getCurveCycle(t, ji, dof, cycField)
+% Courbe moyenne (sur les cycles) de l'angle, déjà normalisée en % cycle
+% par CutCycles.m (même nombre de points pour tous les cycles/patients).
+c = [];
+if length(t.Joint) < ji || isempty(t.Joint(ji).Euler.(cycField)), return; end
+data = abs(squeeze(t.Joint(ji).Euler.(cycField)(1, dof, :, :)));
+if isvector(data), data = data(:); end
+c = mean(data, 2, 'omitnan');
 end
 
 function p = safePct(num, den)

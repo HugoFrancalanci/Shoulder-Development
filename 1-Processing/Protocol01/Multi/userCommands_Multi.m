@@ -9,8 +9,7 @@
 % DataFolder : dossier racine contenant un sous-dossier par patient
 %              (chaque sous-dossier patient contient lui-même un
 %              sous-dossier par session, ex: une date PRE et une date POST)
-%              Laisser '' pour être invité à le choisir à l'exécution.
-DataFolder = '';
+DataFolder = 'C:\Users\franc\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\Clinique\Données\KLAB-UPPERLIMB-PROTOCOL01\Data';
 
 % PatientSelection : {ID patient, côté à traiter, date PRE, date POST}
 %   ID patient : identifiant retrouvé comme sous-chaîne du nom du dossier
@@ -25,7 +24,10 @@ DataFolder = '';
 %                Attention : une année seule doit correspondre à une seule
 %                session sur le disque, sinon c'est ambigu.
 PatientSelection = { ...
-    '728495',   'RL', '2024', '2025'; ...
+    '18792', 'L', '2022', '2023'; ...
+    '23370', 'L', '2022', '2022'; ...
+    '53972', 'R', '2022', '2024'; ...
+    '31463', 'R', '2022', '2024'; ...
 };
 
 % OutputFile : fichier Excel de sortie

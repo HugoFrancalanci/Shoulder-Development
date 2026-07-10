@@ -27,6 +27,7 @@ MainFolder     = 'C:\Users\franc\Desktop\Programming\01_Projects\E02_Classificat
 Folder.toolbox = [MainFolder, '\Shoulder_Dev\1-Processing\Protocol01'];
 Folder.deps    = [MainFolder, '\Shoulder_Dev\1-Processing\dependencies'];
 addpath(fullfile(Folder.toolbox, 'Multi'));
+addpath(fullfile(Folder.toolbox, 'Plot'));
 
 run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DataFolder, PatientSelection, OutputFile
 
@@ -45,6 +46,12 @@ Results = struct('PatientID', {}, 'Side', {}, 'Task', {}, ...
     'ST_PRE_deg', {}, 'ST_PRE_pct', {}, 'TX_PRE_deg', {}, 'TX_PRE_pct', {}, ...
     'HT_POST_deg', {}, 'GH_POST_deg', {}, 'GH_POST_pct', {}, ...
     'ST_POST_deg', {}, 'ST_POST_pct', {}, 'TX_POST_deg', {}, 'TX_POST_pct', {});
+
+% Courbes angle vs % cycle (PRE/POST), pour PlotHTContributionsCurves.m -
+% séparées de Results (qui n'accueille que des scalaires pour l'export Excel)
+Curves = struct('PatientID', {}, 'Side', {}, ...
+    'HT_PRE', {}, 'HT_POST', {}, 'GH_PRE', {}, 'GH_POST', {}, 'ST_PRE', {}, 'ST_POST', {});
+
 ErrorLog = {};
 
 dataDirList = dir(DataFolder);
@@ -116,6 +123,14 @@ for iP = 1:size(PatientSelection, 1)
                 Results(ri).(['ST_', condition, '_pct']) = c.ST_pct;
                 Results(ri).(['TX_', condition, '_deg']) = c.TX_range;
                 Results(ri).(['TX_', condition, '_pct']) = c.TX_pct;
+
+                if length(Curves) < ri
+                    Curves(ri).PatientID = patientID;
+                    Curves(ri).Side      = c.side;
+                end
+                Curves(ri).(['HT_', condition]) = c.HT_curve;
+                Curves(ri).(['GH_', condition]) = c.GH_curve;
+                Curves(ri).(['ST_', condition]) = c.ST_curve;
             end
 
             disp('  -> OK');
@@ -147,6 +162,11 @@ if ~isempty(ErrorLog)
         disp(['  ', ErrorLog{i}]);
     end
 end
+
+% -------------------------------------------------------------------------
+% COURBES HT/GH/ST — PRE vs POST (individuelles transparentes + moyenne en gras)
+% -------------------------------------------------------------------------
+PlotHTContributionsCurves(Curves);
 
 % =========================================================================
 %  UTILITAIRES

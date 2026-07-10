@@ -184,6 +184,7 @@ PlotComparison(Trial, Folder.data, Pathology); % Comparaison with .mat from orig
 % -------------------------------------------------------------------------
 TestICS(Trial); % Validation posture
 TestHG(Trial); % Validation HG angles
+TestScapularCluster(Trial); % STA scapulaire (AA/IA/TS/AC vs corps rigide), independant de Rab/SCoRE
 
 % SCoRE validation report on ANALYTIC1
 if strcmpi(Processing.GJC.method,'SCoRE')

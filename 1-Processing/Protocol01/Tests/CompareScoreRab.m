@@ -288,7 +288,7 @@ CoR_CT_mm = CTGold.rCsi' * 1e3; % [1x3]
 elevAngle_Rab   = abs(squeeze(TrialRab.Joint(1).Euler.full(1, 3, :)));
 elevAngle_SCoRE = abs(squeeze(TrialSCoRE.Joint(1).Euler.full(1, 3, :)));
 
-figure('Name', 'RGJC 3D - Rab vs SCoRE vs CT (repere scapula)', 'NumberTitle', 'off');
+fig3D = figure('Name', 'RGJC 3D - Rab vs SCoRE vs CT (repere scapula)', 'NumberTitle', 'off');
 trisurf(scapMesh.ConnectivityList, scapV_m(:,1)*1e3, scapV_m(:,2)*1e3, scapV_m(:,3)*1e3, ...
     'FaceColor', [0.80 0.80 0.85], 'EdgeColor', 'none', 'FaceAlpha', 0.35, 'DisplayName', 'Scapula (CT)');
 hold on;
@@ -329,6 +329,19 @@ xlabel('X (mm)'); ylabel('Y (mm)'); zlabel('Z (mm)');
 axis equal; grid on; view(3); camlight; lighting gouraud;
 legend('Location', 'best');
 title({'RGJC Rab vs SCoRE vs CT — repere scapula (essai complet)', TrialRab.file}, 'Interpreter', 'none');
+
+% Sauvegarde .fig (envoi superviseur, reste modifiable/interactif dans MATLAB)
+% Chemin base sur l'emplacement de la toolbox elle-meme (pas le dossier
+% patient), calcule via mfilename -> Protocol01/Results/SCoRE_CT_validation/
+toolboxRoot = fileparts(fileparts(mfilename('fullpath'))); % Tests/CompareScoreRab.m -> Protocol01/
+resultsDir  = fullfile(toolboxRoot, 'Results', 'SCoRE_CT_validation');
+if ~exist(resultsDir, 'dir')
+    mkdir(resultsDir);
+end
+[~, trialBaseName] = fileparts(TrialRab.file);
+figSavePath = fullfile(resultsDir, ['RGJC_3D_Rab_vs_SCoRE_vs_CT_', trialBaseName, '.fig']);
+savefig(fig3D, figSavePath);
+fprintf('  Figure 3D sauvegardee : %s\n', figSavePath);
 
 % -------------------------------------------------------------------------
 % VERIFICATION : l'ecart au CT croit-il avec l'eloignement de la posture
