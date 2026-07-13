@@ -27,7 +27,7 @@
 %                que la normalisation de cycle faite par CutCycles.m.
 %                Sert au tracé PRE/POST (courbes individuelles + moyenne
 %                en gras) dans MAIN_MULTI_Protocol_01.m /
-%                Plot/PlotHTContributionsCurves.m.
+%                Multi/Plot/PlotHTContributionsCurves.m.
 %
 % Inputs  : Trial (struct array) all trials from runProtocol01/MAIN_Protocol_01
 % Outputs : Contrib (1x2 struct array, one row per side 'R'/'L') with fields

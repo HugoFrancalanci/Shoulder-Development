@@ -72,6 +72,11 @@ ID_REDCAP = [
     '20230125_140300_08',   # 40
     '20230213_135200_97',   # 41
     '20230320_094400_14',   # 42
+    '20230322_083200_29',   # 43
+    '20230310_111600_29',   # 44
+    '20230403_092800_17',   # 45
+    '20230510_085400_11',   # 46
+    '20230522_112000_98',   # 47
 ]
 
 
@@ -132,12 +137,16 @@ def to_number(v):
 # ÉCRITURE DU TABLEAU
 # -------------------------------------------------------------------------
 def export_table(output_xlsx, sheet_title, header1, header2, merges, build_row,
-                  id_redcap=ID_REDCAP, input_csv=INPUT_CSV):
+                  id_redcap=ID_REDCAP, input_csv=INPUT_CSV, text_cols=None):
     """
     header1, header2 : lignes d'en-tête (listes), même longueur.
     merges            : liste de (start_col, end_col) 1-based à fusionner sur header1.
     build_row(df, rid): doit retourner (has_data: bool, data_cols: list | None).
                         data_cols exclut la colonne ID (longueur = len(header2) - 1).
+    text_cols         : liste de colonnes (1-based) à forcer en format Texte -
+                        utile pour des codes/grades qui ressemblent à des
+                        nombres ("0","1","2"...) mais n'en sont pas
+                        (évite le warning Excel "nombre stocké en texte").
     """
     df = load_csv(input_csv)
 
@@ -167,6 +176,12 @@ def export_table(output_xlsx, sheet_title, header1, header2, merges, build_row,
         for cell in ws[ws.max_row]:
             if isinstance(cell.value, datetime.date):
                 cell.number_format = "DD.MM.YYYY"
+
+    # Colonnes forcées en Texte (codes/grades ressemblant à des nombres)
+    if text_cols:
+        for col_idx in text_cols:
+            for cell in ws[get_column_letter(col_idx)][2:]:  # sous les 2 lignes d'en-tête
+                cell.number_format = "@"
 
     # Largeur de colonne auto (évite les "####" sur dates/nombres, colonnes
     # trop étroites pour le contenu)

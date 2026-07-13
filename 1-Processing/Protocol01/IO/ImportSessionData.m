@@ -217,7 +217,7 @@ for ip = 1:length(tasks)
     tk = tasks{ip};
     if isfield(Clinical.Pain, tk)
         p = Clinical.Pain.(tk);
-        disp(sprintf('    %s : R=%.0f  L=%.0f', tk, p.right, p.left));
+        disp(sprintf('    %s : R=%.1f  L=%.1f', tk, p.right, p.left));
     end
 end
 

@@ -10,9 +10,15 @@
 %                exporte le rapport humérothoracique (contributions
 %                GH/ST/TX) dans un fichier Excel.
 %
+%                Fonctions propres au pipeline multi (Compute*/Export*/Plot*)
+%                rangées dans Multi/Core, Multi/IO, Multi/Plot - séparées des
+%                dossiers Core/IO/Plot partagés avec le protocole solo, que
+%                seul runProtocol01() ajoute encore au path (il en a besoin
+%                pour le calcul cinématique commun aux deux pipelines).
+%
 %                Pour ajouter un nouvel export :
-%                  1. Créer une fonction ComputeMaMetrique(Trial) dans Core/
-%                     (voir Core/ComputeHTContributions.m comme modèle)
+%                  1. Créer une fonction ComputeMaMetrique(Trial) dans Multi/Core/
+%                     (voir Multi/Core/ComputeHTContributions.m comme modèle)
 %                  2. L'appeler dans la boucle patients ci-dessous
 %                  3. Ajouter les colonnes correspondantes aux "rows"
 % -------------------------------------------------------------------------
@@ -27,7 +33,9 @@ MainFolder     = 'C:\Users\franc\Desktop\Programming\01_Projects\E02_Classificat
 Folder.toolbox = [MainFolder, '\Shoulder_Dev\1-Processing\Protocol01'];
 Folder.deps    = [MainFolder, '\Shoulder_Dev\1-Processing\dependencies'];
 addpath(fullfile(Folder.toolbox, 'Multi'));
-addpath(fullfile(Folder.toolbox, 'Plot'));
+addpath(fullfile(Folder.toolbox, 'Multi', 'Core'));
+addpath(fullfile(Folder.toolbox, 'Multi', 'IO'));
+addpath(fullfile(Folder.toolbox, 'Multi', 'Plot'));
 
 run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DataFolder, PatientSelection, OutputFile
 
@@ -47,10 +55,15 @@ Results = struct('PatientID', {}, 'Side', {}, 'Task', {}, ...
     'HT_POST_deg', {}, 'GH_POST_deg', {}, 'GH_POST_pct', {}, ...
     'ST_POST_deg', {}, 'ST_POST_pct', {}, 'TX_POST_deg', {}, 'TX_POST_pct', {});
 
-% Courbes angle vs % cycle (PRE/POST), pour PlotHTContributionsCurves.m -
-% séparées de Results (qui n'accueille que des scalaires pour l'export Excel)
+% Courbes angle vs % cycle
 Curves = struct('PatientID', {}, 'Side', {}, ...
     'HT_PRE', {}, 'HT_POST', {}, 'GH_PRE', {}, 'GH_POST', {}, 'ST_PRE', {}, 'ST_POST', {});
+
+% Infos démographiques/cliniques
+PatientInfos = struct('PatientID', {}, 'ID', {}, 'Gender', {}, 'Laterality', {}, 'ASA', {}, ...
+    'Age_PRE', {}, 'Age_POST', {}, 'Height_PRE', {}, 'Height_POST', {}, ...
+    'Mass_PRE', {}, 'Mass_POST', {}, 'BMI_PRE', {}, 'BMI_POST', {}, ...
+    'EVA_PRE', {}, 'EVA_POST', {}, 'EVA_PRE_fallback', {}, 'EVA_POST_fallback', {});
 
 ErrorLog = {};
 
@@ -59,8 +72,7 @@ dataDirList = dataDirList([dataDirList.isdir] & ~startsWith({dataDirList.name}, 
 
 for iP = 1:size(PatientSelection, 1)
 
-    % Dossier patient nommé "NomFamille_Prénom_ID" : on retrouve le dossier
-    % dont le nom contient l'ID (pas besoin du nom complet)
+    % Dossier patient 
     patientID     = num2str(PatientSelection{iP, 1});
     sidesToReport = parseSides(PatientSelection{iP, 2});
 
@@ -73,8 +85,7 @@ for iP = 1:size(PatientSelection, 1)
     patientName   = dataDirList(matchIdx(1)).name;
     patientFolder = fullfile(DataFolder, patientName);
 
-    % Sessions PRE/POST : dossier "YYYYMMDD" dont le nom commence par la
-    % date (ou juste l'année) donnée dans PatientSelection (colonnes 3/4)
+    % Sessions PRE/POST : dossier "YYYYMMDD"
     sessions.PRE  = findSessionFolder(patientFolder, PatientSelection{iP, 3});
     sessions.POST = findSessionFolder(patientFolder, PatientSelection{iP, 4});
 
@@ -93,7 +104,33 @@ for iP = 1:size(PatientSelection, 1)
 
         try
             Folder.data = sessionPath;
-            [Trial, Patient, Session, Pathology] = runProtocol01(Folder); %#ok<ASGLU>
+            [Trial, Patient, Session, Pathology] = runProtocol01(Folder);
+
+            info = ComputePatientInfos(Patient, Session, Pathology);
+
+            pi_idx = find(strcmp({PatientInfos.PatientID}, patientID), 1);
+            if isempty(pi_idx)
+                pi_idx = length(PatientInfos) + 1;
+                PatientInfos(pi_idx).PatientID  = patientID;
+                PatientInfos(pi_idx).ID         = info.ID;
+                PatientInfos(pi_idx).Gender     = info.Gender;
+                PatientInfos(pi_idx).Laterality = info.Laterality;
+                PatientInfos(pi_idx).ASA        = info.ASA;
+                PatientInfos(pi_idx).Age_PRE    = NaN; PatientInfos(pi_idx).Age_POST    = NaN;
+                PatientInfos(pi_idx).Height_PRE = NaN; PatientInfos(pi_idx).Height_POST = NaN;
+                PatientInfos(pi_idx).Mass_PRE   = NaN; PatientInfos(pi_idx).Mass_POST   = NaN;
+                PatientInfos(pi_idx).BMI_PRE    = NaN; PatientInfos(pi_idx).BMI_POST    = NaN;
+                PatientInfos(pi_idx).EVA_PRE    = '';  PatientInfos(pi_idx).EVA_POST    = '';
+                PatientInfos(pi_idx).EVA_PRE_fallback  = false;
+                PatientInfos(pi_idx).EVA_POST_fallback = false;
+            end
+
+            PatientInfos(pi_idx).(['EVA_', condition])             = info.EVA_formula;
+            PatientInfos(pi_idx).(['EVA_', condition, '_fallback']) = info.EVA_fallback;
+            PatientInfos(pi_idx).(['Age_', condition])    = info.Age;
+            PatientInfos(pi_idx).(['Height_', condition]) = info.Height;
+            PatientInfos(pi_idx).(['Mass_', condition])   = info.Mass;
+            PatientInfos(pi_idx).(['BMI_', condition])    = info.BMI;
 
             Contrib = ComputeHTContributions(Trial);
 
@@ -164,9 +201,14 @@ if ~isempty(ErrorLog)
 end
 
 % -------------------------------------------------------------------------
-% COURBES HT/GH/ST — PRE vs POST (individuelles transparentes + moyenne en gras)
+% EXPORT EXCEL
 % -------------------------------------------------------------------------
+ExportPatientInfos(PatientInfos, PatientInfosFile);
 PlotHTContributionsCurves(Curves);
+
+if isfolder(ResultsFolder)
+    cd(ResultsFolder);
+end
 
 % =========================================================================
 %  UTILITAIRES

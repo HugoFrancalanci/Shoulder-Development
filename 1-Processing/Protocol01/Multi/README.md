@@ -8,10 +8,25 @@ sans jamais écrire dans les données patients (lecture seule).
 
 - **`MAIN_MULTI_Protocol_01.m`** — script à lancer. Boucle sur les patients,
   appelle `runProtocol01()` par session, accumule les résultats, exporte l'Excel.
-- **`runProtocol01.m`** — version "fonction" de `MAIN_Protocol_01.m` (voir
-  plus bas). Ne pas supprimer : c'est le moteur de calcul utilisé par le script multi.
 - **`userCommands_Multi.m`** — le seul fichier à modifier pour choisir les
   patients à traiter. Jamais touché par le script lui-même.
+- **`Core/`, `IO/`, `Plot/`** — fonctions propres au pipeline multi, ajoutées
+  au path par `MAIN_MULTI_Protocol_01.m` lui-même. Séparées des dossiers
+  `Core/`, `IO/`, `Plot/` de `Protocol01/` (ceux-là restent partagés avec le
+  solo, et sont ajoutés au path par `runProtocol01.m` pour le calcul
+  cinématique commun) :
+  - `Core/runProtocol01.m` — version "fonction" de `MAIN_Protocol_01.m` (voir
+    plus bas). Ne pas supprimer : c'est le moteur de calcul utilisé par le
+    script multi.
+  - `Core/ComputeHTContributions.m`, `Core/ComputePatientInfos.m`,
+    `IO/ExportPatientInfos.m`, `Plot/PlotHTContributionsCurves.m` — reporting.
+- **`RedCap/`** — copie locale du prototype Python (Spyder) d'export REDCap ;
+  la version de référence à jour (avec sa notice) vit sur OneDrive, hors
+  dépôt git (voir mémoire de session pour le chemin).
+- **`Results/`** — les deux Excels de sortie (`HT_Contributions_Summary.xlsx`,
+  `PatientInfos_Summary.xlsx`) y sont écrits (chemins définis dans
+  `userCommands_Multi.m` via `ResultsFolder`). Le script s'y termine (`cd`)
+  une fois le run fini, pour les retrouver facilement.
 
 ## Comment le script accède aux patients
 
@@ -40,7 +55,7 @@ patient suivant — un patient en erreur ne bloque jamais les autres.
   patient : ouvre des popups de sélection, affiche les plots, lance les
   validations (TestICS, TestHG), et les résumés console (ExportPostureSummary,
   ExportKinematicsSummary). Pensé pour inspecter les résultats à la main.
-- `runProtocol01.m` (dans `Multi/`) = **exactement le même calcul cinématique**
+- `runProtocol01.m` (dans `Multi/Core/`) = **exactement le même calcul cinématique**
   (import session, chargement C3D, `ComputeKinematics`, `ComputeThoraxPosture`,
   `CutCycles`, `ComputeSHR`...) mais encapsulé en fonction
   `[Trial, Patient, Session, Pathology] = runProtocol01(Folder)`, sans popup
@@ -50,12 +65,14 @@ patient suivant — un patient en erreur ne bloque jamais les autres.
   `Trial` retourné.
 
 Toute évolution du calcul cinématique lui-même (nouvelle correction, nouveau
-joint...) se fait dans les fichiers `Core/` communs aux deux pipelines — pas
-besoin de dupliquer entre solo et multi.
+joint...) se fait dans les fichiers `Protocol01/Core/` communs aux deux
+pipelines — pas besoin de dupliquer entre solo et multi. Les fonctions
+propres au reporting multi-patients (Compute*/Export*/Plot* listées
+ci-dessus), elles, vivent dans `Multi/Core/`, `Multi/IO/`, `Multi/Plot/`.
 
 ## Reporting actuel : contributions humérothoraciques (GH/ST/TX)
 
-`Core/ComputeHTContributions.m` décompose le range humérothoracique (HT) en
+`Multi/Core/ComputeHTContributions.m` décompose le range humérothoracique (HT) en
 contributions gléno-humérale (GH), scapulo-thoracique (ST) et thoracique
 (TX), pour ANALYTIC2 (seule tâche uniplanaire, donc seule décomposition
 jugée fiable — voir les commentaires du fichier pour le détail des DOF).
@@ -65,9 +82,25 @@ patient/côté), avec les colonnes PRE et POST côte à côte :
 `PatientID, Side, Task, HT_PRE_deg, GH_PRE_deg, GH_PRE_pct, ST_PRE_deg,
 ST_PRE_pct, TX_PRE_deg, TX_PRE_pct, HT_POST_deg, GH_POST_deg, ...`
 
+`Multi/Core/ComputeHTContributions.m` extrait aussi `HT_curve`/`GH_curve`/
+`ST_curve` (angle vs % cycle), accumulées à part dans `Curves` et tracées
+par `Multi/Plot/PlotHTContributionsCurves.m` (PRE en rouge, POST en bleu,
+courbes individuelles transparentes + moyenne en gras).
+
+## Autre reporting : infos démographiques/cliniques patient
+
+`Multi/Core/ComputePatientInfos.m` + `Multi/IO/ExportPatientInfos.m`
+exportent, dans un 2e fichier Excel (`PatientInfosFile`), un résumé par
+patient : ID (initiales), Genre/Latéralité (1/0), Age/Taille/Masse/IMC en
+PRE/POST, et un score de douleur EVA (moyenne des 4 tâches ANALYTIC côté
+atteint) écrit comme une vraie formule Excel cliquable. Si le côté atteint
+n'a pas de donnée, la cellule se replie sur l'autre côté et est marquée en
+orange + commentaire pour ne jamais être confondue avec une vraie mesure du
+côté atteint.
+
 ## Ajouter un nouveau reporting
 
-1. Écrire une fonction `Core/ComputeMaMetrique.m` qui prend `Trial` en
+1. Écrire une fonction `Multi/Core/ComputeMaMetrique.m` qui prend `Trial` en
    entrée et retourne un struct/valeurs (voir `ComputeHTContributions.m`
    comme modèle : une entrée par côté, gestion des cas manquants avec `NaN`).
 2. Dans `MAIN_MULTI_Protocol_01.m`, l'appeler juste après
