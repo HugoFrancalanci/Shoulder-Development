@@ -65,6 +65,9 @@ PatientInfos = struct('PatientID', {}, 'ID', {}, 'Gender', {}, 'Laterality', {},
     'Mass_PRE', {}, 'Mass_POST', {}, 'BMI_PRE', {}, 'BMI_POST', {}, ...
     'EVA_PRE', {}, 'EVA_POST', {}, 'EVA_PRE_fallback', {}, 'EVA_POST_fallback', {});
 
+% Rapport de disponibilité des données (une ligne par examen PRE/POST)
+DataAvail = struct([]);
+
 ErrorLog = {};
 
 dataDirList = dir(DataFolder);
@@ -104,7 +107,7 @@ for iP = 1:size(PatientSelection, 1)
 
         try
             Folder.data = sessionPath;
-            [Trial, Patient, Session, Pathology] = runProtocol01(Folder);
+            [Trial, Patient, Session, Pathology, c3dFiles] = runProtocol01(Folder);
 
             info = ComputePatientInfos(Patient, Session, Pathology);
 
@@ -170,6 +173,27 @@ for iP = 1:size(PatientSelection, 1)
                 Curves(ri).(['ST_', condition]) = c.ST_curve;
             end
 
+            % Rapport de disponibilité des données (une ligne par examen)
+            avail = ComputeDataAvailability(Trial, Patient, Session, Pathology, c3dFiles, sidesToReport);
+            di = length(DataAvail) + 1;
+            % Numéro/ID sur la 1re ligne de CE patient (PRE normalement,
+            % mais POST si la session PRE a échoué/est introuvable)
+            isFirstForPatient = di == 1 || ~any(strcmp({DataAvail.ID}, patientID));
+            avail.Numero   = '';
+            avail.ID       = '';
+            avail.IDRedCap = '';
+            if isFirstForPatient
+                avail.Numero = iP;
+                avail.ID     = patientID;
+            end
+            avail.Examen = [upper(condition(1)), lower(condition(2:end))]; % 'Pre'/'Post'
+            avail.Date   = PatientSelection{iP, 2 + iC};
+            if di == 1
+                DataAvail = avail;
+            else
+                DataAvail(di) = avail;
+            end
+
             disp('  -> OK');
 
         catch ME
@@ -204,6 +228,7 @@ end
 % EXPORT EXCEL
 % -------------------------------------------------------------------------
 ExportPatientInfos(PatientInfos, PatientInfosFile);
+ExportDataAvailability(DataAvail, DataAvailabilityFile);
 PlotHTContributionsCurves(Curves);
 
 if isfolder(ResultsFolder)

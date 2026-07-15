@@ -18,9 +18,12 @@
 %           Patient   (struct)        depuis ImportSessionData
 %           Session   (struct)        depuis ImportSessionData
 %           Pathology (struct)        depuis ImportSessionData
+%           c3dFiles  (struct array)  dir('*.c3d') du dossier Processed —
+%                     utile pour détecter des fichiers non chargés dans
+%                     Trial (ex: STATIC/ISOMETRIC, absents de trialTypes)
 % -------------------------------------------------------------------------
 
-function [Trial, Patient, Session, Pathology] = runProtocol01(Folder)
+function [Trial, Patient, Session, Pathology, c3dFiles] = runProtocol01(Folder)
 
 % -------------------------------------------------------------------------
 % CHEMINS

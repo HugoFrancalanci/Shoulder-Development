@@ -75,9 +75,16 @@ writecell(C, OutputFile, 'Sheet', 'PatientInfos');
 % Fusion de la ligne d'en-tête "Patient", et écriture des EVA_PRE/POST
 % comme de vraies formules Excel (best effort : nécessite Excel installé
 % via COM ; l'export reste valide, juste sans ces deux à-côtés, si ça échoue)
+% excel/wb déclarés AVANT le try : si la mise en forme plante en cours de
+% route, le bloc cleanup ci-dessous doit quand même pouvoir les fermer -
+% sinon Excel reste ouvert en arrière-plan (invisible, Visible=false) et
+% s'accumule à chaque exécution du script.
+excel = [];
+wb = [];
 try
     excel = actxserver('Excel.Application');
     excel.Visible = false;
+    excel.DisplayAlerts = false; % évite un dialogue bloquant si un Merge touche des cellules non vides
     wb = excel.Workbooks.Open(OutputFile);
     sheet = wb.Sheets.Item('PatientInfos');
 
@@ -93,13 +100,24 @@ try
     end
 
     wb.Save;
-    wb.Close(false);
-    excel.Quit;
-    delete(excel);
+catch ME
+    % fprintf (pas warning) : MAIN_MULTI_Protocol_01.m fait "warning off" en
+    % début de script, ce qui rendrait ce message invisible sinon.
+    fprintf(2, 'ExportPatientInfos : mise en forme Excel échouée (%s) - valeurs affichées en texte brut.\n', ME.message);
+end
+
+% Nettoyage garanti (même si la mise en forme ci-dessus a échoué en cours
+% de route) pour ne jamais laisser un processus Excel fantôme en arrière-plan.
+try
+    if ~isempty(wb), wb.Close(false); end
 catch
-    % Excel/COM indisponible : l'Excel reste utilisable, juste sans la
-    % fusion visuelle de l'en-tête ni les formules EVA (valeurs affichées
-    % comme texte brut à la place)
+end
+try
+    if ~isempty(excel)
+        excel.Quit;
+        delete(excel);
+    end
+catch
 end
 
 disp(['Excel exporté : ', OutputFile]);
