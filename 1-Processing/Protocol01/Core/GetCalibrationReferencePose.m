@@ -9,7 +9,7 @@
 % Date       :   July 2026
 % -------------------------------------------------------------------------
 % Description:   Static reference pose (CALIBRATION1) of the scapula/humerus
-%                technical clusters, right and left — the "x" reference
+%                technical clusters, right and left where the "x" reference
 %                used by soder.m throughout the SCoRE calibration and CoR
 %                reconstruction (see BuildTechnicalTransform.m). Extracted
 %                from Core/ComputeSCoRE.m for reuse (e.g. Tests/ExploreSCoRECombos.m).

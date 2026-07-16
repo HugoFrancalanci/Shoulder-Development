@@ -9,7 +9,7 @@
 % DataFolder : dossier racine contenant un sous-dossier par patient
 %              (chaque sous-dossier patient contient lui-même un
 %              sous-dossier par session, ex: une date PRE et une date POST)
-DataFolder = 'C:\Users\franc\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\Clinique\Données\KLAB-UPPERLIMB-PROTOCOL01\Data';
+DataFolder = 'C:\Users\franc\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\01_Etudes\E02_Classification_rTSA\Clinique\Données\KLAB-UPPERLIMB-PROTOCOL01\Data';
 
 % PatientSelection : {ID patient, côté à traiter, date PRE, date POST}
 %   ID patient : identifiant retrouvé comme sous-chaîne du nom du dossier

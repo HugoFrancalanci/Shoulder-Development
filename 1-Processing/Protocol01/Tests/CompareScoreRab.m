@@ -127,9 +127,9 @@ disp(' ');
 % -------------------------------------------------------------------------
 if contains(Trial.file, '558792')
     ctFolder    = ['C:\Users\franc\OneDrive - Université de Genève\PhD Hugo\05_Ressources\', ...
-                   '01_Data\Clinique\Données\KLAB-UPPERLIMB-PROTOCOL01\Data\Muller_Jurg_558792\CT'];
+                   '01_Data\01_Etudes\E02_Classification_rTSA\Clinique\Données\KLAB-UPPERLIMB-PROTOCOL01\Data\Muller_Jurg_558792\CT'];
     ctMocapData = ['C:\Users\franc\OneDrive - Université de Genève\PhD Hugo\05_Ressources\', ...
-                   '01_Data\Clinique\Données\KLAB-UPPERLIMB-PROTOCOL01\Data\Muller_Jurg_558792\20260324'];
+                   '01_Data\01_Etudes\E02_Classification_rTSA\Clinique\Données\KLAB-UPPERLIMB-PROTOCOL01\Data\Muller_Jurg_558792\20260324'];
 
     disp('  3) Comparaison au gold standard CT (glenosphere, cote droit) :');
     CTGold = ComputeCTGoldStandardCoR(ctFolder, ctMocapData, 'R');
@@ -147,6 +147,7 @@ if contains(Trial.file, '558792')
     disp(' ');
 
     plotCoR3D(TrialRab, TrialSCoRE, Session, CTGold, ctFolder);
+    plotScapularMarkersOnMesh(TrialRab, Session, CTGold, ctFolder);
 
     disp('  4) Exploration des combinaisons de calibration SCoRE (vs CT) :');
     ExploreSCoRECombos(ctMocapData, ctFolder, 'ANALYTIC1');
@@ -224,12 +225,14 @@ end
 scapMesh = stlread(fullfile(scapulaSTL(1).folder, scapulaSTL(1).name));
 humMesh  = stlread(fullfile(humerusSTL(1).folder, humerusSTL(1).name));
 
-% Both meshes come from the SAME CT scan -> the SAME registration (scapula
-% landmarks) places them together preserving their true relative pose as
-% captured on CT (no separate humerus registration needed/well-posed with
-% only 2 humeral landmarks available).
-scapV_m = (CTGold.Rreg * (scapMesh.Points'/1e3) + CTGold.dreg)'; % [Nx3], m
-humV_m  = (CTGold.Rreg * (humMesh.Points'/1e3)  + CTGold.dreg)'; % [Nx3], m
+% Scapula : registered via its own landmarks (SRS/SAA/SIA).
+% Humerus  : registered INDEPENDENTLY (CTGold.humerus.Rreg/dreg — cup
+% centre + HME/HLE, see Core/ComputeCTGoldStandardCoR.m), not by reusing
+% the scapula's registration. See CTGold.humerus.sameScanDiscrepancy_mm
+% (printed by ComputeCTGoldStandardCoR) for how much this differs from the
+% previous "same CT scan" assumption.
+scapV_m = (CTGold.Rreg          * (scapMesh.Points'/1e3) + CTGold.dreg)';          % [Nx3], m
+humV_m  = (CTGold.humerus.Rreg  * (humMesh.Points'/1e3)  + CTGold.humerus.dreg)';  % [Nx3], m
 
 % Numeric check (camera-angle independent) : bounding boxes + closest
 % point between the two transformed meshes, to confirm/refute a visual
@@ -365,6 +368,127 @@ xlabel('Flexion HT (deg, 0=repos)'); ylabel('Distance au CT gold standard (mm)')
 legend('Location', 'best'); grid on;
 title({'Ecart au CT en fonction de l''eloignement du repos', TrialRab.file}, 'Interpreter', 'none');
 
+end
+
+% -------------------------------------------------------------------------
+%  STA VISUALISATION : scapular anatomical markers (AA/IA/TS/AC, same
+%  landmarks as Tests/TestScapularCluster.m) overlaid on the CT scapula
+%  mesh, reprojected into the scapula-local (CALIBRATION1-instant) frame
+%  and coloured by flexion angle. If a marker is rigid on the bone, its
+%  point cloud should sit as a tight dot on the mesh surface regardless of
+%  colour ; visible spreading away from the surface, especially at higher
+%  (redder) flexion, is the visual signature of soft tissue artefact (STA).
+%  Right side only (matches the rest of this patient's CT validation).
+% -------------------------------------------------------------------------
+function plotScapularMarkersOnMesh(TrialRab, Session, CTGold, ctFolder)
+
+scapulaSTL = dir(fullfile(ctFolder, '*postop_scapula.STL'));
+if isempty(scapulaSTL)
+    warning('plotScapularMarkersOnMesh:noSTL', 'Postop scapula STL not found in %s -> skipped.', ctFolder);
+    return;
+end
+scapMesh = stlread(fullfile(scapulaSTL(1).folder, scapulaSTL(1).name));
+scapV_m  = (CTGold.Rreg * (scapMesh.Points'/1e3) + CTGold.dreg)'; % [Nx3], m
+
+% Scapula-local (CALIBRATION1-instant) technical frame for this trial —
+% same construction as plotCoR3D.
+Ti_trial = BuildTechnicalTransform(Session.SCoRE.xRef.RS, ...
+               {TrialRab.Marker(11).Trajectory.full, TrialRab.Marker(12).Trajectory.full, TrialRab.Marker(13).Trajectory.full});
+TiInv = Tinv_array3(Ti_trial);
+N     = size(Ti_trial, 3);
+
+% AA/IA/TS/AC, right side — same indices as Tests/TestScapularCluster.m
+AA = reprojectLocal_mm(TiInv, TrialRab.Marker(16).Trajectory.full, N);
+IA = reprojectLocal_mm(TiInv, TrialRab.Marker(14).Trajectory.full, N);
+TS = reprojectLocal_mm(TiInv, TrialRab.Marker(15).Trajectory.full, N);
+AC = reprojectLocal_mm(TiInv, TrialRab.Marker(10).Trajectory.full, N);
+
+elevAngle = abs(squeeze(TrialRab.Joint(1).Euler.full(1, 3, :)));
+
+% -------------------------------------------------------------------------
+% NUMERIC CHECK : distance from each marker to the nearest mesh vertex,
+% per frame — does the marker actually sit on the true bone surface, and
+% does that distance grow with flexion (a more direct STA signal than the
+% inter-landmark distances in Tests/TestScapularCluster.m, which only see
+% DIFFERENTIAL drift between markers, not drift relative to the true bone).
+% Mesh subsampled (same helper as checkMeshGap) to keep this tractable.
+% -------------------------------------------------------------------------
+meshVerts_mm = subsample(scapV_m, 4000) * 1e3; % [Mx3], mm
+
+dAA_mm = distanceToMesh(AA, meshVerts_mm);
+dIA_mm = distanceToMesh(IA, meshVerts_mm);
+dTS_mm = distanceToMesh(TS, meshVerts_mm);
+dAC_mm = distanceToMesh(AC, meshVerts_mm);
+
+RmatAA = corrcoef(elevAngle, dAA_mm); RmatIA = corrcoef(elevAngle, dIA_mm);
+RmatTS = corrcoef(elevAngle, dTS_mm); RmatAC = corrcoef(elevAngle, dAC_mm);
+
+fprintf('  Distance marqueur -> maillage CT (mm), et correlation avec la flexion :\n');
+fprintf('    %-4s  mean=%6.2f  max=%6.2f  r=%.2f\n', 'AA', mean(dAA_mm,'omitnan'), max(dAA_mm), RmatAA(1,2));
+fprintf('    %-4s  mean=%6.2f  max=%6.2f  r=%.2f\n', 'IA', mean(dIA_mm,'omitnan'), max(dIA_mm), RmatIA(1,2));
+fprintf('    %-4s  mean=%6.2f  max=%6.2f  r=%.2f\n', 'TS', mean(dTS_mm,'omitnan'), max(dTS_mm), RmatTS(1,2));
+fprintf('    %-4s  mean=%6.2f  max=%6.2f  r=%.2f\n', 'AC', mean(dAC_mm,'omitnan'), max(dAC_mm), RmatAC(1,2));
+disp(' ');
+
+figDist = figure('Name', 'Distance marqueurs-maillage vs flexion', 'NumberTitle', 'off');
+scatter(elevAngle, dAA_mm, 8, 'filled', 'DisplayName', 'AA'); hold on;
+scatter(elevAngle, dIA_mm, 8, 'filled', 'DisplayName', 'IA');
+scatter(elevAngle, dTS_mm, 8, 'filled', 'DisplayName', 'TS');
+scatter(elevAngle, dAC_mm, 8, 'filled', 'DisplayName', 'AC');
+xlabel('Flexion HT (deg, 0=repos)'); ylabel('Distance au maillage CT (mm)');
+legend('Location', 'best'); grid on;
+title({'Distance marqueur scapulaire -> os (CT) vs flexion', TrialRab.file}, 'Interpreter', 'none');
+
+fig = figure('Name', 'Marqueurs scapulaires sur maillage CT', 'NumberTitle', 'off');
+trisurf(scapMesh.ConnectivityList, scapV_m(:,1)*1e3, scapV_m(:,2)*1e3, scapV_m(:,3)*1e3, ...
+    'FaceColor', [0.80 0.80 0.85], 'EdgeColor', 'none', 'FaceAlpha', 0.35, 'DisplayName', 'Scapula (CT)');
+hold on;
+scatter3(AA(1,:), AA(2,:), AA(3,:), 14, elevAngle, 'o', 'filled', 'DisplayName', 'AA');
+scatter3(IA(1,:), IA(2,:), IA(3,:), 14, elevAngle, '^', 'filled', 'DisplayName', 'IA');
+scatter3(TS(1,:), TS(2,:), TS(3,:), 14, elevAngle, 's', 'filled', 'DisplayName', 'TS');
+scatter3(AC(1,:), AC(2,:), AC(3,:), 14, elevAngle, 'd', 'filled', 'DisplayName', 'AC');
+colormap(gca, 'jet');
+clim(gca, [min(elevAngle), max(elevAngle)]);
+cb = colorbar; cb.Label.String = 'Flexion HT droite (deg, 0=repos)';
+xlabel('X (mm)'); ylabel('Y (mm)'); zlabel('Z (mm)');
+axis equal; grid on; view(3); camlight; lighting gouraud; legend('Location', 'best');
+title({'Marqueurs scapulaires (AA/IA/TS/AC) sur maillage CT', TrialRab.file}, 'Interpreter', 'none');
+
+toolboxRoot = fileparts(fileparts(mfilename('fullpath')));
+resultsDir  = fullfile(toolboxRoot, 'Results', 'SCoRE_CT_validation');
+if ~exist(resultsDir, 'dir')
+    mkdir(resultsDir);
+end
+[~, trialBaseName] = fileparts(TrialRab.file);
+figSavePath = fullfile(resultsDir, ['STA_ScapularMarkers_Mesh_', trialBaseName, '.fig']);
+savefig(fig, figSavePath);
+fprintf('  Figure marqueurs scapulaires (STA) sauvegardee : %s\n', figSavePath);
+
+figDistSavePath = fullfile(resultsDir, ['STA_ScapularMarkers_DistanceVsFlexion_', trialBaseName, '.fig']);
+savefig(figDist, figDistSavePath);
+fprintf('  Figure distance marqueurs-maillage sauvegardee : %s\n', figDistSavePath);
+
+end
+
+% -------------------------------------------------------------------------
+function p_local_mm = reprojectLocal_mm(TiInv, p_global, N)
+p_h          = ones(4, 1, N);
+p_h(1:3,1,:) = p_global;
+p_local      = Mprod_array3(TiInv, p_h);
+p_local_mm   = squeeze(p_local(1:3,1,:)) * 1e3; % [3xN], mm
+end
+
+% -------------------------------------------------------------------------
+%  DISTANCE FROM A MOVING POINT (PER FRAME) TO THE NEAREST VERTEX OF A
+%  (SUBSAMPLED) STATIC MESH POINT CLOUD.
+% -------------------------------------------------------------------------
+function d_mm = distanceToMesh(points_mm, meshVerts_mm)
+N    = size(points_mm, 2);
+d_mm = nan(1, N);
+for i = 1:N
+    diffs   = meshVerts_mm - points_mm(:,i)';
+    d_mm(i) = min(sqrt(sum(diffs.^2, 2)));
+end
 end
 
 % -------------------------------------------------------------------------

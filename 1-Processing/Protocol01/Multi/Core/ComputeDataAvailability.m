@@ -34,18 +34,12 @@
 %                  n'a pas d'alias.
 %
 %                POSTURE (présence d'un marqueur donné, trajectoire non
-%                vide/non-NaN) :
-%                - C7 : marqueur RÉELLEMENT nommé 'CV7' dans le markerSet
-%                  (le nom de colonne 'C7' est juste l'étiquette du rapport).
-%                - TV3/TV5/TV8/S1 : marqueurs du même nom.
+%                vide/non-NaN) : CV7/TV3/TV5/TV8/S1
 %
-%                CINÉMATIQUE (côté(s) évalué(s) = sidesToReport, c-à-d le(s)
-%                côté(s) choisi(s) dans PatientSelection - PAS le côté
-%                cliniquement atteint ; si 'RL', présence = OR des deux
+%                CINÉMATIQUE (côté évalué = sidesToReport, c-à-d le
+%                côté choisi dans PatientSelection; si 'RL', présence = OR des deux
 %                côtés, compte = somme des deux côtés) :
-%                - Nombre : length(fieldnames(btkGetMarkers(t.btk))) - même
-%                  méthode que ReportDataAvailability.m Section 2 ("C3D
-%                  markers : %d"), tous côtés/segments confondus.
+%                - Nombre : length(fieldnames(btkGetMarkers(t.btk)))
 %                - Cluster AC/Type : cluster scapulaire. Cherche d'abord les
 %                  marqueurs "current" Cluster_{R/L}S_01/02/03 (type 'S') ;
 %                  si absents, cherche un groupe legacy numéroté de base
@@ -66,8 +60,7 @@
 %
 %                ELECTROMYOGRAPHIE (canaux analog bruts BTK, PAS le champ
 %                Trial.Emg qui n'est jamais rempli par runProtocol01/
-%                MAIN_Protocol_01 aujourd'hui - InitialiseEmgSignals.m
-%                existe mais n'est appelé nulle part) :
+%                MAIN_Protocol_01) :
 %                - Nombre : nombre de canaux analog distincts identifiés
 %                  comme un muscle (DELTA/DELTM/.../LATD), hors canal FORCE.
 %                  Un canal est identifié par le code muscle qu'il CONTIENT,

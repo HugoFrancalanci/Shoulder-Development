@@ -185,7 +185,7 @@ Processing.Marker.smethod.parameter = 15;
 %                                 combo in Core/ComputeSCoRE.m, chosen via
 %                                 Tests/ExploreSCoRECombos.m against a CT
 %                                 gold standard, see that file's header).
-Processing.GJC.method = 'Rab';
+Processing.GJC.method = 'SCoRE';
 
 % -------------------------------------------------------------------------
 % EMG
