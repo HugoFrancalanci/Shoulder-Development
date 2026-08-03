@@ -56,21 +56,38 @@ disp(['Patients à traiter : ', num2str(size(PatientSelection, 1))]);
 % -------------------------------------------------------------------------
 % BOUCLE PATIENTS / SESSIONS
 % -------------------------------------------------------------------------
-Results = struct('PatientID', {}, 'Side', {}, 'Task', {}, ...
+% Numero = ligne de PatientSelection (iP) qui a produit cette entrée - la
+% recherche d'une entrée existante se fait sur (Numero, Side), pas sur
+% (PatientID, Side) : un ID Cinésiologie répété sur 2 lignes de
+% PatientSelection (patient bilatéral avec 2 opérations du MÊME côté à des
+% dates différentes - cas rare mais possible, différent des 5 patients
+% bilatéraux actuels qui ont chacun un côté différent par ligne) serait
+% sinon fusionné à tort sur la même ligne, comme on l'a eu pour
+% PatientInfos/DataAvailability avant leur fix.
+Results = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
     'HT_PRE_deg', {}, 'GH_PRE_deg', {}, 'GH_PRE_pct', {}, ...
     'ST_PRE_deg', {}, 'ST_PRE_pct', {}, 'TX_PRE_deg', {}, 'TX_PRE_pct', {}, ...
     'HT_POST_deg', {}, 'GH_POST_deg', {}, 'GH_POST_pct', {}, ...
     'ST_POST_deg', {}, 'ST_POST_pct', {}, 'TX_POST_deg', {}, 'TX_POST_pct', {});
 
 % Courbes angle vs % cycle
-Curves = struct('PatientID', {}, 'Side', {}, ...
+Curves = struct('Numero', {}, 'PatientID', {}, 'Side', {}, ...
     'HT_PRE', {}, 'HT_POST', {}, 'GH_PRE', {}, 'GH_POST', {}, 'ST_PRE', {}, 'ST_POST', {});
 
 % Infos démographiques/cliniques
+% Une ligne par ligne de PatientSelection (indexée directement par iP, pas
+% par recherche d'ID) : les patients bilatéraux ont le même ID Cinésiologie
+% sur 2 lignes de PatientSelection (côté/dates différents) - indexer par
+% recherche d'ID les aurait fusionnés à tort sur une seule ligne. Pré-alloué
+% à la taille de PatientSelection pour garder exactement l'ordre établi,
+% même si un patient échoue entièrement (PRE et POST introuvables/erreur).
+nPatientRows = size(PatientSelection, 1);
 PatientInfos = struct('PatientID', {}, 'ID', {}, 'Gender', {}, 'Laterality', {}, 'ASA', {}, ...
     'Age_PRE', {}, 'Age_POST', {}, 'Height_PRE', {}, 'Height_POST', {}, ...
     'Mass_PRE', {}, 'Mass_POST', {}, 'BMI_PRE', {}, 'BMI_POST', {}, ...
-    'EVA_PRE', {}, 'EVA_POST', {}, 'EVA_PRE_fallback', {}, 'EVA_POST_fallback', {});
+    'EVA_PRE', {}, 'EVA_POST', {}, 'EVA_PRE_fallback', {}, 'EVA_POST_fallback', {}, ...
+    'Diagnostic', {}, 'PreviousSurgery', {});
+PatientInfos(nPatientRows).PatientID = [];
 
 % Rapport de disponibilité des données (une ligne par examen PRE/POST)
 DataAvail = struct([]);
@@ -99,6 +116,12 @@ for iP = 1:size(PatientSelection, 1)
     sessions.PRE  = findSessionFolder(patientFolder, PatientSelection{iP, 3});
     sessions.POST = findSessionFolder(patientFolder, PatientSelection{iP, 4});
 
+    % Numéro/ID de CETTE ligne de PatientSelection (iP) uniquement - remis
+    % à false à chaque iP, pour ne pas confondre avec une ligne antérieure
+    % du même ID Cinésiologie (patients bilatéraux, même ID sur 2 lignes
+    % de PatientSelection avec côté/dates différents).
+    numeroWrittenForThisRow = false;
+
     conditions = fieldnames(sessions);
     for iC = 1:length(conditions)
         condition   = conditions{iC};
@@ -116,16 +139,34 @@ for iP = 1:size(PatientSelection, 1)
             Folder.data = sessionPath;
             [Trial, Patient, Session, Pathology, c3dFiles] = runProtocol01(Folder);
 
-            info = ComputePatientInfos(Patient, Session, Pathology);
+            % Age uses the session FOLDER NAME date (e.g. '20241217') rather
+            % than Session.date (free-text cell in Session.xlsx, manually
+            % typed and occasionally wrong/stale) - the folder name is
+            % already trusted to locate this exact session on disk.
+            [~, sessionFolderName] = fileparts(sessionPath);
+            examDate = [];
+            dateDigits = regexp(sessionFolderName, '^\d{8}', 'match', 'once');
+            if ~isempty(dateDigits)
+                try
+                    examDate = datetime(dateDigits, 'InputFormat', 'yyyyMMdd');
+                catch
+                    examDate = [];
+                end
+            end
 
-            pi_idx = find(strcmp({PatientInfos.PatientID}, patientID), 1);
-            if isempty(pi_idx)
-                pi_idx = length(PatientInfos) + 1;
+            info = ComputePatientInfos(Patient, Session, Pathology, examDate);
+
+            % Indexé par iP (pas par ID) : voir commentaire à la
+            % déclaration de PatientInfos plus haut.
+            pi_idx = iP;
+            if isempty(PatientInfos(pi_idx).PatientID)
                 PatientInfos(pi_idx).PatientID  = patientID;
                 PatientInfos(pi_idx).ID         = info.ID;
                 PatientInfos(pi_idx).Gender     = info.Gender;
                 PatientInfos(pi_idx).Laterality = info.Laterality;
                 PatientInfos(pi_idx).ASA        = info.ASA;
+                PatientInfos(pi_idx).Diagnostic      = info.Diagnostic;
+                PatientInfos(pi_idx).PreviousSurgery = info.PreviousSurgery;
                 PatientInfos(pi_idx).Age_PRE    = NaN; PatientInfos(pi_idx).Age_POST    = NaN;
                 PatientInfos(pi_idx).Height_PRE = NaN; PatientInfos(pi_idx).Height_POST = NaN;
                 PatientInfos(pi_idx).Mass_PRE   = NaN; PatientInfos(pi_idx).Mass_POST   = NaN;
@@ -149,9 +190,10 @@ for iP = 1:size(PatientSelection, 1)
                     c = Contrib(iS);
                     if ~ismember(c.side, sidesToReport), continue; end
 
-                    ri = find(strcmp({Results.PatientID}, patientID) & strcmp({Results.Side}, c.side), 1);
+                    ri = find([Results.Numero] == iP & strcmp({Results.Side}, c.side), 1);
                     if isempty(ri)
                         ri = length(Results) + 1;
+                        Results(ri).Numero       = iP;
                         Results(ri).PatientID    = patientID;
                         Results(ri).Side         = c.side;
                         Results(ri).Task         = c.task;
@@ -173,6 +215,7 @@ for iP = 1:size(PatientSelection, 1)
                     Results(ri).(['TX_', condition, '_pct']) = c.TX_pct;
 
                     if length(Curves) < ri
+                        Curves(ri).Numero    = iP;
                         Curves(ri).PatientID = patientID;
                         Curves(ri).Side      = c.side;
                     end
@@ -185,15 +228,19 @@ for iP = 1:size(PatientSelection, 1)
             % Rapport de disponibilité des données (une ligne par examen)
             avail = ComputeDataAvailability(Trial, Patient, Session, Pathology, c3dFiles, sidesToReport);
             di = length(DataAvail) + 1;
-            % Numéro/ID sur la 1re ligne de CE patient (PRE normalement,
-            % mais POST si la session PRE a échoué/est introuvable)
-            isFirstForPatient = di == 1 || ~any(strcmp({DataAvail.ID}, patientID));
+            % Numéro/ID sur la 1re ligne de CETTE ligne de PatientSelection
+            % (PRE normalement, mais POST si la session PRE a échoué/est
+            % introuvable) - basé sur numeroWrittenForThisRow (propre à cet
+            % iP), pas une recherche d'ID sur tout DataAvail : un ID
+            % Cinésiologie répété sur une AUTRE ligne (patient bilatéral)
+            % ne doit pas empêcher celle-ci d'avoir son propre Numéro/ID.
             avail.Numero   = '';
             avail.ID       = '';
             avail.IDRedCap = '';
-            if isFirstForPatient
+            if ~numeroWrittenForThisRow
                 avail.Numero = iP;
                 avail.ID     = patientID;
+                numeroWrittenForThisRow = true;
             end
             avail.Examen = [upper(condition(1)), lower(condition(2:end))]; % 'Pre'/'Post'
             avail.Date   = PatientSelection{iP, 2 + iC};
@@ -217,6 +264,10 @@ end
 % -------------------------------------------------------------------------
 if ~isempty(Results)
     T = struct2table(Results);
+    % writetable never clears a pre-existing sheet, only overwrites the
+    % range it writes to - a previous run with more rows would leave stale
+    % data behind. Delete first for a fully fresh sheet.
+    if isfile(OutputFile), delete(OutputFile); end
     writetable(T, OutputFile, 'Sheet', 'HT_Contributions');
     disp(' ');
     disp(['Excel exporté : ', OutputFile]);

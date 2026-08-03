@@ -11,9 +11,9 @@
 % Description:   Exports the data availability report (one row per PRE/POST
 %                exam, from ComputeDataAvailability.m) to an Excel file,
 %                with the same formatting as the user's own tracking Excel:
-%                a 2-row header (merged group + sub-columns), a blank row
-%                before each NEW patient (not between the PRE and POST rows
-%                of the same patient), Numéro/ID Cinésiologie/ID RedCap
+%                a 2-row header (merged group + sub-columns), rows kept
+%                contiguous with no blank row between patients (for easier
+%                import/export elsewhere), Numéro/ID Cinésiologie/ID RedCap
 %                merged vertically between the PRE row and the POST row.
 %
 %                Binary columns (1/0) are colored green/red (as requested:
@@ -67,9 +67,15 @@ groups = { ...
     'Cinématique', {'Nombre','Cluster S','Type (N)','Cluster A','Type (N)','F','Type (N)','Scapula','Humérus','Thorax','Fs'}, ...
                    {'Kin_Nombre','ClusterAC','ClusterAC_Type','ClusterA','ClusterA_Type','ClusterFA','ClusterFA_Type','Kin_Scapula','Kin_Humerus','Kin_Thorax','Kin_Fs'}, ...
                    logical([0 1 0 1 0 1 0 1 1 1 0]); ...
-    'Electromyographie', {'Nombre','DELTA','DELTM','DELTP','TRAPS','TRAPM','TRAPI','SERRA','LATD','Fs'}, ...
-                   {'EMG_Nombre','DELTA','DELTM','DELTP','TRAPS','TRAPM','TRAPI','SERRA','LATD','EMG_Fs'}, ...
-                   logical([0 1 1 1 1 1 1 1 1 0]); ...
+    'Electromyographie', {'Nombre', ...
+                   'DELTA D','DELTA G','DELTM D','DELTM G','DELTP D','DELTP G', ...
+                   'TRAPS D','TRAPS G','TRAPM D','TRAPM G','TRAPI D','TRAPI G', ...
+                   'SERRA D','SERRA G','LATD D','LATD G','Fs'}, ...
+                   {'EMG_Nombre', ...
+                   'DELTA_R','DELTA_L','DELTM_R','DELTM_L','DELTP_R','DELTP_L', ...
+                   'TRAPS_R','TRAPS_L','TRAPM_R','TRAPM_L','TRAPI_R','TRAPI_L', ...
+                   'SERRA_R','SERRA_L','LATD_R','LATD_L','EMG_Fs'}, ...
+                   logical([0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0]); ...
     'Puissance', {'Nombre','Force'}, {'Force_Nombre','Force'}, true(1,2); ...
     'Imagerie', {'Scapula','Humérus','Elbow','Landmarks'}, {'','','',''}, false(1,4); ...
     'Eligibilité', {'Posture','Cinématique','Electromyographie','Imagerie'}, {'','','',''}, false(1,4); ...
@@ -82,7 +88,9 @@ colorable  = [false(1,length(idCols)), groups{:,4}];
 nCols = length(subLabels);
 
 % -------------------------------------------------------------------------
-% SPREADSHEET (writecell) - 2 header rows + 1 blank row per patient
+% SPREADSHEET (writecell) - 2 header rows, then 1 row per PRE/POST exam,
+% kept contiguous on purpose (no blank row between patients), for easier
+% import/export elsewhere.
 % -------------------------------------------------------------------------
 C = cell(2, nCols);
 C(1, 1:length(idCols)) = idCols; % merged vertically further below via COM
@@ -94,12 +102,9 @@ for ig = 1:size(groups,1)
     col = col + span;
 end
 
-blankRow = repmat({''}, 1, nCols);
-
 % Numéro is only filled on the 1st row (PRE) of each patient: used here to
-% detect the start of a new patient (blank row before it, NOT between PRE
-% and POST) and to identify the row pairs to merge (Numéro/ID/ID RedCap)
-% further below via COM.
+% detect the start of a new patient and to identify the row pairs to merge
+% (Numéro/ID/ID RedCap) further below via COM.
 mergeRows    = zeros(0, 2); % [PRE row, POST row] to merge
 dataRows     = zeros(1, length(DataAvail)); % Excel row of each DataAvail entry
 lastPreRow   = [];
@@ -107,9 +112,6 @@ lastPreRow   = [];
 for i = 1:length(DataAvail)
     d = DataAvail(i);
     isNewPatient = ~isempty(d.Numero);
-    if isNewPatient
-        C(end+1, :) = blankRow; %#ok<AGROW>
-    end
     row = cell(1, nCols);
     for ic = 1:nCols
         fn = fieldNames{ic};
@@ -128,6 +130,12 @@ for i = 1:length(DataAvail)
     end
 end
 
+% writecell/writetable never clear a pre-existing sheet, only overwrite
+% the cell range they write to - if a previous run left MORE rows/columns
+% (e.g. an older format with blank separator rows), those leftover cells
+% would stay behind, invisible until scrolled/stale patient data at the
+% bottom. Deleting the file first guarantees a fully fresh sheet.
+if isfile(OutputFile), delete(OutputFile); end
 writecell(C, OutputFile, 'Sheet', 'DataAvailability');
 
 % -------------------------------------------------------------------------
@@ -186,7 +194,10 @@ try
             v = C{dataRow, ic};
             if ~isnumeric(v) || isnan(v), continue; end
             cellRange = sheet.Range([colLetter(ic) num2str(dataRow)]);
-            if v == 1
+            % v > 0 (not strictly v == 1): most colorable columns are
+            % binary 0/1, but Rcycle/Lcycle hold an actual cycle count
+            % (e.g. 2, 3, 4) - >0 covers both cases correctly.
+            if v > 0
                 cellRange.Interior.Color = green;
             elseif v == 0
                 cellRange.Interior.Color = red;

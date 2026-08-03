@@ -41,8 +41,12 @@
 %                for Clinical).
 % -------------------------------------------------------------------------
 % Inputs  : Patient, Session, Pathology (struct) from runProtocol01/ImportSessionData
+%           examDate (datetime, optional) exam date to use for Age instead
+%           of Session.date (see below); falls back to Session.date if
+%           omitted or invalid.
 % Outputs : Info (struct) with fields ID, Age, Gender, Height, Mass, BMI,
-%           ASA, Laterality, EVA_formula, EVA_fallback
+%           ASA, Laterality, EVA_formula, EVA_fallback, Diagnostic,
+%           PreviousSurgery
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
@@ -52,12 +56,20 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function Info = ComputePatientInfos(Patient, Session, Pathology)
+function Info = ComputePatientInfos(Patient, Session, Pathology, examDate)
+
+if nargin < 4 || isempty(examDate)
+    examDate = Session.date;
+end
 
 Info.ID = initialsID(Patient.firstname, Patient.lastname);
 
+% Age uses examDate (by default the session FOLDER NAME date, passed in by
+% MAIN_MULTI_Protocol_01.m - the same date already trusted to locate the
+% session on disk) rather than Session.date (free-text "Session date"
+% cell in Session.xlsx, manually typed and occasionally wrong/stale).
 try
-    Info.Age = years(Session.date - Patient.dob);
+    Info.Age = years(examDate - Patient.dob);
 catch
     Info.Age = NaN;
 end
@@ -74,6 +86,12 @@ end
 
 Info.ASA        = '';
 Info.Laterality = sideToBinary(Pathology.Diagnosis.side);
+
+% Diagnostic/PreviousSurgery: Session.xlsx allows up to 5 entries each
+% (Diagnosis.d1-d5 / PreviousSurgery.i1-i5) - only the first (d1/i1) is
+% kept here, in full (no truncation).
+Info.Diagnostic      = strtrim(Pathology.Diagnosis.d1);
+Info.PreviousSurgery = strtrim(Pathology.PreviousSurgery.i1);
 
 [Info.EVA_formula, Info.EVA_fallback] = painEvaFormula(Session, Info.Laterality);
 

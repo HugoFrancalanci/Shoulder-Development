@@ -28,10 +28,15 @@
 %                  Humerus segment special case: an even older naming, used
 %                  at the very start of the protocol, has 3 individually-named
 %                  markers {R/L}HDT/{R/L}HTI/{R/L}HBI (no trailing digits, so
-%                  never grouped by the generic base-name logic above). When
-%                  all 3 are present in the C3D, they take priority over any
-%                  EOS legacy group for that side and are reported as
-%                  [LEGACY: {R/L}H x3] instead.
+%                  never grouped by the generic base-name logic above). Both
+%                  this naming and {R/L}EOS can appear as valid (non-NaN)
+%                  labels in the same C3D even though only one is actually
+%                  tracked for the session (the other being a frozen/static
+%                  leftover from an older marker-set template) - so whichever
+%                  of the two shows real movement over the trial (range > 0
+%                  on any axis, see markerIsMoving) is reported as
+%                  [LEGACY: {R/L}H x3] or [LEGACY: {R/L}EOS xN]; H wins the
+%                  tie-break if both happen to show movement.
 %
 % Inputs  : Trial    (struct array) — all trials from MAIN_Protocol_01
 %           Patient  (struct, optional) — from ImportSessionData
@@ -164,7 +169,7 @@ if btk_available
         for ia = 1:length(allAnalogs)
             lbl = allAnalogs{ia};
             sig = analogData.(lbl);
-            hasData = ~isempty(sig) && ~all(isnan(sig(:))) && any(sig(:) ~= 0);
+            hasData = hasRealSignal(sig);
             if hasData; n_ok = n_ok + 1; tag = '[OK]';
             else;        n_empty = n_empty + 1; tag = '[--]';
             end
@@ -303,12 +308,16 @@ for is = 1:size(segDef,1)
     legacyForSeg = findLegacyForSide(legacyGroups, sidePfx);
 
     % Humerus special case: named legacy markers {s}HDT/{s}HTI/{s}HBI (no
-    % trailing digits, so never grouped by the base-name logic above) take
-    % priority over any EOS/other legacy match for this side when all 3
-    % have a real valid trajectory in the C3D, even if an EOS group also
-    % exists. Checked against actual trajectory validity, not just label
-    % presence, since HDT/HTI/HBI can remain as unused label slots in the
-    % marker-set template while EOS is the one that actually has data.
+    % trailing digits, so never grouped by the base-name logic above) vs
+    % the numbered legacy group {s}EOS. Both naming schemes can appear as
+    % LABELS in the same C3D with valid trajectories even though only one
+    % of them is actually being tracked for this session - a leftover/
+    % unused label slot from an older marker-set template can hold a
+    % frozen/static position rather than genuinely absent data. Since real
+    % markers on a moving limb during ANALYTIC1 must show actual
+    % displacement over time, whichever of H/EOS shows real movement
+    % (range > 0 on at least one axis, see markerIsMoving) is taken as the
+    % active one; H wins the tie-break if both happen to show movement.
     if (strcmp(segName,'RHumerus') || strcmp(segName,'LHumerus')) && ~isempty(sidePfx) && btk_available
         hLabels = {[sidePfx 'HDT'], [sidePfx 'HTI'], [sidePfx 'HBI']};
         try
@@ -316,10 +325,24 @@ for is = 1:size(segDef,1)
         catch
             hMarkerData = struct();
         end
-        hValid = cellfun(@(m) isfield(hMarkerData, m) && ...
-            ~isempty(hMarkerData.(m)) && ~all(isnan(hMarkerData.(m)(:))), hLabels);
-        if sum(hValid) == 3
+        hMovingCount = sum(cellfun(@(m) isfield(hMarkerData, m) && ...
+            markerIsMoving(hMarkerData.(m)), hLabels));
+
+        legBaseEOS = [sidePfx 'EOS'];
+        giEOS = find(strcmpi({legacyGroups.base}, legBaseEOS), 1);
+        eosMovingCount = 0;
+        if ~isempty(giEOS)
+            eosLabels = legacyGroups(giEOS).labels;
+            eosMovingCount = sum(cellfun(@(m) isfield(hMarkerData, m) && ...
+                markerIsMoving(hMarkerData.(m)), eosLabels));
+        end
+
+        if hMovingCount == 3
             legacyForSeg = struct('base', {[sidePfx 'H']}, 'count', {3}, 'labels', {hLabels});
+        elseif ~isempty(giEOS) && eosMovingCount >= 2
+            legacyForSeg = struct('base', {legBaseEOS}, 'count', {eosMovingCount}, 'labels', {legacyGroups(giEOS).labels});
+        else
+            legacyForSeg = struct('base',{},'count',{},'labels',{}); % neither H nor EOS shows real movement
         end
     end
 
@@ -447,7 +470,8 @@ disp('  --------------------------------------------');
 % (the only function that would fill it, Init/InitialiseEmgSignals.m, is
 % never called) - reading raw BTK analog channels instead, same source and
 % hasData check as Section 2 "RAW C3D CONTENT" above. FORCE is excluded
-% here (reported separately, not an EMG channel).
+% here (reported separately, not an EMG channel), and so are the derived/
+% processed '_envelop'/'_onset' channels (not the raw recorded signal).
 %
 % Unlike every other section in this report, EMG is checked across ALL
 % FOUR ANALYTIC1-4 tasks that exist for the session, not just the
@@ -477,8 +501,9 @@ for itask = 1:length(analyticTasks)
     for il = 1:length(labels)
         lbl = labels{il};
         if contains(lbl, 'FORCE', 'IgnoreCase', true), continue; end
+        if contains(lbl, {'_envelop','_onset'}, 'IgnoreCase', true), continue; end % derived/processed, not the raw signal
         sig = analogData.(lbl);
-        taskMap(lbl) = ~isempty(sig) && ~all(isnan(sig(:))) && any(sig(:) ~= 0);
+        taskMap(lbl) = hasRealSignal(sig);
     end
     hasDataPerTask{end+1} = taskMap; %#ok<AGROW>
 end
@@ -617,4 +642,31 @@ for i = 1:length(lst)
     fprintf('%-20s', lst{i});
     if mod(i, ncols) == 0 || i == length(lst), fprintf('\n'); end
 end
+end
+
+function tf = hasRealSignal(sig)
+% A channel counts as having a real (non-flat) signal if it is not empty,
+% not entirely NaN, and shows some variation across samples. A dead/
+% disconnected analog channel can be clipped/saturated at a constant
+% value rather than literally all-zero (e.g. a fixed DC offset), so
+% checking for ANY variation (range > 0) catches that case too, not just
+% strict all-zero.
+tf = false;
+if isempty(sig), return; end
+v = sig(~isnan(sig(:)));
+if isempty(v), return; end
+tf = (max(v) - min(v)) > 0;
+end
+
+function tf = markerIsMoving(traj)
+% A marker counts as genuinely tracked (not a frozen/static leftover from
+% an unused label slot) if its 3D trajectory shows real movement across
+% the trial rather than being stuck at a constant position - same
+% "variation" principle as hasRealSignal, applied per axis of the Nx3
+% trajectory.
+tf = false;
+if isempty(traj), return; end
+valid = traj(~any(isnan(traj), 2), :);
+if size(valid,1) < 2, return; end
+tf = any(max(valid,[],1) - min(valid,[],1) > 0);
 end

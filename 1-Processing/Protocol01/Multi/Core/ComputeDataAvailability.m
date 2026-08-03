@@ -28,8 +28,13 @@
 %                runProtocol01 - only CALIBRATION/ANALYTIC/FUNCTIONAL are -
 %                so the .c3d file names on disk must also be checked to
 %                detect them):
-%                - Rcycle/Lcycle: is the Trial(ANALYTIC1).Rcycle/.Lcycle
-%                  field non-empty (gait cycles successfully cut).
+%                - Rcycle/Lcycle: number of cycles cut for
+%                  Trial(ANALYTIC1) (numel of the .Rcycle/.Lcycle field,
+%                  not just a 0/1 presence flag) - e.g. 3 is the normal
+%                  count, another number means more/fewer repetitions were
+%                  performed, 0 means no usable cycle (either no .mat in
+%                  the session folder, or a .mat that was never manually
+%                  cut for this trial - see CutCycles.m).
 %                - Analytic1-4, Functional1-4: presence of an
 %                  ANALYTICn/FUNCTIONALn trial/file.
 %                - Calibration1-6: presence of CALIBRATIONn, with aliases
@@ -51,12 +56,17 @@
 %                  '{R/L}ACM' (e.g. RACM1/2/3, type 'ACM'). Displayed type
 %                  = "S (3)" / "ACM (3)" / "-" if nothing found.
 %                - Cluster A/Type: humeral cluster. "Current" markers
-%                  Cluster_{R/L}A_01..05 (type 'A'); otherwise a 3-tier
-%                  legacy fallback: if the 3 named markers {R/L}HDT/
-%                  {R/L}HTI/{R/L}HBI are all present and valid, they are
-%                  the ones reported (type 'H'), even if a {R/L}EOS group
-%                  also exists; otherwise fallback to the numbered legacy
-%                  group with base '{R/L}EOS' (type 'EOS').
+%                  Cluster_{R/L}A_01..05 (type 'A'); otherwise a legacy
+%                  fallback between two older naming schemes that can both
+%                  appear as valid (non-NaN) labels in the same C3D even
+%                  though only one is actually tracked (the other being a
+%                  frozen/static leftover from an older marker-set
+%                  template): the 3 named markers {R/L}HDT/{R/L}HTI/
+%                  {R/L}HBI (type 'H') vs the numbered legacy group with
+%                  base '{R/L}EOS' (type 'EOS'). Whichever shows real
+%                  movement over the trial (range > 0 on any axis, see
+%                  markerIsMoving) is reported; H wins the tie-break if
+%                  both happen to show movement.
 %                - Cluster FA/Type: forearm cluster. "Current" markers
 %                  Cluster_{R/L}F_01/02/03 (type 'F'); otherwise legacy
 %                  base '{R/L}F' (type 'F').
@@ -76,17 +86,30 @@
 %                dead on e.g. ANALYTIC3):
 %                - Nombre: number of distinct analog channels identified
 %                  as a muscle (DELTA/DELTM/.../LATD), excluding the FORCE
-%                  channel. A channel is identified by the muscle code it
-%                  CONTAINS, regardless of what precedes/follows it in the
-%                  name (e.g. 'RDELTA', 'RDELTA_2', '1_RDELTA' are all the
-%                  same R-side/DELTA-muscle channel, counted once).
-%                - DELTA/DELTM/DELTP/TRAPS/TRAPM/TRAPI/SERRA/LATD: marked
-%                  present (1) if at least one side (R or L) of that muscle
-%                  has a signal ACTUALLY recorded (non-empty, not all-NaN,
-%                  not all-zero) in EVERY ANALYTIC1-4 task that exists - a
-%                  channel empty/broken (or entirely missing from the C3D)
-%                  in even a single one of those tasks counts as absent (0)
-%                  overall.
+%                  channel and excluding derived/processed channels
+%                  ('_envelop'/'_onset' suffixes - not the raw recorded
+%                  signal, ignored entirely). A channel is identified by
+%                  the muscle code it CONTAINS, regardless of what
+%                  precedes/follows it in the name (e.g. 'RDELTA',
+%                  'RDELTA_2', '1_RDELTA' are all the same R-side/DELTA-
+%                  muscle channel, counted once).
+%                - DELTA_R/DELTA_L/DELTM_R/DELTM_L/.../LATD_R/LATD_L: ONE
+%                  COLUMN PER SIDE PER MUSCLE (not merged/OR'd across R and
+%                  L) - a dead channel on one side must not be masked by a
+%                  healthy channel on the other side (real case found:
+%                  RSERRA flat at exactly 0 across all 4 ANALYTIC tasks
+%                  while LSERRA had a genuine signal - a single combined
+%                  SERRA column would have wrongly read "1" from the L side
+%                  alone). Marked present (1) if that specific side's raw
+%                  channel has a signal ACTUALLY recorded (non-empty, not
+%                  all-NaN, and showing some variation across samples - see
+%                  hasRealSignal) in EVERY ANALYTIC1-4 task that exists. The
+%                  variation check (rather than a strict all-zero check)
+%                  also catches a dead/disconnected channel that is flat at
+%                  a constant non-zero value (DC offset, saturation)
+%                  instead of literally all-zero. A channel empty/flat/
+%                  broken (or entirely missing from the C3D) in even a
+%                  single one of those tasks counts as absent (0) overall.
 %                - Fs: btkGetAnalogFrequency (analog/EMG frequency, from
 %                  the ANALYTIC1 reference trial only).
 %
@@ -130,8 +153,12 @@ Row = struct( ...
     'Kin_Nombre', NaN, 'ClusterAC', 0, 'ClusterAC_Type', '-', ...
     'ClusterA', 0, 'ClusterA_Type', '-', 'ClusterFA', 0, 'ClusterFA_Type', '-', ...
     'Kin_Scapula', 0, 'Kin_Humerus', 0, 'Kin_Thorax', 0, 'Kin_Fs', NaN, ...
-    'EMG_Nombre', 0, 'DELTA', 0, 'DELTM', 0, 'DELTP', 0, ...
-    'TRAPS', 0, 'TRAPM', 0, 'TRAPI', 0, 'SERRA', 0, 'LATD', 0, 'EMG_Fs', NaN, ...
+    'EMG_Nombre', 0, ...
+    'DELTA_R', 0, 'DELTA_L', 0, 'DELTM_R', 0, 'DELTM_L', 0, ...
+    'DELTP_R', 0, 'DELTP_L', 0, 'TRAPS_R', 0, 'TRAPS_L', 0, ...
+    'TRAPM_R', 0, 'TRAPM_L', 0, 'TRAPI_R', 0, 'TRAPI_L', 0, ...
+    'SERRA_R', 0, 'SERRA_L', 0, 'LATD_R', 0, 'LATD_L', 0, ...
+    'EMG_Fs', NaN, ...
     'Force_Nombre', 0, 'Force', 0);
 
 allTrialTasks = {Trial.task};
@@ -141,11 +168,16 @@ if ~isempty(c3dFiles), c3dNames = {c3dFiles.name}; end
 % =========================================================================
 %  MOVEMENTS
 % =========================================================================
+% Rcycle/Lcycle: actual cycle COUNT (numel), not just a 0/1 presence flag
+% - e.g. 3 = normal, another number = more/fewer repetitions performed,
+% 0 = no usable cycle (either no .mat, or a .mat that was never manually
+% cut for this trial - CutCycles.m falls back to an interactive ginput
+% selection in that case, which never runs unattended in a batch).
 Row.Rcycle = 0; Row.Lcycle = 0;
 tidxRef = findTask(Trial, 'ANALYTIC1');
 if ~isempty(tidxRef)
-    Row.Rcycle = double(isfield(Trial(tidxRef),'Rcycle') && ~isempty(Trial(tidxRef).Rcycle));
-    Row.Lcycle = double(isfield(Trial(tidxRef),'Lcycle') && ~isempty(Trial(tidxRef).Lcycle));
+    if isfield(Trial(tidxRef),'Rcycle'), Row.Rcycle = numel(Trial(tidxRef).Rcycle); end
+    if isfield(Trial(tidxRef),'Lcycle'), Row.Lcycle = numel(Trial(tidxRef).Lcycle); end
 end
 
 for n = 1:4
@@ -242,7 +274,7 @@ for itask = 1:length(analyticTasks)
         id  = identifyChannel(lbl, muscleCodes);
         if isempty(id) || strcmp(id,'FORCE'), continue; end % unrecognised, or FORCE (handled below)
         sig = analogData.(lbl);
-        hd  = ~isempty(sig) && ~all(isnan(sig(:))) && any(sig(:) ~= 0);
+        hd  = hasRealSignal(sig);
         if isKey(taskMap, id)
             taskMap(id) = taskMap(id) || hd; % merge duplicate raw labels for the same id within this trial
         else
@@ -270,9 +302,15 @@ end
 
 Row.EMG_Nombre = length(emgIDs);
 
+% One column per side per muscle (not merged R/L OR'd together): a dead
+% channel on one side must not be masked by a healthy channel on the
+% other side (real case: RSERRA flat at 0 across all 4 ANALYTIC while
+% LSERRA has a real signal - a single combined SERRA column would have
+% wrongly read "1" from the L side alone).
 for im = 1:length(muscleCodes)
     code = muscleCodes{im};
-    Row.(code) = double(any(cellfun(@(id) endsWith(id, ['_' code]) && hasDataByID(id), emgIDs)));
+    Row.([code '_R']) = double(isKey(hasDataByID, ['R_' code]) && hasDataByID(['R_' code]));
+    Row.([code '_L']) = double(isKey(hasDataByID, ['L_' code]) && hasDataByID(['L_' code]));
 end
 
 % =========================================================================
@@ -291,7 +329,7 @@ for il = 1:length(refLabels)
     if contains(lbl, 'FORCE', 'IgnoreCase', true)
         isForcePresent = true;
         sig = analogDataRef.(lbl);
-        if ~isempty(sig) && ~all(isnan(sig(:))) && any(sig(:) ~= 0)
+        if hasRealSignal(sig)
             forceHasData = true;
         end
     end
@@ -318,6 +356,20 @@ for ia = 1:length(aliases)
         tf = 1; return;
     end
 end
+end
+
+function tf = hasRealSignal(sig)
+% A channel counts as having a real (non-flat) signal if it is not empty,
+% not entirely NaN, and shows some variation across samples. A dead/
+% disconnected analog channel can be clipped/saturated at a constant
+% value rather than literally all-zero (e.g. a fixed DC offset), so
+% checking for ANY variation (range > 0) catches that case too, not just
+% strict all-zero.
+tf = false;
+if isempty(sig), return; end
+v = sig(~isnan(sig(:)));
+if isempty(v), return; end
+tf = (max(v) - min(v)) > 0;
 end
 
 function tf = markerValid(t, label)
@@ -402,21 +454,21 @@ end
 function [present, typeStr] = clusterStatusHumerus(t, legacyGroups, sides)
 % Like clusterStatus, but specific to the humeral cluster, which has 3
 % priority tiers: 1) current 'Cluster_{s}A_0N' (type 'A'); 2) named legacy
-% '{s}HDT'/'{s}HTI'/'{s}HBI' (type 'H'), used at the very start of the
-% protocol - takes priority over EOS when all 3 markers are valid, even if
-% an EOS group also exists; 3) numbered legacy group with base '{s}EOS'
-% (type 'EOS').
+% '{s}HDT'/'{s}HTI'/'{s}HBI' (type 'H'); 3) numbered legacy group with base
+% '{s}EOS' (type 'EOS').
+%
+% Both naming schemes can appear as LABELS in the same C3D with valid
+% (non-empty/non-NaN) trajectories even though only one of them is
+% actually being tracked for this session - a leftover/unused label slot
+% from an older marker-set template can hold a frozen/static position
+% rather than genuinely absent data. Since real markers on a moving limb
+% during ANALYTIC1 must show actual displacement over time, whichever of
+% H/EOS shows real movement (range > 0 on at least one axis, see
+% markerIsMoving) is taken as the active one; H wins the tie-break if both
+% happen to show movement (kept from the original H > EOS priority).
 totalCount = 0;
 matchedType = '';
 
-% Raw BTK markers (legacy markers - EOS as well as HDT/HTI/HBI - are not
-% part of the current markerSet t.Marker, so markerValid() cannot see
-% them). Both naming schemes can appear as LABELS in the same C3D even
-% though only one of them actually has real recorded data for a given
-% session (the marker-set template can carry over old label slots) - so
-% HDT/HTI/HBI presence must be checked against actual trajectory validity
-% (non-empty/non-NaN), not just whether the label name exists (same fix
-% as detectLegacyGroups for EOS).
 allBtkMarkers = struct();
 if isfield(t,'btk') && ~isempty(t.btk)
     try
@@ -440,23 +492,28 @@ for is = 1:length(sides)
     end
 
     hLabels = {[s 'HDT'], [s 'HTI'], [s 'HBI']};
-    hCount = 0;
+    hMovingCount = 0;
     for il = 1:length(hLabels)
         lbl = hLabels{il};
-        if isfield(allBtkMarkers, lbl) && rawMarkerValid(allBtkMarkers.(lbl))
-            hCount = hCount + 1;
+        if isfield(allBtkMarkers, lbl) && markerIsMoving(allBtkMarkers.(lbl))
+            hMovingCount = hMovingCount + 1;
         end
-    end
-    if hCount == 3
-        totalCount = totalCount + hCount;
-        if isempty(matchedType), matchedType = 'H'; end
-        continue;
     end
 
     legBase = [s, 'EOS'];
     gi = find(strcmpi({legacyGroups.base}, legBase), 1);
+    eosMovingCount = 0;
     if ~isempty(gi)
-        totalCount = totalCount + legacyGroups(gi).count;
+        eosLabels = legacyGroups(gi).labels;
+        eosMovingCount = sum(cellfun(@(m) isfield(allBtkMarkers, m) && ...
+            markerIsMoving(allBtkMarkers.(m)), eosLabels));
+    end
+
+    if hMovingCount == 3
+        totalCount = totalCount + hMovingCount;
+        if isempty(matchedType), matchedType = 'H'; end
+    elseif ~isempty(gi) && eosMovingCount >= 2
+        totalCount = totalCount + eosMovingCount;
         if isempty(matchedType), matchedType = 'EOS'; end
     end
 end
@@ -466,6 +523,19 @@ if totalCount > 0
 else
     typeStr = '-';
 end
+end
+
+function tf = markerIsMoving(traj)
+% A marker counts as genuinely tracked (not a frozen/static leftover from
+% an unused label slot) if its 3D trajectory shows real movement across
+% the trial rather than being stuck at a constant position - same
+% "variation" principle as hasRealSignal, applied per axis of the Nx3
+% trajectory.
+tf = false;
+if isempty(traj), return; end
+valid = traj(~any(isnan(traj), 2), :);
+if size(valid,1) < 2, return; end
+tf = any(max(valid,[],1) - min(valid,[],1) > 0);
 end
 
 function ok = segmentUsable(t, legacyGroups, sides, currentPattern, nCurrent, legacySuffix)
@@ -503,8 +573,11 @@ function id = identifyChannel(lbl, muscleCodes)
 % Identifies an analog channel by the muscle code it contains, regardless
 % of what precedes/follows it in the name. 'FORCE' takes priority.
 % Returns 'R_<code>' / 'L_<code>' / '_<code>' (unknown side) / 'FORCE' /
-% '' (unrecognised channel).
+% '' (unrecognised channel, or a derived/processed channel - see below).
 id = '';
+if contains(lbl, {'_envelop','_onset'}, 'IgnoreCase', true)
+    return; % derived/processed channels, not the raw recorded signal - ignored entirely
+end
 if contains(lbl, 'FORCE', 'IgnoreCase', true)
     id = 'FORCE'; return;
 end

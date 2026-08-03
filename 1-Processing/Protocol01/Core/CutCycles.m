@@ -14,11 +14,23 @@
 %                using spline interpolation, ensuring inter-cycle and
 %                inter-subject comparison independent of movement duration.
 %                Applied to ANALYTIC trials.
+%
+%                lightweight mode (see SkipKinematics in
+%                userCommands_Multi.m): only reads Rcycle/Lcycle from the
+%                .mat and skips normalisation entirely - cheap, independent
+%                of any kinematics computation, so it can run even when
+%                Segment/Joint were never computed. Never falls back to
+%                the interactive ginput selection in this mode (that popup
+%                must never fire unattended in a fast/batch run) - missing
+%                cycles just come back empty (Rcycle/Lcycle = 0 count).
 % -------------------------------------------------------------------------
-% Inputs  : c3dFiles   (struct)  output of dir('*.c3d'), used for file name
-%           Trial      (struct)  with .Joint and .Segment populated
-%           folderData (char)    patient folder containing the .mat (optional)
-% Outputs : Trial      (struct)  .Rcycle .Lcycle + all .rcycle/.lcycle populated
+% Inputs  : c3dFiles    (struct)  output of dir('*.c3d'), used for file name
+%           Trial       (struct)  with .Joint and .Segment populated
+%                        (unless lightweight)
+%           folderData  (char)    patient folder containing the .mat (optional)
+%           lightweight (logical, optional) default false - see above
+% Outputs : Trial      (struct)  .Rcycle .Lcycle + (unless lightweight) all
+%                       .rcycle/.lcycle populated
 % -------------------------------------------------------------------------
 % This work is licensed under the Creative Commons Attribution - 
 % NonCommercial 4.0 International License. To view a copy of this license, 
@@ -26,9 +38,10 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function Trial = CutCycles(c3dFiles, Trial, folderData)
+function Trial = CutCycles(c3dFiles, Trial, folderData, lightweight)
 
 if nargin < 3, folderData = ''; end
+if nargin < 4, lightweight = false; end
 
 if ~contains(c3dFiles.name, 'ANALYTIC')
     return;
@@ -43,7 +56,7 @@ if ~isempty(folderData)
     if ~isempty(matFiles)
         matFile = fullfile(folderData, matFiles(1).name);
         disp('mat detected');
-    else
+    elseif ~lightweight
         disp('No .mat found in patient folder -> ginput mode');
     end
 end
@@ -51,17 +64,31 @@ end
 % -------------------------------------------------------------------------
 % READ CYCLES
 % -------------------------------------------------------------------------
+% lightweight (see SkipKinematics in userCommands_Multi.m): only reads
+% Rcycle/Lcycle from the .mat (cheap, independent of any kinematics
+% computation) and skips normalisation below entirely, since Segment/
+% Joint/Marker aren't computed in that mode. Never falls back to the
+% interactive ginput selection here - that popup must never fire
+% unattended in a fast/batch run; missing cycles just come back empty.
 if ~isempty(matFile)
-    % disp('  - Reading cycles from K-LAB .mat');
     [Rcycles, Lcycles] = getCyclesFromMat(matFile, Trial.file);
 
-    if isempty(Rcycles) && isempty(Lcycles)
+    if isempty(Rcycles) && isempty(Lcycles) && ~lightweight
         warning('No cycle found in .mat for %s -> ginput mode.', Trial.file);
         [Rcycles, Lcycles] = selectCyclesManual(Trial, c3dFiles.name);
     end
+elseif lightweight
+    Rcycles = struct('range', {});
+    Lcycles = struct('range', {});
 else
     disp('  - Manual cycle selection (ginput)');
     [Rcycles, Lcycles] = selectCyclesManual(Trial, c3dFiles.name);
+end
+
+if lightweight
+    Trial.Rcycle = Rcycles;
+    Trial.Lcycle = Lcycles;
+    return;
 end
 
 % -------------------------------------------------------------------------

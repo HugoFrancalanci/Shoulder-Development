@@ -10,18 +10,27 @@
 % -------------------------------------------------------------------------
 % Description:   Exports the patients' demographic/clinical summary
 %                (PatientInfos, from ComputePatientInfos.m) to an Excel
-%                file, in the same format as the REDCap exports
-%                (redcap_common.py): a "Patient" header merged across all
-%                columns, then a blank row before each patient to make
-%                copy/paste easier.
+%                file: a "Patient" header merged across all columns, then
+%                a blank row before each patient's data row (kept for
+%                readability - not the DataAvailability/HT_Contributions
+%                convention, which are kept contiguous instead).
 %
-%                Two identical blocks side by side (PRE then POST), each
-%                with Numéro/ID/Genre/ASA/Latéralité repeated (column
-%                labels kept in French to match the rest of the Excel
-%                deliverables the team uses):
-%                  Numéro, ID, Age_PRE,  Genre, Taille_PRE,  Masse_PRE,  IMC_PRE,  EVA_PRE,  ASA, Latéralité,
-%                  Numéro, ID, Age_POST, Genre, Taille_POST, Masse_POST, IMC_POST, EVA_POST, ASA, Latéralité
+%                Two blocks side by side (PRE then POST) - NOT the same
+%                size: Diagnostic/Previous Surgery are patient-level (not
+%                PRE/POST-specific) and only inserted once, right after
+%                EVA_PRE in the PRE block, not repeated in the POST block
+%                (column labels kept in French to match the rest of the
+%                Excel deliverables the team uses). Numéro = row index;
+%                ID Cinésiologie = PatientInfos.PatientID (the numeric ID
+%                from PatientSelection); ID = initials (from
+%                ComputePatientInfos.m's initialsID):
+%                  Numéro, ID Cinésiologie, ID, Age_PRE,  Genre, Taille_PRE,  Masse_PRE,  IMC_PRE,  EVA_PRE,  Diagnostic, Previous Surgery, ASA, Latéralité,
+%                  Numéro, ID Cinésiologie, ID, Age_POST, Genre, Taille_POST, Masse_POST, IMC_POST, EVA_POST, ASA, Latéralité
 %                Genre: 1=Female/0=Male. Latéralité: 1=Left/0=Right.
+%                Diagnostic/Previous Surgery: Session.xlsx allows up to 5
+%                entries each (Pathology.Diagnosis.d1-d5 /
+%                .PreviousSurgery.i1-i5) - only the first of each is kept,
+%                in full (see ComputePatientInfos.m).
 %
 %                EVA_PRE/EVA_POST are written as REAL Excel formulas (e.g.
 %                "=(4+4+4+4)/4", from Multi/Core/ComputePatientInfos.m):
@@ -36,7 +45,7 @@
 % Inputs  : PatientInfos (struct array) from MAIN_MULTI_Protocol_01.m, with
 %           fields ID, Gender, Laterality, ASA, Age_PRE/POST,
 %           Height_PRE/POST, Mass_PRE/POST, BMI_PRE/POST, EVA_PRE/POST,
-%           EVA_PRE_fallback/EVA_POST_fallback
+%           EVA_PRE_fallback/EVA_POST_fallback, Diagnostic, PreviousSurgery
 %           OutputFile (char) output Excel file path
 % Outputs : Excel file written to disk
 % -------------------------------------------------------------------------
@@ -56,8 +65,8 @@ if isempty(PatientInfos)
 end
 
 labels = { ...
-    'Numéro', 'ID', 'Age_PRE',  'Genre', 'Taille_PRE',  'Masse_PRE',  'IMC_PRE',  'EVA_PRE',  'ASA', 'Latéralité', ...
-    'Numéro', 'ID', 'Age_POST', 'Genre', 'Taille_POST', 'Masse_POST', 'IMC_POST', 'EVA_POST', 'ASA', 'Latéralité'};
+    'Numéro', 'ID Cinésiologie', 'ID', 'Age_PRE',  'Genre', 'Taille_PRE',  'Masse_PRE',  'IMC_PRE',  'EVA_PRE',  'Diagnostic', 'Previous Surgery', 'ASA', 'Latéralité', ...
+    'Numéro', 'ID Cinésiologie', 'ID', 'Age_POST', 'Genre', 'Taille_POST', 'Masse_POST', 'IMC_POST', 'EVA_POST', 'ASA', 'Latéralité'};
 nCols  = length(labels);
 COL_EVA_PRE  = find(strcmp(labels, 'EVA_PRE'),  1);
 COL_EVA_POST = find(strcmp(labels, 'EVA_POST'), 1);
@@ -72,10 +81,16 @@ for i = 1:length(PatientInfos)
     p = PatientInfos(i);
     C(end+1, :) = blankRow; %#ok<AGROW>
     C(end+1, :) = { ...
-        i, p.ID, r2(p.Age_PRE),  p.Gender, r2(p.Height_PRE),  r2(p.Mass_PRE),  r2(p.BMI_PRE),  p.EVA_PRE,  p.ASA, p.Laterality, ...
-        i, p.ID, r2(p.Age_POST), p.Gender, r2(p.Height_POST), r2(p.Mass_POST), r2(p.BMI_POST), p.EVA_POST, p.ASA, p.Laterality}; %#ok<AGROW>
+        i, p.PatientID, p.ID, r2(p.Age_PRE),  p.Gender, r2(p.Height_PRE),  r2(p.Mass_PRE),  r2(p.BMI_PRE),  p.EVA_PRE,  p.Diagnostic, p.PreviousSurgery, p.ASA, p.Laterality, ...
+        i, p.PatientID, p.ID, r2(p.Age_POST), p.Gender, r2(p.Height_POST), r2(p.Mass_POST), r2(p.BMI_POST), p.EVA_POST, p.ASA, p.Laterality}; %#ok<AGROW>
 end
 
+% writecell/writetable never clear a pre-existing sheet, only overwrite
+% the cell range they write to - if a previous run left MORE rows/columns
+% (e.g. an older format with blank separator rows), those leftover cells
+% would stay behind, invisible until scrolled/stale patient data at the
+% bottom. Deleting the file first guarantees a fully fresh sheet.
+if isfile(OutputFile), delete(OutputFile); end
 writecell(C, OutputFile, 'Sheet', 'PatientInfos');
 
 % Merges the "Patient" header row, and writes EVA_PRE/POST as real Excel
