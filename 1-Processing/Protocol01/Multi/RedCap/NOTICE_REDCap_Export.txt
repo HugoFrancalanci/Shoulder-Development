@@ -1,0 +1,110 @@
+NOTICE - Export REDCap vers Excel (Python / Spyder)
+====================================================
+
+ORGANISATION DES DOSSIERS
+--------------------------
+Tout se trouve dans RedCap\Export\ :
+  - redcap_common.py       : code partagé à tous les tableaux (ne pas
+                             déplacer, ne pas dupliquer dans les sous-dossiers)
+  - le CSV exporté depuis REDCap : UN SEUL fichier, partagé, à la racine
+                             de Export\ 
+  - un sous-dossier par tableau, ex :
+      PreOP\
+      PostOP\
+    chacun contenant :
+      - le script Python de ce tableau (export_redcap_xxx.py), qui va
+        chercher le CSV un niveau au-dessus (EXPORT_DIR)
+      - l'Excel de sortie généré (REDCap_Extraction.xlsx)
+
+EXPORTER UN NOUVEAU CSV DEPUIS REDCAP
+--------------------------------------
+1. Dans REDCap : Export > "CSV Raw Data"
+2. Placer le fichier CSV à la racine de Export\ (pas dans un sous-dossier)
+3. Si le nom du fichier change, mettre à jour INPUT_CSV en haut de CHAQUE
+   script (chacun le référence par son nom exact)
+
+LANCER UN SCRIPT DANS SPYDER
+------------------------------
+1. Ouvrir le script .py du tableau voulu (ex: export_redcap_preOP.py)
+2. Vérifier/adapter INPUT_CSV (nom du CSV) si besoin
+3. Lancer (F5) -> l'Excel REDCap_Extraction.xlsx est (re)généré dans le
+   même dossier
+
+CRÉER UN NOUVEAU TABLEAU
+--------------------------
+1. Créer un nouveau sous-dossier dans Export\
+2. Copier un script existant comme modèle :
+     - export_redcap_preOP.py   -> 4 blocs (Géométrie + Classification + ASA
+                                   + CMS pré-opératoire)
+     - export_redcap_postOP.py  -> 6 blocs (Opération + Prothèse + Planning
+                                   + Paramètres intra-opératoires + Simulation
+                                   + CMS à 1 an), tout dans un seul Excel
+3. Adapter dans le nouveau script : la liste des variables (libellé +
+   nom de colonne REDCap), les en-têtes/fusions, et build_row()
+4. Vérifier que les noms de colonnes REDCap existent bien dans le CSV
+   (le script s'arrête avec un message clair si une colonne manque)
+
+À SAVOIR
+----------
+- Un même patient peut avoir PLUSIEURS lignes dans le CSV REDCap
+  (événements/instruments répétés) : c'est géré automatiquement, val()
+  cherche la donnée sur toutes les lignes du patient.
+- postOP.py, blocs Planning / Paramètres intra-opératoires : mêmes 10
+  variables/libellés dans les deux blocs (côte à côte, pour comparer plan
+  vs réalisé). Planning = valeur planifiée (_prim) telle quelle. Paramètres
+  intra-opératoires = valeur définitive (_def) ; si elle vaut "-" (=
+  identique au plan côté REDCap), la valeur planifiée (_prim) est prise à
+  la place. Dans les deux cas, cellule vide -> "R".
+- Ligne remplie de "R" = patient sans aucune donnée pour ce tableau.
+  "ID RedCap not available" = aucun id_redcap renseigné pour ce patient.
+- Une ligne vide est insérée avant chaque patient, pour la lisibilité.
+- Certains champs REDCap sont des codes numériques à traduire en libellé
+  clinique (ex: Walch "4" -> "B1", ASA "3 - trois" -> "3") : voir les
+  dictionnaires (FIELD_LABELS, MORPHO_LABELS) et fonctions (transform,
+  morpho_grade, asa_class) en haut de chaque script concerné.
+- export_table() accepte un paramètre optionnel text_cols (liste de
+  colonnes 1-based) pour forcer certaines colonnes en format Texte -
+  utile quand un libellé ressemble à un nombre ("0", "1"...) et
+  qu'Excel afficherait sinon un warning "nombre stocké en texte".
+- Certains champs (ex: cms_total) ne sont PAS répétés en colonnes
+  _PRE/_POST : c'est le même champ REDCap, présent sur des lignes
+  différentes selon redcap_event_name (ex: "pre_operative_arm_1" vs
+  "fuy1_arm_1" pour le suivi à 1 an). Dans ce cas, val() ne suffit pas
+  (elle renverrait toujours la première valeur trouvée, peu importe
+  l'événement) : utiliser val_for_event(rows, field, event_name) à la
+  place pour cibler le bon événement.
+
+DÉTECTION AUTOMATIQUE DE VALEURS HORS PLAGE (vert/rouge)
+-----------------------------------------------------------
+export_table() colorie automatiquement chaque cellule remplie, colonne par
+colonne, à partir d'une calibration faite sur les n_reference premiers
+patients de la cohorte (ID_REDCAP) considérés fiables :
+  - Colonnes NUMÉRIQUES (compute_reference_ranges) : plage acceptée =
+    moyenne +/- n_sd écarts-types, calculée sur ces patients de référence.
+    Vert = dans la plage, rouge = hors plage. Si la valeur est identique
+    chez TOUS les patients de référence (écart-type nul), cette valeur
+    devient la seule acceptée (vert si égale, rouge sinon) plutôt que de ne
+    rien colorier. Pas de plage calculée seulement si moins de 2 valeurs
+    numériques chez les patients de référence.
+  - Colonnes TEXTE (codes/labels traduits, marques...) (compute_reference_
+    categories) : vocabulaire accepté = ensemble des valeurs distinctes
+    déjà vues chez les patients de référence. Vert = valeur connue, rouge =
+    jamais vue chez les patients de référence.
+  - Dans les deux cas : une cellule vide ou "R" n'est JAMAIS coloriée
+    (donnée manquante != anomalie).
+  - Rien à faire dans les scripts preOP/postOP : c'est générique, basé sur
+    le type réel (numérique ou texte) de la valeur finale déjà construite
+    par build_row().
+  - Réglable par script, en passant des arguments optionnels à
+    export_table(...) : n_reference (nombre de patients de référence,
+    30 par défaut) et n_sd (largeur de la plage numérique en écarts-types,
+    2 par défaut - plus grand = moins strict). Exemple :
+      export_table(OUTPUT_XLSX, "PostOp", header1, header2, merges,
+                    build_row, input_csv=INPUT_CSV, n_reference=40, n_sd=3)
+  - Limite à garder en tête pour le texte : avec un échantillon de
+    référence limité, une catégorie légitime mais rare peut ne jamais y
+    apparaître et sera donc flaggée rouge à tort, contrairement au cas
+    numérique où une valeur proche de la moyenne reste "dans la plage"
+    même si elle n'a jamais été vue exactement. Le rouge est un signal à
+    vérifier, pas une certitude d'erreur.
+

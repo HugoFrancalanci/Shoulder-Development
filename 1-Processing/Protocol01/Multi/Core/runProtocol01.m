@@ -1,11 +1,17 @@
 % Author     :   H. Francalanci
 %                Biomechanics and Translational Research in Surgery Group
 %                University of Geneva
+%                https://www.unige.ch/medecine/chiru/en/research-groups/nicolas-holzer-et-florent-moissenet
+% License    :   Creative Commons Attribution-NonCommercial 4.0 International License
+%                https://creativecommons.org/licenses/by-nc/4.0/legalcode
+% Source code:   To be defined
+% Reference  :   To be defined
 % Date       :   June 2026
 % -------------------------------------------------------------------------
-% Description:   Version fonction de MAIN_Protocol_01.
+% Description:   Function version of MAIN_Protocol_01, callable once per
+%                patient session from MAIN_MULTI_Protocol_01.m.
 %
-% Usage (multi-patients, depuis MAIN_Database.m) :
+% Usage (multi-patient, from MAIN_MULTI_Protocol_01.m):
 %   for iP = 1:nPatients
 %       Folder.data = patientSessions(iP);
 %       [Trial, Patient, Session, Pathology] = runProtocol01(Folder);
@@ -13,29 +19,39 @@
 %       DB(iP).Patient  = Patient;
 %       DB(iP).Posture  = extractPosture(Trial);
 %   end
-%
-% Outputs : Trial     (struct array)  tous les trials traités
-%           Patient   (struct)        depuis ImportSessionData
-%           Session   (struct)        depuis ImportSessionData
-%           Pathology (struct)        depuis ImportSessionData
-%           c3dFiles  (struct array)  dir('*.c3d') du dossier Processed —
-%                     utile pour détecter des fichiers non chargés dans
-%                     Trial (ex: STATIC/ISOMETRIC, absents de trialTypes)
+% -------------------------------------------------------------------------
+% Inputs  : Folder (struct) .toolbox, .deps, .data (session folder) and
+%           optionally .skipKinematics (see SkipKinematics)
+% Outputs : Trial     (struct array)  all processed trials
+%           Patient   (struct)        from ImportSessionData
+%           Session   (struct)        from ImportSessionData
+%           Pathology (struct)        from ImportSessionData
+%           c3dFiles  (struct array)  dir('*.c3d') of the Processed folder
+%                     - useful to detect files not loaded into Trial (e.g.
+%                     STATIC/ISOMETRIC, absent from trialTypes)
+% -------------------------------------------------------------------------
+% Dependencies : ImportSessionData.m, ComputeSCoRE.m, TestSCoRE.m,
+%                SetUnits.m, InitialiseMarkerTrajectories.m,
+%                InitialiseVmarkerTrajectories.m, InitialiseSegments.m,
+%                InitialiseJoints.m, DefineSegments.m, ComputeKinematics.m,
+%                ComputeThoraxPosture.m, CutCycles.m, ComputeSHR.m
+% -------------------------------------------------------------------------
+% This work is licensed under the Creative Commons Attribution -
+% NonCommercial 4.0 International License. To view a copy of this license,
+% visit http://creativecommons.org/licenses/by-nc/4.0/ or send a letter to
+% Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
 function [Trial, Patient, Session, Pathology, c3dFiles] = runProtocol01(Folder)
 
 % -------------------------------------------------------------------------
-% CHEMINS
+% PATHS
 % -------------------------------------------------------------------------
 addpath(Folder.toolbox);
 addpath(genpath(Folder.deps));
 addpath(fullfile(Folder.toolbox, 'Core'));
 addpath(fullfile(Folder.toolbox, 'Init'));
 addpath(fullfile(Folder.toolbox, 'IO'));
-addpath(fullfile(Folder.toolbox, 'Plot'));
-addpath(fullfile(Folder.toolbox, 'Templates'));
-addpath(fullfile(Folder.toolbox, 'Tests'));
 
 % -------------------------------------------------------------------------
 % SESSION DATA
@@ -55,7 +71,7 @@ userCommands = fileread(txtFile);
 eval(userCommands);
 
 % -------------------------------------------------------------------------
-% CALIBRATION SCoRE (une fois par patient, si selectionnee dans userCommands.txt)
+% CALIBRATION SCoRE
 % -------------------------------------------------------------------------
 if strcmpi(Processing.GJC.method,'SCoRE')
     Session.SCoRE = ComputeSCoRE(Folder.data);
@@ -63,7 +79,7 @@ if strcmpi(Processing.GJC.method,'SCoRE')
 end
 
 % -------------------------------------------------------------------------
-% CHARGEMENT DES FICHIERS C3D
+% LOADING C3D FILES
 % -------------------------------------------------------------------------
 cd(fullfile(Folder.data, 'Processed'));
 c3dFiles   = dir('*.c3d');
@@ -88,14 +104,17 @@ for itype = 1:length(trialOrder)
 end
 orderedIdx = orderedIdx(1:nIdx);
 
+% SkipKinematics
+skipKinematics = isfield(Folder, 'skipKinematics') && Folder.skipKinematics;
+
 % -------------------------------------------------------------------------
-% BOUCLE TRIALS
+% TRIALS LOOP
 % -------------------------------------------------------------------------
 for i = orderedIdx
     for j = 1:size(trialTypes, 2)
         if contains(c3dFiles(i).name, trialTypes{j})
             disp(' ');
-            % Nom de la tâche
+            % Task name
             if contains(c3dFiles(i).name, 'CALIBRATION')
                 Trial(k).task = c3dFiles(i).name(end-18:end-7);
             elseif contains(c3dFiles(i).name, 'ANALYTIC')
@@ -110,9 +129,9 @@ for i = orderedIdx
             Trial(k).fmarker = btkGetPointFrequency(Trial(k).btk);
             Trial(k).fanalog = btkGetAnalogFrequency(Trial(k).btk);
             disp(['File loading : ', Trial(k).task]);
-            % Unités
+            % Units
             Units            = SetUnits(Trial);
-            % Événements
+            % Events
             Event            = btkGetEvents(Trial(k).btk);
             % Markers
             Marker           = btkGetMarkers(Trial(k).btk);
@@ -127,7 +146,7 @@ for i = orderedIdx
             Trial(k).Rcycle  = [];
             Trial(k).Lcycle  = [];
             Trial(k).SHR     = [];
-            if i ~= 8 % Not applicable
+            if ~contains(c3dFiles(i).name, 'CALIBRATION4') && ~skipKinematics % Not applicable / fast mode
                 Trial(k) = InitialiseSegments(Trial(k));
                 Trial(k) = InitialiseJoints(Trial(k));
                 Trial(k) = DefineSegments(c3dFiles(i), Session, Trial(k), Processing);
@@ -144,32 +163,7 @@ end
 close all;
 
 % -------------------------------------------------------------------------
-% PLOTS — désactivés en mode multi-patients
-% -------------------------------------------------------------------------
-plotMode = false; 
-
-if plotMode
-    for k_plot = 1:length(Trial)
-        if contains(Trial(k_plot).task, 'ANALYTIC')
-            PlotThoraxPosture(Trial(k_plot), Trial(k_plot).task);
-            PlotThoraxInclination(Trial(k_plot), Trial(k_plot).task);
-        end
-    end
-    PlotKinematics(Trial, Pathology);
-    PlotHumeroGravitaire(Trial, Pathology);
-    PlotComparison(Trial, Folder.data, Pathology);
-    TestICS(Trial);
-    TestHG(Trial);
-end
-
-% -------------------------------------------------------------------------
-% EXPORTS CONSOLE
-% -------------------------------------------------------------------------
-ExportPostureSummary(Trial, Patient, Session);
-ExportKinematicsSummary(Trial);
-
-% -------------------------------------------------------------------------
-% FIN
+% END
 % -------------------------------------------------------------------------
 cd(Folder.toolbox);
 

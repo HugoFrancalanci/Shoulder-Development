@@ -1,95 +1,111 @@
 % Author     :   H. Francalanci
 %                Biomechanics and Translational Research in Surgery Group
 %                University of Geneva
+%                https://www.unige.ch/medecine/chiru/en/research-groups/nicolas-holzer-et-florent-moissenet
+% License    :   Creative Commons Attribution-NonCommercial 4.0 International License
+%                https://creativecommons.org/licenses/by-nc/4.0/legalcode
+% Source code:   To be defined
+% Reference  :   To be defined
 % Date       :   July 2026
 % -------------------------------------------------------------------------
-% Description:   Version "multi-patients" de ReportDataAvailability.m (IO/) :
-%                calcule, pour UNE session (PRE ou POST), la même chose mais
-%                sous forme binaire (1/0) exploitable dans un rapport Excel
-%                (une ligne par examen), au lieu d'un affichage console.
+% Description:   Multi-patient version of ReportDataAvailability.m (IO/):
+%                computes the same information for ONE session (PRE or
+%                POST) but as binary (1/0) flags usable in an Excel report
+%                (one row per exam), instead of a console display.
 %
-%                Réutilise les mêmes techniques que ReportDataAvailability
-%                (détection des groupes de marqueurs "legacy" par nom de
-%                base + chiffres finaux, check hasData = non vide/non-NaN/
-%                non tout-zéro) plutôt que de dupliquer une autre logique.
+%                Reuses the same techniques as ReportDataAvailability
+%                (legacy marker group detection by base name + trailing
+%                digits, hasData check = non-empty/non-NaN/non-all-zero)
+%                rather than duplicating another logic.
 %
-%                Sauf mention contraire, tout est évalué sur le trial de
-%                référence ANALYTIC1 (comme ReportDataAvailability).
+%                Unless stated otherwise, everything is evaluated on the
+%                ANALYTIC1 reference trial (same as ReportDataAvailability).
 %
-%                Ce qui est extrait pour chaque colonne du rapport :
+%                What is extracted for each report column:
 %
-%                MOUVEMENTS (sur Trial(k).task ET c3dFiles bruts, car les
-%                fichiers STATIC/ISOMETRIC ne sont jamais chargés dans Trial
-%                par runProtocol01 - seul CALIBRATION/ANALYTIC/FUNCTIONAL le
-%                sont ; il faut donc aussi checker les noms de fichiers .c3d
-%                sur le disque pour les détecter) :
-%                - Rcycle/Lcycle : le champ Trial(ANALYTIC1).Rcycle/.Lcycle
-%                  est-il non vide (cycles de marche coupés avec succès).
-%                - Analytic1-4, Functional1-4 : présence d'un trial/fichier
-%                  ANALYTICn / FUNCTIONALn.
-%                - Calibration1-6 : présence de CALIBRATIONn, avec alias
-%                  selon l'année du protocole - Calibration1-3 acceptent
-%                  aussi STATIC1-3 (même acquisition, nom différent) ;
-%                  Calibration5-6 acceptent aussi ISOMETRIC1-2. Calibration4
-%                  n'a pas d'alias.
+%                MOVEMENTS (on both Trial(k).task AND raw c3dFiles, since
+%                STATIC/ISOMETRIC files are never loaded into Trial by
+%                runProtocol01 - only CALIBRATION/ANALYTIC/FUNCTIONAL are -
+%                so the .c3d file names on disk must also be checked to
+%                detect them):
+%                - Rcycle/Lcycle: is the Trial(ANALYTIC1).Rcycle/.Lcycle
+%                  field non-empty (gait cycles successfully cut).
+%                - Analytic1-4, Functional1-4: presence of an
+%                  ANALYTICn/FUNCTIONALn trial/file.
+%                - Calibration1-6: presence of CALIBRATIONn, with aliases
+%                  depending on the protocol year - Calibration1-3 also
+%                  accept STATIC1-3 (same acquisition, different name);
+%                  Calibration5-6 also accept ISOMETRIC1-2. Calibration4
+%                  has no alias.
 %
-%                POSTURE (présence d'un marqueur donné, trajectoire non
-%                vide/non-NaN) : CV7/TV3/TV5/TV8/S1
+%                POSTURE (presence of a given marker, non-empty/non-NaN
+%                trajectory): CV7/TV3/TV5/TV8/S1
 %
-%                CINÉMATIQUE (côté évalué = sidesToReport, c-à-d le
-%                côté choisi dans PatientSelection; si 'RL', présence = OR des deux
-%                côtés, compte = somme des deux côtés) :
-%                - Nombre : length(fieldnames(btkGetMarkers(t.btk)))
-%                - Cluster AC/Type : cluster scapulaire. Cherche d'abord les
-%                  marqueurs "current" Cluster_{R/L}S_01/02/03 (type 'S') ;
-%                  si absents, cherche un groupe legacy numéroté de base
-%                  '{R/L}ACM' (ex: RACM1/2/3, type 'ACM'). Type affiché =
-%                  "S (3)" / "ACM (3)" / "-" si rien trouvé.
-%                - Cluster A/Type : cluster huméral. Marqueurs "current"
-%                  Cluster_{R/L}A_01..05 (type 'A') ; sinon legacy de base
-%                  '{R/L}EOS' (type 'EOS').
-%                - Cluster FA/Type : cluster avant-bras. Marqueurs "current"
-%                  Cluster_{R/L}F_01/02/03 (type 'F') ; sinon legacy de base
-%                  '{R/L}F' (type 'F').
-%                - Scapula/Humérus : au moins un marqueur des clusters
-%                  ci-dessus (current OU legacy) valide, pour au moins un
-%                  des côtés demandés -> cinématique jugée exploitable.
-%                - Thorax : au moins un marqueur du segment Thorax
-%                  (t.Marker.Body.Segment.label == 'Thorax') valide.
-%                - Fs : btkGetPointFrequency (fréquence marqueurs).
+%                KINEMATICS (side evaluated = sidesToReport, i.e. the side
+%                chosen in PatientSelection; if 'RL', presence = OR of both
+%                sides, count = sum of both sides):
+%                - Nombre: length(fieldnames(btkGetMarkers(t.btk)))
+%                - Cluster AC/Type: scapular cluster. Looks first for the
+%                  "current" markers Cluster_{R/L}S_01/02/03 (type 'S'); if
+%                  absent, looks for a numbered legacy group with base
+%                  '{R/L}ACM' (e.g. RACM1/2/3, type 'ACM'). Displayed type
+%                  = "S (3)" / "ACM (3)" / "-" if nothing found.
+%                - Cluster A/Type: humeral cluster. "Current" markers
+%                  Cluster_{R/L}A_01..05 (type 'A'); otherwise a 3-tier
+%                  legacy fallback: if the 3 named markers {R/L}HDT/
+%                  {R/L}HTI/{R/L}HBI are all present and valid, they are
+%                  the ones reported (type 'H'), even if a {R/L}EOS group
+%                  also exists; otherwise fallback to the numbered legacy
+%                  group with base '{R/L}EOS' (type 'EOS').
+%                - Cluster FA/Type: forearm cluster. "Current" markers
+%                  Cluster_{R/L}F_01/02/03 (type 'F'); otherwise legacy
+%                  base '{R/L}F' (type 'F').
+%                - Scapula/Humerus: at least one marker from the clusters
+%                  above (current OR legacy) valid, for at least one of
+%                  the requested sides -> kinematics judged usable.
+%                - Thorax: at least one marker of the Thorax segment
+%                  (t.Marker.Body.Segment.label == 'Thorax') valid.
+%                - Fs: btkGetPointFrequency (marker frequency).
 %
-%                ELECTROMYOGRAPHIE (canaux analog bruts BTK, PAS le champ
-%                Trial.Emg qui n'est jamais rempli par runProtocol01/
-%                MAIN_Protocol_01) :
-%                - Nombre : nombre de canaux analog distincts identifiés
-%                  comme un muscle (DELTA/DELTM/.../LATD), hors canal FORCE.
-%                  Un canal est identifié par le code muscle qu'il CONTIENT,
-%                  peu importe ce qu'il y a devant/derrière dans son nom
-%                  (ex: 'RDELTA', 'RDELTA_2', '1_RDELTA' sont tous le même
-%                  canal côté R / muscle DELTA, compté une seule fois).
-%                - DELTA/DELTM/DELTP/TRAPS/TRAPM/TRAPI/SERRA/LATD : marqué
-%                  présent (1) si au moins un côté (R ou L) de ce muscle a
-%                  un signal RÉELLEMENT enregistré (non vide, pas tout-NaN,
-%                  pas tout-zéro) - un canal présent mais vide/bugué compte
-%                  comme absent (0).
-%                - Fs : btkGetAnalogFrequency (fréquence analog/EMG).
+%                EMG (raw BTK analog channels, NOT the Trial.Emg field,
+%                which is never filled by runProtocol01/MAIN_Protocol_01) -
+%                UNLIKE every other section above, this one is checked
+%                across ALL FOUR ANALYTIC1-4 tasks that exist for the
+%                session, not just the ANALYTIC1 reference trial (a
+%                channel can look fine on ANALYTIC1 while actually being
+%                dead on e.g. ANALYTIC3):
+%                - Nombre: number of distinct analog channels identified
+%                  as a muscle (DELTA/DELTM/.../LATD), excluding the FORCE
+%                  channel. A channel is identified by the muscle code it
+%                  CONTAINS, regardless of what precedes/follows it in the
+%                  name (e.g. 'RDELTA', 'RDELTA_2', '1_RDELTA' are all the
+%                  same R-side/DELTA-muscle channel, counted once).
+%                - DELTA/DELTM/DELTP/TRAPS/TRAPM/TRAPI/SERRA/LATD: marked
+%                  present (1) if at least one side (R or L) of that muscle
+%                  has a signal ACTUALLY recorded (non-empty, not all-NaN,
+%                  not all-zero) in EVERY ANALYTIC1-4 task that exists - a
+%                  channel empty/broken (or entirely missing from the C3D)
+%                  in even a single one of those tasks counts as absent (0)
+%                  overall.
+%                - Fs: btkGetAnalogFrequency (analog/EMG frequency, from
+%                  the ANALYTIC1 reference trial only).
 %
-%                PUISSANCE (même canal analog 'FORCE', identifié comme les
-%                canaux EMG ci-dessus) :
-%                - Nombre : un canal correspondant à 'FORCE' est-il détecté
-%                  (présent dans le C3D, indépendamment de son contenu).
-%                - Force : ce canal a-t-il réellement un signal enregistré
-%                  (même check hasData que l'EMG).
+%                POWER ('FORCE' analog channel) - unlike EMG above, this
+%                is checked on the ANALYTIC1 reference trial only:
+%                - Nombre: is a channel matching 'FORCE' detected (present
+%                  in the C3D, regardless of its content).
+%                - Force: does that channel actually have a recorded
+%                  signal (same hasData check as EMG).
 % -------------------------------------------------------------------------
-% Inputs  : Trial         (struct array) depuis runProtocol01
-%           Patient/Session/Pathology (struct) depuis runProtocol01 (non
-%                         utilisés directement ici, gardés pour signature
-%                         homogène avec ReportDataAvailability)
-%           c3dFiles      (struct array) dir('*.c3d') depuis runProtocol01
+% Inputs  : Trial         (struct array) from runProtocol01
+%           Patient/Session/Pathology (struct) from runProtocol01 (not used
+%                         directly here, kept for a signature consistent
+%                         with ReportDataAvailability)
+%           c3dFiles      (struct array) dir('*.c3d') from runProtocol01
 %           sidesToReport (cellstr) {'R'} / {'L'} / {'R','L'}
-% Outputs : Row (struct, un seul enregistrement) — tous les champs
-%           Mouvements/Posture/Cinématique/EMG/Puissance, valeurs 1/0
-%           (binaire) ou numériques (Nombre/Fs) ou texte ('-'/'ACM (3)'...)
+% Outputs : Row (struct, a single record) - all Movements/Posture/
+%           Kinematics/EMG/Power fields, values 1/0 (binary) or numeric
+%           (Nombre/Fs) or text ('-'/'ACM (3)'...)
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
@@ -102,7 +118,7 @@
 function Row = ComputeDataAvailability(Trial, Patient, Session, Pathology, c3dFiles, sidesToReport) %#ok<INUSD>
 
 % -------------------------------------------------------------------------
-% VALEURS PAR DÉFAUT
+% DEFAULT VALUES
 % -------------------------------------------------------------------------
 Row = struct( ...
     'Rcycle', 0, 'Lcycle', 0, ...
@@ -123,7 +139,7 @@ c3dNames = {};
 if ~isempty(c3dFiles), c3dNames = {c3dFiles.name}; end
 
 % =========================================================================
-%  MOUVEMENTS
+%  MOVEMENTS
 % =========================================================================
 Row.Rcycle = 0; Row.Lcycle = 0;
 tidxRef = findTask(Trial, 'ANALYTIC1');
@@ -145,13 +161,13 @@ for n = 1:6
 end
 
 if isempty(tidxRef)
-    return; % Pas de trial de référence : Posture/Cinématique/EMG/Puissance restent à 0/NaN
+    return; % No reference trial: Posture/Kinematics/EMG/Power stay at 0/NaN
 end
 t = Trial(tidxRef);
 
 % =========================================================================
-%  POSTURE — présence marqueur (trial de référence)
-%  Colonne 'C7' du rapport <-> marqueur réellement nommé 'CV7' dans le markerSet
+%  POSTURE - marker presence (reference trial)
+%  Report column 'C7' <-> marker actually named 'CV7' in the markerSet
 % =========================================================================
 postureMarkers = {'C7','TV3','TV5','TV8','S1'};
 postureLabels  = {'CV7','TV3','TV5','TV8','S1'};
@@ -160,10 +176,10 @@ for im = 1:length(postureMarkers)
 end
 
 % =========================================================================
-%  CINÉMATIQUE
+%  KINEMATICS
 % =========================================================================
 try
-    Row.Kin_Nombre = length(fieldnames(btkGetMarkers(t.btk))); % même méthode que ReportDataAvailability.m (Section 2)
+    Row.Kin_Nombre = length(fieldnames(btkGetMarkers(t.btk))); % same method as ReportDataAvailability.m (Section 2)
 catch
     Row.Kin_Nombre = NaN;
 end
@@ -175,62 +191,83 @@ end
 
 legacyGroups = detectLegacyGroups(t);
 
-% --- Cluster AC (scapula) : current 'Cluster_{s}S_0N' (type S) vs legacy base '{s}ACM' ---
+% --- Cluster AC (scapula): current 'Cluster_{s}S_0N' (type S) vs legacy base '{s}ACM' ---
 [Row.ClusterAC, Row.ClusterAC_Type] = clusterStatus(t, legacyGroups, sidesToReport, ...
     @(s) arrayfun(@(n) sprintf('Cluster_%sS_0%d', s, n), 1:3, 'UniformOutput', false), 'S', 'ACM');
 
-% --- Cluster A (humerus) : current 'Cluster_{s}A_0N' (type A) vs legacy base '{s}EOS' ---
-[Row.ClusterA, Row.ClusterA_Type] = clusterStatus(t, legacyGroups, sidesToReport, ...
-    @(s) arrayfun(@(n) sprintf('Cluster_%sA_0%d', s, n), 1:5, 'UniformOutput', false), 'A', 'EOS');
+% --- Cluster A (humerus): current 'Cluster_{s}A_0N' (A) vs legacy 'H' (HDT/HTI/HBI, takes priority over EOS) vs legacy base '{s}EOS' ---
+[Row.ClusterA, Row.ClusterA_Type] = clusterStatusHumerus(t, legacyGroups, sidesToReport);
 
-% --- Cluster FA (forearm) : current 'Cluster_{s}F_0N' (type F) vs legacy base '{s}F' ---
+% --- Cluster FA (forearm): current 'Cluster_{s}F_0N' (type F) vs legacy base '{s}F' ---
 [Row.ClusterFA, Row.ClusterFA_Type] = clusterStatus(t, legacyGroups, sidesToReport, ...
     @(s) arrayfun(@(n) sprintf('Cluster_%sF_0%d', s, n), 1:3, 'UniformOutput', false), 'F', 'F');
 
-% --- Segments utilisables pour la cinématique (OR sur les côtés demandés) ---
+% --- Segments usable for kinematics (OR across requested sides) ---
 Row.Kin_Scapula = segmentUsable(t, legacyGroups, sidesToReport, 'Cluster_%sS_0%d', 3, 'ACM');
-Row.Kin_Humerus = segmentUsable(t, legacyGroups, sidesToReport, 'Cluster_%sA_0%d', 5, 'EOS');
+Row.Kin_Humerus = Row.ClusterA; % ClusterA (present, above) already covers current/H/EOS
 Row.Kin_Thorax  = thoraxUsable(t);
 
 % =========================================================================
-%  EMG / PUISSANCE — trial de référence (ANALYTIC1) uniquement. Un canal
-%  est identifié par le code muscle qu'il contient, peu importe ce qu'il y
-%  a devant/derrière dans le nom (ex: 'RDELTA', 'RDELTA_2', '1_RDELTA' sont
-%  tous le même canal côté R / muscle DELTA, compté une seule fois).
+%  EMG - a channel must have a real signal in EVERY ANALYTIC1-4 task that
+%  exists for this session to be marked present; missing signal (or the
+%  channel entirely absent from the C3D) in any one of them marks it
+%  absent overall. A channel is identified by the muscle code it contains,
+%  regardless of what precedes/follows it in the name (e.g. 'RDELTA',
+%  'RDELTA_2', '1_RDELTA' are all the same R-side/DELTA-muscle channel,
+%  counted once). FORCE is handled separately below (reference trial only).
 % =========================================================================
-muscleCodes = {'DELTA','DELTM','DELTP','TRAPS','TRAPM','TRAPI','SERRA','LATD'};
+muscleCodes   = {'DELTA','DELTM','DELTP','TRAPS','TRAPM','TRAPI','SERRA','LATD'};
+analyticTasks = {'ANALYTIC1','ANALYTIC2','ANALYTIC3','ANALYTIC4'};
 
-try
-    analogData = btkGetAnalogs(t.btk);
-catch
-    analogData = struct();
-end
 Row.EMG_Fs = NaN;
 try
     Row.EMG_Fs = btkGetAnalogFrequency(t.btk);
 catch
 end
 
-labels      = fieldnames(analogData);
-channelIDs  = {};
-hasDataByID = containers.Map('KeyType','char','ValueType','logical');
-
-for il = 1:length(labels)
-    lbl = labels{il};
-    id  = identifyChannel(lbl, muscleCodes);
-    if isempty(id), continue; end % canal non reconnu (ni un muscle, ni FORCE)
-    sig = analogData.(lbl);
-    hd  = ~isempty(sig) && ~all(isnan(sig(:))) && any(sig(:) ~= 0);
-    if ~any(strcmp(channelIDs, id)), channelIDs{end+1} = id; end %#ok<AGROW>
-    if isKey(hasDataByID, id)
-        hasDataByID(id) = hasDataByID(id) || hd;
-    else
-        hasDataByID(id) = hd;
+hasDataPerTask = {}; % one id->hasData map per existing ANALYTIC1-4 task
+for itask = 1:length(analyticTasks)
+    tidx2 = findTask(Trial, analyticTasks{itask});
+    if isempty(tidx2), continue; end
+    tt = Trial(tidx2);
+    try
+        analogData = btkGetAnalogs(tt.btk);
+    catch
+        analogData = struct();
     end
+    labels  = fieldnames(analogData);
+    taskMap = containers.Map('KeyType','char','ValueType','logical');
+    for il = 1:length(labels)
+        lbl = labels{il};
+        id  = identifyChannel(lbl, muscleCodes);
+        if isempty(id) || strcmp(id,'FORCE'), continue; end % unrecognised, or FORCE (handled below)
+        sig = analogData.(lbl);
+        hd  = ~isempty(sig) && ~all(isnan(sig(:))) && any(sig(:) ~= 0);
+        if isKey(taskMap, id)
+            taskMap(id) = taskMap(id) || hd; % merge duplicate raw labels for the same id within this trial
+        else
+            taskMap(id) = hd;
+        end
+    end
+    hasDataPerTask{end+1} = taskMap; %#ok<AGROW>
 end
 
-isForceID = strcmp(channelIDs, 'FORCE');
-emgIDs    = channelIDs(~isForceID);
+emgIDs = {};
+for it2 = 1:length(hasDataPerTask)
+    emgIDs = union(emgIDs, keys(hasDataPerTask{it2}));
+end
+
+hasDataByID = containers.Map('KeyType','char','ValueType','logical');
+for ii = 1:length(emgIDs)
+    id = emgIDs{ii};
+    ok = ~isempty(hasDataPerTask); % false if no ANALYTIC task was found at all
+    for it2 = 1:length(hasDataPerTask)
+        tm = hasDataPerTask{it2};
+        ok = ok && isKey(tm, id) && tm(id);
+    end
+    hasDataByID(id) = ok;
+end
+
 Row.EMG_Nombre = length(emgIDs);
 
 for im = 1:length(muscleCodes)
@@ -238,8 +275,29 @@ for im = 1:length(muscleCodes)
     Row.(code) = double(any(cellfun(@(id) endsWith(id, ['_' code]) && hasDataByID(id), emgIDs)));
 end
 
-Row.Force_Nombre = double(any(isForceID));
-Row.Force        = double(any(isForceID) && hasDataByID('FORCE'));
+% =========================================================================
+%  POWER (FORCE channel) - reference trial (ANALYTIC1) only, unchanged.
+% =========================================================================
+try
+    analogDataRef = btkGetAnalogs(t.btk);
+catch
+    analogDataRef = struct();
+end
+refLabels      = fieldnames(analogDataRef);
+isForcePresent = false;
+forceHasData   = false;
+for il = 1:length(refLabels)
+    lbl = refLabels{il};
+    if contains(lbl, 'FORCE', 'IgnoreCase', true)
+        isForcePresent = true;
+        sig = analogDataRef.(lbl);
+        if ~isempty(sig) && ~all(isnan(sig(:))) && any(sig(:) ~= 0)
+            forceHasData = true;
+        end
+    end
+end
+Row.Force_Nombre = double(isForcePresent);
+Row.Force        = double(isForcePresent && forceHasData);
 
 end
 
@@ -271,28 +329,42 @@ tf = double(~isempty(traj) && ~all(isnan(traj(:))));
 end
 
 function legacyGroups = detectLegacyGroups(t)
-% Reprend la logique de ReportDataAvailability.m : marqueurs BTK inconnus
-% du markerSet courant, regroupés par nom de base (chiffres finaux ôtés).
+% Same logic as ReportDataAvailability.m: BTK markers unknown to the
+% current markerSet, grouped by base name (trailing digits stripped).
+% "count" only includes members with an actual valid (non-empty, non-all-
+% NaN) trajectory: a marker name can remain in the C3D's marker-set
+% template as an unused/empty label slot from an older protocol naming
+% scheme even when it holds no real data for this particular session -
+% counting it as "present" would be wrong (see clusterStatusHumerus, which
+% hits exactly this with HDT/HTI/HBI vs EOS both present as labels).
 legacyGroups = struct('base',{},'count',{},'labels',{});
 if ~isfield(t,'btk') || isempty(t.btk), return; end
 try
-    allBtkMarkers = fieldnames(btkGetMarkers(t.btk));
+    allBtkMarkers = btkGetMarkers(t.btk);
 catch
     return;
 end
+allNames = fieldnames(allBtkMarkers);
 knownLabels = {t.Marker.label};
-unknown = allBtkMarkers(~ismember(allBtkMarkers, knownLabels));
+unknown = allNames(~ismember(allNames, knownLabels));
 bases = regexprep(unknown, '\d+$', '');
 uniqueBases = unique(bases);
 for ib = 1:length(uniqueBases)
     b = uniqueBases{ib};
     if isempty(b), continue; end
     members = unknown(strcmp(bases, b));
-    if length(members) >= 2
-        g.base = b; g.count = length(members); g.labels = members;
+    validMembers = members(cellfun(@(m) rawMarkerValid(allBtkMarkers.(m)), members));
+    if length(validMembers) >= 2
+        g.base = b; g.count = length(validMembers); g.labels = validMembers;
         legacyGroups(end+1) = g; %#ok<AGROW>
     end
 end
+end
+
+function tf = rawMarkerValid(traj)
+% Trajectory validity for a raw BTK marker (Nx3 matrix straight from
+% btkGetMarkers), used for legacy markers that are not part of t.Marker.
+tf = ~isempty(traj) && ~all(isnan(traj(:)));
 end
 
 function [present, typeStr] = clusterStatus(t, legacyGroups, sides, currentLabelsFn, currentType, legacyBaseSuffix)
@@ -327,6 +399,75 @@ else
 end
 end
 
+function [present, typeStr] = clusterStatusHumerus(t, legacyGroups, sides)
+% Like clusterStatus, but specific to the humeral cluster, which has 3
+% priority tiers: 1) current 'Cluster_{s}A_0N' (type 'A'); 2) named legacy
+% '{s}HDT'/'{s}HTI'/'{s}HBI' (type 'H'), used at the very start of the
+% protocol - takes priority over EOS when all 3 markers are valid, even if
+% an EOS group also exists; 3) numbered legacy group with base '{s}EOS'
+% (type 'EOS').
+totalCount = 0;
+matchedType = '';
+
+% Raw BTK markers (legacy markers - EOS as well as HDT/HTI/HBI - are not
+% part of the current markerSet t.Marker, so markerValid() cannot see
+% them). Both naming schemes can appear as LABELS in the same C3D even
+% though only one of them actually has real recorded data for a given
+% session (the marker-set template can carry over old label slots) - so
+% HDT/HTI/HBI presence must be checked against actual trajectory validity
+% (non-empty/non-NaN), not just whether the label name exists (same fix
+% as detectLegacyGroups for EOS).
+allBtkMarkers = struct();
+if isfield(t,'btk') && ~isempty(t.btk)
+    try
+        allBtkMarkers = btkGetMarkers(t.btk);
+    catch
+    end
+end
+
+for is = 1:length(sides)
+    s = sides{is};
+
+    curLabels = arrayfun(@(n) sprintf('Cluster_%sA_0%d', s, n), 1:5, 'UniformOutput', false);
+    curCount = 0;
+    for il = 1:length(curLabels)
+        curCount = curCount + markerValid(t, curLabels{il});
+    end
+    if curCount > 0
+        totalCount = totalCount + curCount;
+        if isempty(matchedType), matchedType = 'A'; end
+        continue;
+    end
+
+    hLabels = {[s 'HDT'], [s 'HTI'], [s 'HBI']};
+    hCount = 0;
+    for il = 1:length(hLabels)
+        lbl = hLabels{il};
+        if isfield(allBtkMarkers, lbl) && rawMarkerValid(allBtkMarkers.(lbl))
+            hCount = hCount + 1;
+        end
+    end
+    if hCount == 3
+        totalCount = totalCount + hCount;
+        if isempty(matchedType), matchedType = 'H'; end
+        continue;
+    end
+
+    legBase = [s, 'EOS'];
+    gi = find(strcmpi({legacyGroups.base}, legBase), 1);
+    if ~isempty(gi)
+        totalCount = totalCount + legacyGroups(gi).count;
+        if isempty(matchedType), matchedType = 'EOS'; end
+    end
+end
+present = double(totalCount > 0);
+if totalCount > 0
+    typeStr = sprintf('%s (%d)', matchedType, totalCount);
+else
+    typeStr = '-';
+end
+end
+
 function ok = segmentUsable(t, legacyGroups, sides, currentPattern, nCurrent, legacySuffix)
 ok = 0;
 for is = 1:length(sides)
@@ -344,9 +485,9 @@ end
 end
 
 function ok = thoraxUsable(t)
-% Segment Thorax : pas de cluster technique (segDef clusterPfx='' dans
-% ReportDataAvailability.m), juste les marqueurs anatomiques (C7/TV.../S1).
-% Usable si au moins un marqueur du segment Thorax est valide.
+% Thorax segment: no technical cluster (segDef clusterPfx='' in
+% ReportDataAvailability.m), just the anatomical markers (C7/TV.../S1).
+% Usable if at least one Thorax segment marker is valid.
 ok = 0;
 for im = 1:length(t.Marker)
     if strcmp(t.Marker(im).Body.Segment.label, 'Thorax')
@@ -359,10 +500,10 @@ end
 end
 
 function id = identifyChannel(lbl, muscleCodes)
-% Identifie un canal analog par le code muscle qu'il contient, peu importe
-% ce qu'il y a devant/derrière dans le nom. 'FORCE' est prioritaire.
-% Retourne 'R_<code>' / 'L_<code>' / '_<code>' (côté inconnu) / 'FORCE' /
-% '' (canal non reconnu).
+% Identifies an analog channel by the muscle code it contains, regardless
+% of what precedes/follows it in the name. 'FORCE' takes priority.
+% Returns 'R_<code>' / 'L_<code>' / '_<code>' (unknown side) / 'FORCE' /
+% '' (unrecognised channel).
 id = '';
 if contains(lbl, 'FORCE', 'IgnoreCase', true)
     id = 'FORCE'; return;

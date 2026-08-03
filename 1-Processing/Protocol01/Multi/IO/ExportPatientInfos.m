@@ -1,38 +1,44 @@
 % Author     :   H. Francalanci
 %                Biomechanics and Translational Research in Surgery Group
 %                University of Geneva
+%                https://www.unige.ch/medecine/chiru/en/research-groups/nicolas-holzer-et-florent-moissenet
+% License    :   Creative Commons Attribution-NonCommercial 4.0 International License
+%                https://creativecommons.org/licenses/by-nc/4.0/legalcode
+% Source code:   To be defined
+% Reference  :   To be defined
 % Date       :   July 2026
 % -------------------------------------------------------------------------
-% Description:   Exporte le résumé démographique/clinique des patients
-%                (PatientInfos, depuis ComputePatientInfos.m) dans un
-%                fichier Excel, avec le même format que les exports REDCap
-%                (redcap_common.py) : en-tête "Patient" fusionné sur toutes
-%                les colonnes, puis une ligne vide avant chaque patient
-%                pour faciliter le copier-coller.
+% Description:   Exports the patients' demographic/clinical summary
+%                (PatientInfos, from ComputePatientInfos.m) to an Excel
+%                file, in the same format as the REDCap exports
+%                (redcap_common.py): a "Patient" header merged across all
+%                columns, then a blank row before each patient to make
+%                copy/paste easier.
 %
-%                Deux blocs identiques côte à côte (PRE puis POST), chacun
-%                avec Numéro/ID/Genre/ASA/Latéralité répétés :
+%                Two identical blocks side by side (PRE then POST), each
+%                with Numéro/ID/Genre/ASA/Latéralité repeated (column
+%                labels kept in French to match the rest of the Excel
+%                deliverables the team uses):
 %                  Numéro, ID, Age_PRE,  Genre, Taille_PRE,  Masse_PRE,  IMC_PRE,  EVA_PRE,  ASA, Latéralité,
 %                  Numéro, ID, Age_POST, Genre, Taille_POST, Masse_POST, IMC_POST, EVA_POST, ASA, Latéralité
-%                Genre : 1=Femme/0=Homme. Latéralité : 1=Gauche/0=Droit.
+%                Genre: 1=Female/0=Male. Latéralité: 1=Left/0=Right.
 %
-%                EVA_PRE/EVA_POST sont écrites comme de VRAIES formules
-%                Excel (ex: "=(4+4+4+4)/4", depuis
-%                Multi/Core/ComputePatientInfos.m) : la cellule affiche la
-%                moyenne calculée, mais cliquer dessus montre le détail
-%                des 4 valeurs ANALYTIC utilisées. Si EVA_*_fallback est
-%                vrai (côté atteint sans donnée, replié sur l'autre côté -
-%                voir ComputePatientInfos.m), la cellule est marquée en
-%                orange + un commentaire Excel explique que ce n'est PAS
-%                le côté atteint, pour ne jamais la confondre avec une
-%                vraie mesure de ce côté.
+%                EVA_PRE/EVA_POST are written as REAL Excel formulas (e.g.
+%                "=(4+4+4+4)/4", from Multi/Core/ComputePatientInfos.m):
+%                the cell displays the computed mean, but clicking it shows
+%                the detail of the 4 ANALYTIC values used. If EVA_*_fallback
+%                is true (affected side has no data, fell back to the other
+%                side - see ComputePatientInfos.m), the cell is flagged
+%                orange + an Excel comment explains it is NOT the affected
+%                side, so it is never mistaken for an actual measure of
+%                that side.
 % -------------------------------------------------------------------------
-% Inputs  : PatientInfos (struct array) depuis MAIN_MULTI_Protocol_01.m,
-%           avec les champs ID, Gender, Laterality, ASA, Age_PRE/POST,
+% Inputs  : PatientInfos (struct array) from MAIN_MULTI_Protocol_01.m, with
+%           fields ID, Gender, Laterality, ASA, Age_PRE/POST,
 %           Height_PRE/POST, Mass_PRE/POST, BMI_PRE/POST, EVA_PRE/POST,
 %           EVA_PRE_fallback/EVA_POST_fallback
-%           OutputFile (char) chemin du fichier Excel de sortie
-% Outputs : Fichier Excel écrit sur disque
+%           OutputFile (char) output Excel file path
+% Outputs : Excel file written to disk
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
@@ -45,7 +51,7 @@
 function ExportPatientInfos(PatientInfos, OutputFile)
 
 if isempty(PatientInfos)
-    disp('ExportPatientInfos : aucune donnée à exporter.');
+    disp('ExportPatientInfos: no data to export.');
     return;
 end
 
@@ -72,19 +78,19 @@ end
 
 writecell(C, OutputFile, 'Sheet', 'PatientInfos');
 
-% Fusion de la ligne d'en-tête "Patient", et écriture des EVA_PRE/POST
-% comme de vraies formules Excel (best effort : nécessite Excel installé
-% via COM ; l'export reste valide, juste sans ces deux à-côtés, si ça échoue)
-% excel/wb déclarés AVANT le try : si la mise en forme plante en cours de
-% route, le bloc cleanup ci-dessous doit quand même pouvoir les fermer -
-% sinon Excel reste ouvert en arrière-plan (invisible, Visible=false) et
-% s'accumule à chaque exécution du script.
+% Merges the "Patient" header row, and writes EVA_PRE/POST as real Excel
+% formulas (best effort: requires Excel installed via COM; the export
+% stays valid, just without these two extras, if this fails).
+% excel/wb declared BEFORE the try: if the formatting crashes partway
+% through, the cleanup block below must still be able to close them -
+% otherwise Excel stays open in the background (invisible, Visible=false)
+% and accumulates on every script run.
 excel = [];
 wb = [];
 try
     excel = actxserver('Excel.Application');
     excel.Visible = false;
-    excel.DisplayAlerts = false; % évite un dialogue bloquant si un Merge touche des cellules non vides
+    excel.DisplayAlerts = false; % avoids a blocking dialog if a Merge touches non-empty cells
     wb = excel.Workbooks.Open(OutputFile);
     sheet = wb.Sheets.Item('PatientInfos');
 
@@ -93,7 +99,7 @@ try
     range.HorizontalAlignment = -4108; % xlCenter
 
     for i = 1:length(PatientInfos)
-        dataRow = 2 * i + 2; % 2 lignes d'en-tête, puis (blanc, donnée) par patient
+        dataRow = 2 * i + 2; % 2 header rows, then (blank, data) per patient
         p = PatientInfos(i);
         writeEvaCell(sheet, COL_EVA_PRE,  dataRow, p.EVA_PRE,  p.EVA_PRE_fallback);
         writeEvaCell(sheet, COL_EVA_POST, dataRow, p.EVA_POST, p.EVA_POST_fallback);
@@ -101,13 +107,13 @@ try
 
     wb.Save;
 catch ME
-    % fprintf (pas warning) : MAIN_MULTI_Protocol_01.m fait "warning off" en
-    % début de script, ce qui rendrait ce message invisible sinon.
-    fprintf(2, 'ExportPatientInfos : mise en forme Excel échouée (%s) - valeurs affichées en texte brut.\n', ME.message);
+    % fprintf (not warning): MAIN_MULTI_Protocol_01.m does "warning off" at
+    % the start of the script, which would make this message invisible otherwise.
+    fprintf(2, 'ExportPatientInfos: Excel formatting failed (%s) - values shown as plain text.\n', ME.message);
 end
 
-% Nettoyage garanti (même si la mise en forme ci-dessus a échoué en cours
-% de route) pour ne jamais laisser un processus Excel fantôme en arrière-plan.
+% Guaranteed cleanup (even if the formatting above failed partway through)
+% so a ghost Excel process is never left running in the background.
 try
     if ~isempty(wb), wb.Close(false); end
 catch
@@ -120,21 +126,21 @@ try
 catch
 end
 
-disp(['Excel exporté : ', OutputFile]);
+disp(['Excel exported: ', OutputFile]);
 
 end
 
 function v = r2(v)
-% Arrondit à 2 décimales (NaN reste NaN)
+% Rounds to 2 decimals (NaN stays NaN)
 if isnumeric(v)
     v = round(v, 2);
 end
 end
 
 function writeEvaCell(sheet, col, row, formula, isFallback)
-% Écrit la formule EVA dans la cellule ; si isFallback, marque la cellule
-% en orange + ajoute un commentaire Excel ("côté non-atteint") pour
-% qu'elle ne soit jamais confondue avec une vraie mesure du côté atteint.
+% Writes the EVA formula into the cell; if isFallback, flags the cell
+% orange + adds an Excel comment ("côté non-atteint") so it is never
+% mistaken for an actual measure of the affected side.
 if isempty(formula), return; end
 cell = sheet.Range(sprintf('%s%d', char(64 + col), row));
 cell.Formula = formula;
@@ -145,7 +151,7 @@ if isFallback
             'indisponibles pour ce patient) - à ne pas confondre avec ', ...
             'une mesure du côté atteint.']);
     catch
-        % Commentaire optionnel : la couleur seule suffit si ça échoue
+        % Comment is optional: the color alone is enough if this fails
     end
 end
 end

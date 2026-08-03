@@ -10,7 +10,10 @@
 %                  2. Raw C3D content (BTK)
 %                  3. Markers — segment summary + full nominal listing
 %                     + legacy cluster detection (numbered groups in BTK)
-%                  4. EMG channels
+%                  4. EMG channels — checked across ALL FOUR ANALYTIC1-4
+%                     tasks (not just the ANALYTIC1 reference trial used
+%                     everywhere else in this report): a channel is only
+%                     "Valid" if it has a real signal in every one of them.
 %                  5. Kinematic cycles per ANALYTIC task
 %                  6. Processing status
 %
@@ -22,6 +25,13 @@
 %                  markers are absent AND a legacy group exists with the same
 %                  side prefix (R/L), the line reads [LEGACY: BASE xN]
 %                  instead of [!].
+%                  Humerus segment special case: an even older naming, used
+%                  at the very start of the protocol, has 3 individually-named
+%                  markers {R/L}HDT/{R/L}HTI/{R/L}HBI (no trailing digits, so
+%                  never grouped by the generic base-name logic above). When
+%                  all 3 are present in the C3D, they take priority over any
+%                  EOS legacy group for that side and are reported as
+%                  [LEGACY: {R/L}H x3] instead.
 %
 % Inputs  : Trial    (struct array) — all trials from MAIN_Protocol_01
 %           Patient  (struct, optional) — from ImportSessionData
@@ -185,7 +195,13 @@ end
 
 % =========================================================================
 %  PRE-COMPUTE LEGACY GROUPS
-%  Find numbered groups in BTK not in current markerSet
+%  Find numbered groups in BTK not in current markerSet. "count" only
+%  includes members with an actual valid (non-empty, non-all-NaN)
+%  trajectory: a marker name can remain in the C3D's marker-set template
+%  as an unused/empty label slot from an older protocol naming scheme
+%  even when it holds no real data for this particular session (e.g.
+%  HDT/HTI/HBI and EOS can both appear as labels while only one of them
+%  actually has recorded data) - counting it as "present" would be wrong.
 % =========================================================================
 legacyGroups = struct('base',{},'count',{},'labels',{});
 
@@ -203,14 +219,22 @@ if btk_available && ~isempty(allBtkMarkers)
     bases = regexprep(unknown, '\d+$', '');
     uniqueBases = unique(bases);
 
+    try
+        rawMarkerData = btkGetMarkers(t.btk);
+    catch
+        rawMarkerData = struct();
+    end
+
     for ib = 1:length(uniqueBases)
         b = uniqueBases{ib};
         if isempty(b), continue; end
         members = unknown(strcmp(bases, b));
-        if length(members) >= 2
+        validMembers = members(cellfun(@(m) isfield(rawMarkerData, m) && ...
+            ~isempty(rawMarkerData.(m)) && ~all(isnan(rawMarkerData.(m)(:))), members));
+        if length(validMembers) >= 2
             g.base   = b;
-            g.count  = length(members);
-            g.labels = members;
+            g.count  = length(validMembers);
+            g.labels = validMembers;
             legacyGroups(end+1) = g; %#ok<AGROW>
         end
     end
@@ -277,6 +301,28 @@ for is = 1:size(segDef,1)
     % Count "real" missing: exclude current-protocol cluster markers when
     % they're all absent and a legacy replacement exists for this segment
     legacyForSeg = findLegacyForSide(legacyGroups, sidePfx);
+
+    % Humerus special case: named legacy markers {s}HDT/{s}HTI/{s}HBI (no
+    % trailing digits, so never grouped by the base-name logic above) take
+    % priority over any EOS/other legacy match for this side when all 3
+    % have a real valid trajectory in the C3D, even if an EOS group also
+    % exists. Checked against actual trajectory validity, not just label
+    % presence, since HDT/HTI/HBI can remain as unused label slots in the
+    % marker-set template while EOS is the one that actually has data.
+    if (strcmp(segName,'RHumerus') || strcmp(segName,'LHumerus')) && ~isempty(sidePfx) && btk_available
+        hLabels = {[sidePfx 'HDT'], [sidePfx 'HTI'], [sidePfx 'HBI']};
+        try
+            hMarkerData = btkGetMarkers(t.btk);
+        catch
+            hMarkerData = struct();
+        end
+        hValid = cellfun(@(m) isfield(hMarkerData, m) && ...
+            ~isempty(hMarkerData.(m)) && ~all(isnan(hMarkerData.(m)(:))), hLabels);
+        if sum(hValid) == 3
+            legacyForSeg = struct('base', {[sidePfx 'H']}, 'count', {3}, 'labels', {hLabels});
+        end
+    end
+
     allClusterMissing = ~isempty(clusterPfx) && clust_total > 0 && clust_present == 0;
     hasLegacyReplacement = allClusterMissing && ~isempty(legacyForSeg);
 
@@ -394,12 +440,52 @@ end
 %  SECTION 4 — EMG
 % =========================================================================
 disp(SEP);
-disp('  EMG CHANNELS  (reference: ANALYTIC1)');
-disp('  --------------------------------------');
+disp('  EMG CHANNELS  (checked across ANALYTIC1-4)');
+disp('  --------------------------------------------');
 
-if isfield(t,'Emg'),     emgData = t.Emg;
-elseif isfield(t,'EMG'), emgData = t.EMG;
-else,                    emgData = [];
+% Trial.Emg/Trial.EMG is never populated by runProtocol01/MAIN_Protocol_01
+% (the only function that would fill it, Init/InitialiseEmgSignals.m, is
+% never called) - reading raw BTK analog channels instead, same source and
+% hasData check as Section 2 "RAW C3D CONTENT" above. FORCE is excluded
+% here (reported separately, not an EMG channel).
+%
+% Unlike every other section in this report, EMG is checked across ALL
+% FOUR ANALYTIC1-4 tasks that exist for the session, not just the
+% ANALYTIC1 reference trial: a channel can look fine on ANALYTIC1 while
+% actually being dead on e.g. ANALYTIC3. A channel is only marked "Valid"
+% if it has a real signal in EVERY one of those tasks; missing/empty in
+% even a single one (or entirely absent from that trial's C3D) makes it
+% "Empty" overall.
+analyticTasks  = {'ANALYTIC1','ANALYTIC2','ANALYTIC3','ANALYTIC4'};
+hasDataPerTask = {}; % one label->hasData map per existing ANALYTIC1-4 task
+
+for itask = 1:length(analyticTasks)
+    tidx2 = [];
+    for k = 1:length(Trial)
+        if strcmp(Trial(k).task, analyticTasks{itask}), tidx2 = k; break; end
+    end
+    if isempty(tidx2) || ~isfield(Trial(tidx2),'btk') || isempty(Trial(tidx2).btk)
+        continue;
+    end
+    try
+        analogData = btkGetAnalogs(Trial(tidx2).btk);
+    catch
+        continue;
+    end
+    labels  = fieldnames(analogData);
+    taskMap = containers.Map('KeyType','char','ValueType','logical');
+    for il = 1:length(labels)
+        lbl = labels{il};
+        if contains(lbl, 'FORCE', 'IgnoreCase', true), continue; end
+        sig = analogData.(lbl);
+        taskMap(lbl) = ~isempty(sig) && ~all(isnan(sig(:))) && any(sig(:) ~= 0);
+    end
+    hasDataPerTask{end+1} = taskMap; %#ok<AGROW>
+end
+
+allLabels = {};
+for it2 = 1:length(hasDataPerTask)
+    allLabels = union(allLabels, keys(hasDataPerTask{it2}));
 end
 
 Report.emg.total          = 0;
@@ -408,21 +494,19 @@ Report.emg.empty          = 0;
 Report.emg.labels_present = {};
 Report.emg.labels_empty   = {};
 
-if isempty(emgData)
-    disp('  No EMG data in trial struct.');
+if isempty(allLabels)
+    disp('  No EMG (non-FORCE) analog channels found in C3D.');
 else
-    n_emg = length(emgData);
+    n_emg = length(allLabels);
     Report.emg.total = n_emg;
 
     for i = 1:n_emg
-        lbl = char(emgData(i).label);
-        sig = [];
-        if isfield(emgData(i),'Signal') && isfield(emgData(i).Signal,'full')
-            sig = emgData(i).Signal.full;
-        elseif isfield(emgData(i),'signal')
-            sig = emgData(i).signal;
+        lbl = allLabels{i};
+        hasData = ~isempty(hasDataPerTask);
+        for it2 = 1:length(hasDataPerTask)
+            tm = hasDataPerTask{it2};
+            hasData = hasData && isKey(tm, lbl) && tm(lbl);
         end
-        hasData = ~isempty(sig) && ~all(isnan(sig(:))) && any(sig(:) ~= 0);
         if hasData
             Report.emg.present = Report.emg.present + 1;
             Report.emg.labels_present{end+1} = lbl;
