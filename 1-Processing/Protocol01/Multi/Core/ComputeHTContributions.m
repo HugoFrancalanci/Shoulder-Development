@@ -1,6 +1,11 @@
 % Author     :   H. Francalanci
 %                Biomechanics and Translational Research in Surgery Group
 %                University of Geneva
+%                https://www.unige.ch/medecine/chiru/en/research-groups/nicolas-holzer-et-florent-moissenet
+% License    :   Creative Commons Attribution-NonCommercial 4.0 International License
+%                https://creativecommons.org/licenses/by-nc/4.0/legalcode
+% Source code:   To be defined
+% Reference  :   To be defined
 % Date       :   July 2026
 % -------------------------------------------------------------------------
 % Description:   Decompose the humerothoracic (HT) range of motion into
@@ -22,12 +27,11 @@
 %                ExportKinematicsSummary.m (single-patient console report),
 %                kept as a separate implementation there on purpose.
 %
-%                HT_curve/GH_curve/ST_curve : courbe moyenne (sur les
-%                cycles) angle vs % cycle (0-100%), même nombre de points
-%                que la normalisation de cycle faite par CutCycles.m.
-%                Sert au tracé PRE/POST (courbes individuelles + moyenne
-%                en gras) dans MAIN_MULTI_Protocol_01.m /
-%                Multi/Plot/PlotHTContributionsCurves.m.
+%                HT_curve/GH_curve/ST_curve : mean curve (across cycles) of
+%                the angle vs % cycle (0-100%), same number of points as the
+%                cycle normalisation done by CutCycles.m. Used for the
+%                PRE/POST plot (individual + bold mean curves) in
+%                MAIN_MULTI_Protocol_01.m / Multi/Plot/PlotHTContributionsCurves.m.
 %
 % Inputs  : Trial (struct array) all trials from runProtocol01/MAIN_Protocol_01
 % Outputs : Contrib (1x2 struct array, one row per side 'R'/'L') with fields
@@ -114,8 +118,8 @@ r = mean(ranges, 'omitnan');
 end
 
 function c = getCurveCycle(t, ji, dof, cycField)
-% Courbe moyenne (sur les cycles) de l'angle, déjà normalisée en % cycle
-% par CutCycles.m (même nombre de points pour tous les cycles/patients).
+% Mean curve (across cycles) of the angle, already normalised to % cycle
+% by CutCycles.m (same number of points across all cycles/patients).
 c = [];
 if length(t.Joint) < ji || isempty(t.Joint(ji).Euler.(cycField)), return; end
 data = abs(squeeze(t.Joint(ji).Euler.(cycField)(1, dof, :, :)));

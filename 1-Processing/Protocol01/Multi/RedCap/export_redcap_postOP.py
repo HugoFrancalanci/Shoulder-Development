@@ -1,19 +1,23 @@
 """
-Export REDCap - tableau Opération / Prothèse / Planning / Simulation
+Export REDCap - tableau Opération / Prothèse / Planning / Paramètres
+intra-opératoires / Simulation / CMS
 -----------------------------------------------------------------
 Combine en un seul script + un seul Excel ce qui était avant 2 tableaux
 séparés (PostOP_operation_prothese + PostOP_planning) : mêmes variables,
-mêmes règles, une seule ligne par patient avec les 4 blocs à la suite.
+mêmes règles, une seule ligne par patient avec les blocs à la suite.
 Tout le reste (lecture CSV, résolution des ID, lignes vides/"R",
 conversion numérique) vient de redcap_common.py.
 
   Bloc "Opération" : Date, Durée séjour, Durée intervention, Opérateur
   Bloc "Prothèse"  : Type, Naviguation, Marque
-  Bloc "Planning"  : valeur définitive (_def) des 10 variables ; si le
-                     champ définitif REDCap vaut "-" (= identique au
-                     plan), on prend la valeur planifiée (_prim) à la
-                     place ; si les deux sont vides, la cellule affiche
-                     "R". Pas de flag de modification peropératoire.
+  Bloc "Planning"  : valeur planifiée (_prim) des 10 variables ; "R" si vide.
+  Bloc "Paramètres intra-opératoires" : mêmes 10 variables/libellés que
+                     "Planning", mais valeur définitive (_def) ; si le champ
+                     _def vaut "-" (convention REDCap = identique au plan),
+                     on prend la valeur planifiée (_prim) à la place ; "R"
+                     si les deux sont vides. Les deux blocs sont côte à côte
+                     pour comparer plan vs réalisé, plutôt qu'une seule
+                     colonne fusionnée.
   Bloc "Simulation": 5 variables simples (pas de paire plan/def) -
                      déplacement du centre de rotation huméral simulé
                      et amplitudes max avant impingement
@@ -136,9 +140,20 @@ def transform(field, raw):
     return to_number(raw)
 
 
-def resolve_planning_value(row, prim, deff):
-    """Définitif par défaut ; si '-' (= identique au plan), on prend le
-    plan ; si les deux sont vides, la cellule affiche 'R'."""
+def resolve_value(row, field):
+    """Valeur brute du champ REDCap donné ; 'R' si vide. Utilisé pour le
+    bloc Planning (_prim)."""
+    v = val(row, field)
+    if v == "":
+        return "R"
+    return to_number(v)
+
+
+def resolve_intraop_value(row, prim, deff):
+    """Valeur définitive (_def) pour le bloc Paramètres intra-opératoires.
+    '-' en REDCap veut dire "identique au plan" (pas une valeur littérale)
+    -> on prend alors la valeur planifiée (_prim) à la place ; 'R' si les
+    deux sont vides."""
     d = val(row, deff)
     if str(d).strip() == "-":
         d = val(row, prim)
@@ -151,7 +166,8 @@ def resolve_planning_value(row, prim, deff):
 # EN-TÊTE (2 lignes)
 # -------------------------------------------------------------------------
 n_op, n_pr = len(OPERATION_FIELDS), len(PROTHESE_FIELDS)
-n_plan, n_sim = len(PLANNING_FIELDS), len(SIMULATION_FIELDS)
+n_plan, n_intraop = len(PLANNING_FIELDS), len(PLANNING_FIELDS)  # mêmes 10 variables, prim puis def
+n_sim = len(SIMULATION_FIELDS)
 n_cms = len(CMS_FIELDS)
 
 header1 = (
@@ -159,6 +175,7 @@ header1 = (
     + ["Opération"] + [""] * (n_op - 1)
     + [""] + ["Prothèse"] + [""] * (n_pr - 1)
     + [""] + ["Planning"] + [""] * (n_plan - 1)
+    + [""] + ["Paramètres intra-opératoires"] + [""] * (n_intraop - 1)
     + [""] + ["Simulation"] + [""] * (n_sim - 1)
     + [""] + ["CMS"] + [""] * (n_cms - 1)
 )
@@ -170,6 +187,8 @@ header2 = (
     + [""]
     + [label for label, _, _ in PLANNING_FIELDS]
     + [""]
+    + [label for label, _, _ in PLANNING_FIELDS]  # mêmes libellés, valeurs def
+    + [""]
     + [label for label, _ in SIMULATION_FIELDS]
     + [""]
     + [label for label, _ in CMS_FIELDS]
@@ -179,8 +198,9 @@ merges = [
     (2, n_op + 1),
     (n_op + 3, n_op + 2 + n_pr),
     (n_op + n_pr + 4, n_op + n_pr + 3 + n_plan),
-    (n_op + n_pr + n_plan + 5, n_op + n_pr + n_plan + 4 + n_sim),
-    (n_op + n_pr + n_plan + n_sim + 6, n_op + n_pr + n_plan + n_sim + 5 + n_cms),
+    (n_op + n_pr + n_plan + 5, n_op + n_pr + n_plan + 4 + n_intraop),
+    (n_op + n_pr + n_plan + n_intraop + 6, n_op + n_pr + n_plan + n_intraop + 5 + n_sim),
+    (n_op + n_pr + n_plan + n_intraop + n_sim + 7, n_op + n_pr + n_plan + n_intraop + n_sim + 6 + n_cms),
 ]
 
 check_columns(
@@ -213,7 +233,8 @@ def build_row(df, rid):
 
     operation_vals = [transform(f, val(row, f)) for _, f in OPERATION_FIELDS]
     prothese_vals = [transform(f, val(row, f)) for _, f in PROTHESE_FIELDS]
-    planning_vals = [resolve_planning_value(row, prim, deff) for _, prim, deff in PLANNING_FIELDS]
+    planning_vals = [resolve_value(row, prim) for _, prim, _ in PLANNING_FIELDS]
+    intraop_vals = [resolve_intraop_value(row, prim, deff) for _, prim, deff in PLANNING_FIELDS]
     simulation_vals = [to_number(val(row, f)) for _, f in SIMULATION_FIELDS]
     cms_vals = [to_number(v) for v in cms_raw]
 
@@ -221,6 +242,7 @@ def build_row(df, rid):
         operation_vals + [""]
         + prothese_vals + [""]
         + planning_vals + [""]
+        + intraop_vals + [""]
         + simulation_vals + [""]
         + cms_vals
     )

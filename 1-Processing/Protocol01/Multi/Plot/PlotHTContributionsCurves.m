@@ -1,24 +1,29 @@
 % Author     :   H. Francalanci
 %                Biomechanics and Translational Research in Surgery Group
 %                University of Geneva
+%                https://www.unige.ch/medecine/chiru/en/research-groups/nicolas-holzer-et-florent-moissenet
+% License    :   Creative Commons Attribution-NonCommercial 4.0 International License
+%                https://creativecommons.org/licenses/by-nc/4.0/legalcode
+% Source code:   To be defined
+% Reference  :   To be defined
 % Date       :   July 2026
 % -------------------------------------------------------------------------
-% Description:   Plot des courbes angle vs % cycle (0-100%) HT/GH/ST,
-%                PRE vs POST, produites par ComputeHTContributions.m et
-%                accumulées dans MAIN_MULTI_Protocol_01.m ("Curves").
+% Description:   Plots the angle vs % cycle (0-100%) HT/GH/ST curves, PRE
+%                vs POST, produced by ComputeHTContributions.m and
+%                accumulated in MAIN_MULTI_Protocol_01.m ("Curves").
 %
-%                Layout : 1 row x 3 columns (HT, GH, ST)
-%                  Courbe individuelle par patient/côté, en transparence
-%                  (bleu = PRE, rouge = POST)
-%                  Courbe moyenne en gras (bleu = PRE, rouge = POST)
-%                  Chaque courbe est ré-échantillonnée sur 101 points
-%                  (0-100%) avant moyenne, au cas où le nombre de points
-%                  de cycle diffère d'un patient à l'autre.
+%                Layout: 1 row x 3 columns (HT, GH, ST)
+%                  Individual curve per patient/side, transparent
+%                  (blue = PRE, red = POST)
+%                  Bold mean curve (blue = PRE, red = POST)
+%                  Each curve is resampled to 101 points (0-100%) before
+%                  averaging, in case the number of cycle points differs
+%                  from one patient to another.
 % -------------------------------------------------------------------------
-% Inputs  : Curves (struct array) depuis MAIN_MULTI_Protocol_01.m, avec les
-%           champs HT_PRE/HT_POST, GH_PRE/GH_POST, ST_PRE/ST_POST (vecteurs,
-%           ou [] si absent)
-% Outputs : 1 figure, 3 sous-graphiques
+% Inputs  : Curves (struct array) from MAIN_MULTI_Protocol_01.m, with
+%           fields HT_PRE/HT_POST, GH_PRE/GH_POST, ST_PRE/ST_POST (vectors,
+%           or [] if absent)
+% Outputs : 1 figure, 3 subplots
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
@@ -31,15 +36,15 @@
 function PlotHTContributionsCurves(Curves)
 
 if isempty(Curves)
-    disp('PlotHTContributionsCurves : aucune donnée à tracer.');
+    disp('PlotHTContributionsCurves: no data to plot.');
     return;
 end
 
 metrics = {'HT', 'GH', 'ST'};
 titles  = {'HT (humérothoracique)', 'GH (glénohuméral)', 'ST (scapulothoracique)'};
 xgrid   = linspace(0, 100, 101);
-colPre  = [0.8500 0.3250 0.0980]; % rouge
-colPost = [0 0.4470 0.7410];   % bleu
+colPre  = [0.8500 0.3250 0.0980]; % red
+colPost = [0 0.4470 0.7410];   % blue
 
 figure('Name', 'Courbes HT/GH/ST — PRE vs POST', 'Color', 'w');
 
@@ -88,8 +93,8 @@ end
 end
 
 function c = resample101(curve, xgrid)
-% Ré-échantillonne un vecteur de longueur quelconque sur la grille 0-100%
-% (101 points), pour pouvoir moyenner des cycles de longueurs différentes.
+% Resamples a vector of any length onto the 0-100% grid (101 points), so
+% that cycles of different lengths can be averaged together.
 c = [];
 curve = curve(:);
 curve = curve(~isnan(curve));

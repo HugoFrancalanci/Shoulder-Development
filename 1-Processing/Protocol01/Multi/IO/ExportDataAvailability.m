@@ -1,31 +1,35 @@
 % Author     :   H. Francalanci
 %                Biomechanics and Translational Research in Surgery Group
 %                University of Geneva
+%                https://www.unige.ch/medecine/chiru/en/research-groups/nicolas-holzer-et-florent-moissenet
+% License    :   Creative Commons Attribution-NonCommercial 4.0 International License
+%                https://creativecommons.org/licenses/by-nc/4.0/legalcode
+% Source code:   To be defined
+% Reference  :   To be defined
 % Date       :   July 2026
 % -------------------------------------------------------------------------
-% Description:   Exporte le rapport de disponibilité des données (une ligne
-%                par examen PRE/POST, depuis ComputeDataAvailability.m) dans
-%                un fichier Excel, avec la même mise en forme que le tableau
-%                Excel de suivi de l'utilisateur : en-tête à 2 lignes
-%                (groupe fusionné + sous-colonnes), une ligne vide avant
-%                chaque NOUVEAU patient (pas entre les lignes PRE et POST
-%                d'un même patient), Numéro/ID Cinésiologie/ID RedCap
-%                fusionnés verticalement entre la ligne PRE et la ligne POST.
+% Description:   Exports the data availability report (one row per PRE/POST
+%                exam, from ComputeDataAvailability.m) to an Excel file,
+%                with the same formatting as the user's own tracking Excel:
+%                a 2-row header (merged group + sub-columns), a blank row
+%                before each NEW patient (not between the PRE and POST rows
+%                of the same patient), Numéro/ID Cinésiologie/ID RedCap
+%                merged vertically between the PRE row and the POST row.
 %
-%                Les colonnes binaires (1/0) sont coloriées en vert/rouge
-%                (comme demandé : 1 = vert = rapporté, 0 = rouge = manquant).
-%                Les colonnes "Nombre"/"Type (N)"/"Fs" restent en texte
-%                brut (informatif, pas de couleur).
+%                Binary columns (1/0) are colored green/red (as requested:
+%                1 = green = reported, 0 = red = missing). The
+%                "Nombre"/"Type (N)"/"Fs" columns stay as plain text
+%                (informative, no color).
 %
-%                Imagerie / Eligibilité / Notes : colonnes ajoutées vides
-%                (juste les en-têtes) — remplies à la main par l'utilisateur,
-%                pas calculées ici.
+%                Imagerie / Eligibilité / Notes: added as empty columns
+%                (headers only) - filled in by hand by the user, not
+%                computed here.
 % -------------------------------------------------------------------------
-% Inputs  : DataAvail (struct array) depuis MAIN_MULTI_Protocol_01.m, avec
-%           en plus des champs de ComputeDataAvailability.m : Numero, ID,
+% Inputs  : DataAvail (struct array) from MAIN_MULTI_Protocol_01.m, with -
+%           in addition to ComputeDataAvailability.m's fields - Numero, ID,
 %           IDRedCap, Examen, Date
-%           OutputFile (char) chemin du fichier Excel de sortie
-% Outputs : Fichier Excel écrit sur disque
+%           OutputFile (char) output Excel file path
+% Outputs : Excel file written to disk
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
@@ -38,15 +42,15 @@
 function ExportDataAvailability(DataAvail, OutputFile)
 
 if isempty(DataAvail)
-    disp('ExportDataAvailability : aucune donnée à exporter.');
+    disp('ExportDataAvailability: no data to export.');
     return;
 end
 
 % -------------------------------------------------------------------------
-% DÉFINITION DES COLONNES
-% Chaque groupe : {nom du groupe ('' = colonnes identification, fusion
-% verticale), sous-en-têtes, champs Row correspondants ('' = pas de champ,
-% rempli à la main), colorable (1 = vert/rouge si valeur 0/1)}
+% COLUMN DEFINITION
+% Each group: {group name ('' = identification columns, vertical merge),
+% sub-headers, corresponding Row fields ('' = no field, filled by hand),
+% colorable (1 = green/red if value is 0/1)}
 % -------------------------------------------------------------------------
 idCols = {'Numéro','ID Cinésiologie','ID RedCap','Examen','Date'};
 idFields = {'Numero','ID','IDRedCap','Examen','Date'};
@@ -78,10 +82,10 @@ colorable  = [false(1,length(idCols)), groups{:,4}];
 nCols = length(subLabels);
 
 % -------------------------------------------------------------------------
-% FEUILLE DE CALCUL (writecell) — 2 lignes d'en-tête + 1 ligne vide/patient
+% SPREADSHEET (writecell) - 2 header rows + 1 blank row per patient
 % -------------------------------------------------------------------------
 C = cell(2, nCols);
-C(1, 1:length(idCols)) = idCols; % fusionné verticalement plus bas via COM
+C(1, 1:length(idCols)) = idCols; % merged vertically further below via COM
 col = length(idCols) + 1;
 for ig = 1:size(groups,1)
     span = length(groups{ig,2});
@@ -92,12 +96,12 @@ end
 
 blankRow = repmat({''}, 1, nCols);
 
-% Numéro n'est rempli que sur la 1re ligne (PRE) de chaque patient : sert
-% ici à détecter le début d'un nouveau patient (ligne vide avant, PAS entre
-% PRE et POST) et à repérer les paires de lignes à fusionner (Numéro/ID/ID
-% RedCap) plus bas via COM.
-mergeRows    = zeros(0, 2); % [ligne PRE, ligne POST] à fusionner
-dataRows     = zeros(1, length(DataAvail)); % ligne Excel de chaque entrée DataAvail
+% Numéro is only filled on the 1st row (PRE) of each patient: used here to
+% detect the start of a new patient (blank row before it, NOT between PRE
+% and POST) and to identify the row pairs to merge (Numéro/ID/ID RedCap)
+% further below via COM.
+mergeRows    = zeros(0, 2); % [PRE row, POST row] to merge
+dataRows     = zeros(1, length(DataAvail)); % Excel row of each DataAvail entry
 lastPreRow   = [];
 
 for i = 1:length(DataAvail)
@@ -127,23 +131,23 @@ end
 writecell(C, OutputFile, 'Sheet', 'DataAvailability');
 
 % -------------------------------------------------------------------------
-% MISE EN FORME COM : fusions d'en-tête + couleurs vert/rouge
-% (best effort : nécessite Excel installé ; l'export reste valide sans ça)
+% COM FORMATTING: header merges + green/red colors
+% (best effort: requires Excel installed; the export stays valid without it)
 % -------------------------------------------------------------------------
-% excel/wb déclarés AVANT le try : si la mise en forme plante en cours de
-% route, le bloc cleanup ci-dessous doit quand même pouvoir les fermer -
-% sinon Excel reste ouvert en arrière-plan (invisible, Visible=false) et
-% s'accumule à chaque exécution du script.
+% excel/wb declared BEFORE the try: if the formatting crashes partway
+% through, the cleanup block below must still be able to close them -
+% otherwise Excel stays open in the background (invisible, Visible=false)
+% and accumulates on every script run.
 excel = [];
 wb = [];
 try
     excel = actxserver('Excel.Application');
     excel.Visible = false;
-    excel.DisplayAlerts = false; % évite un dialogue bloquant si un Merge touche des cellules non vides
+    excel.DisplayAlerts = false; % avoids a blocking dialog if a Merge touches non-empty cells
     wb = excel.Workbooks.Open(OutputFile);
     sheet = wb.Sheets.Item('DataAvailability');
 
-    % Fusion verticale des colonnes identification (Numéro..Date)
+    % Vertical merge of the identification columns (Numéro..Date)
     for ic = 1:length(idCols)
         r = sheet.Range([colLetter(ic) '1:' colLetter(ic) '2']);
         r.Merge;
@@ -151,7 +155,7 @@ try
         r.VerticalAlignment   = -4108;
     end
 
-    % Fusion horizontale des en-têtes de groupe
+    % Horizontal merge of the group headers
     col = length(idCols) + 1;
     for ig = 1:size(groups,1)
         span = length(groups{ig,2});
@@ -162,8 +166,8 @@ try
     end
     sheet.Range(['A2:' colLetter(nCols) '2']).HorizontalAlignment = -4108;
 
-    % Fusion verticale Numéro/ID Cinésiologie/ID RedCap entre la ligne PRE
-    % et la ligne POST d'un même patient (colonnes 1 à 3)
+    % Vertical merge of Numéro/ID Cinésiologie/ID RedCap between the PRE
+    % row and the POST row of the same patient (columns 1 to 3)
     for im = 1:size(mergeRows, 1)
         for ic = 1:3
             r = sheet.Range([colLetter(ic) num2str(mergeRows(im,1)) ':' colLetter(ic) num2str(mergeRows(im,2))]);
@@ -193,13 +197,13 @@ try
     sheet.Columns.AutoFit;
     wb.Save;
 catch ME
-    % fprintf (pas warning) : MAIN_MULTI_Protocol_01.m fait "warning off" en
-    % début de script, ce qui rendrait ce message invisible sinon.
-    fprintf(2, 'ExportDataAvailability : mise en forme Excel échouée (%s) - valeurs 0/1 en texte brut.\n', ME.message);
+    % fprintf (not warning): MAIN_MULTI_Protocol_01.m does "warning off" at
+    % the start of the script, which would make this message invisible otherwise.
+    fprintf(2, 'ExportDataAvailability: Excel formatting failed (%s) - 0/1 values shown as plain text.\n', ME.message);
 end
 
-% Nettoyage garanti (même si la mise en forme ci-dessus a échoué en cours
-% de route) pour ne jamais laisser un processus Excel fantôme en arrière-plan.
+% Guaranteed cleanup (even if the formatting above failed partway through)
+% so a ghost Excel process is never left running in the background.
 try
     if ~isempty(wb), wb.Close(false); end
 catch
@@ -212,12 +216,12 @@ try
 catch
 end
 
-disp(['Excel exporté : ', OutputFile]);
+disp(['Excel exported: ', OutputFile]);
 
 end
 
 function s = colLetter(n)
-% Convertit un index de colonne 1-based en lettre(s) Excel (1->A, 27->AA...)
+% Converts a 1-based column index to Excel letter(s) (1->A, 27->AA...)
 s = '';
 while n > 0
     r = mod(n - 1, 26);

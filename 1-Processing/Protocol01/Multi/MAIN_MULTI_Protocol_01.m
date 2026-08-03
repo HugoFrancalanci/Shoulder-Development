@@ -44,6 +44,13 @@ if isempty(DataFolder)
     if isequal(DataFolder, 0), disp('Annulé.'); return; end
 end
 
+% Raccourcit DataFolder via un lecteur virtuel (subst)
+shortDrive = 'S:';
+DataFolder = EnsureShortDataPath(DataFolder, shortDrive);
+
+% Transmis à runProtocol01 via Folder
+Folder.skipKinematics = SkipKinematics;
+
 disp(['Patients à traiter : ', num2str(size(PatientSelection, 1))]);
 
 % -------------------------------------------------------------------------
@@ -135,42 +142,44 @@ for iP = 1:size(PatientSelection, 1)
             PatientInfos(pi_idx).(['Mass_', condition])   = info.Mass;
             PatientInfos(pi_idx).(['BMI_', condition])    = info.BMI;
 
-            Contrib = ComputeHTContributions(Trial);
+            if ~SkipKinematics
+                Contrib = ComputeHTContributions(Trial);
 
-            for iS = 1:length(Contrib)
-                c = Contrib(iS);
-                if ~ismember(c.side, sidesToReport), continue; end
+                for iS = 1:length(Contrib)
+                    c = Contrib(iS);
+                    if ~ismember(c.side, sidesToReport), continue; end
 
-                ri = find(strcmp({Results.PatientID}, patientID) & strcmp({Results.Side}, c.side), 1);
-                if isempty(ri)
-                    ri = length(Results) + 1;
-                    Results(ri).PatientID    = patientID;
-                    Results(ri).Side         = c.side;
-                    Results(ri).Task         = c.task;
-                    Results(ri).HT_PRE_deg   = NaN; Results(ri).HT_POST_deg  = NaN;
-                    Results(ri).GH_PRE_deg   = NaN; Results(ri).GH_POST_deg  = NaN;
-                    Results(ri).GH_PRE_pct   = NaN; Results(ri).GH_POST_pct  = NaN;
-                    Results(ri).ST_PRE_deg   = NaN; Results(ri).ST_POST_deg  = NaN;
-                    Results(ri).ST_PRE_pct   = NaN; Results(ri).ST_POST_pct  = NaN;
-                    Results(ri).TX_PRE_deg   = NaN; Results(ri).TX_POST_deg  = NaN;
-                    Results(ri).TX_PRE_pct   = NaN; Results(ri).TX_POST_pct  = NaN;
+                    ri = find(strcmp({Results.PatientID}, patientID) & strcmp({Results.Side}, c.side), 1);
+                    if isempty(ri)
+                        ri = length(Results) + 1;
+                        Results(ri).PatientID    = patientID;
+                        Results(ri).Side         = c.side;
+                        Results(ri).Task         = c.task;
+                        Results(ri).HT_PRE_deg   = NaN; Results(ri).HT_POST_deg  = NaN;
+                        Results(ri).GH_PRE_deg   = NaN; Results(ri).GH_POST_deg  = NaN;
+                        Results(ri).GH_PRE_pct   = NaN; Results(ri).GH_POST_pct  = NaN;
+                        Results(ri).ST_PRE_deg   = NaN; Results(ri).ST_POST_deg  = NaN;
+                        Results(ri).ST_PRE_pct   = NaN; Results(ri).ST_POST_pct  = NaN;
+                        Results(ri).TX_PRE_deg   = NaN; Results(ri).TX_POST_deg  = NaN;
+                        Results(ri).TX_PRE_pct   = NaN; Results(ri).TX_POST_pct  = NaN;
+                    end
+
+                    Results(ri).(['HT_', condition, '_deg']) = c.HT_range;
+                    Results(ri).(['GH_', condition, '_deg']) = c.GH_range;
+                    Results(ri).(['GH_', condition, '_pct']) = c.GH_pct;
+                    Results(ri).(['ST_', condition, '_deg']) = c.ST_range;
+                    Results(ri).(['ST_', condition, '_pct']) = c.ST_pct;
+                    Results(ri).(['TX_', condition, '_deg']) = c.TX_range;
+                    Results(ri).(['TX_', condition, '_pct']) = c.TX_pct;
+
+                    if length(Curves) < ri
+                        Curves(ri).PatientID = patientID;
+                        Curves(ri).Side      = c.side;
+                    end
+                    Curves(ri).(['HT_', condition]) = c.HT_curve;
+                    Curves(ri).(['GH_', condition]) = c.GH_curve;
+                    Curves(ri).(['ST_', condition]) = c.ST_curve;
                 end
-
-                Results(ri).(['HT_', condition, '_deg']) = c.HT_range;
-                Results(ri).(['GH_', condition, '_deg']) = c.GH_range;
-                Results(ri).(['GH_', condition, '_pct']) = c.GH_pct;
-                Results(ri).(['ST_', condition, '_deg']) = c.ST_range;
-                Results(ri).(['ST_', condition, '_pct']) = c.ST_pct;
-                Results(ri).(['TX_', condition, '_deg']) = c.TX_range;
-                Results(ri).(['TX_', condition, '_pct']) = c.TX_pct;
-
-                if length(Curves) < ri
-                    Curves(ri).PatientID = patientID;
-                    Curves(ri).Side      = c.side;
-                end
-                Curves(ri).(['HT_', condition]) = c.HT_curve;
-                Curves(ri).(['GH_', condition]) = c.GH_curve;
-                Curves(ri).(['ST_', condition]) = c.ST_curve;
             end
 
             % Rapport de disponibilité des données (une ligne par examen)
@@ -235,13 +244,15 @@ if isfolder(ResultsFolder)
     cd(ResultsFolder);
 end
 
+if ispc
+    system(sprintf('subst %s /d', shortDrive));
+end
+
 % =========================================================================
 %  UTILITAIRES
 % =========================================================================
 
 function sessionPath = findSessionFolder(patientFolder, dateOrYear)
-% Retrouve le sous-dossier de session dont le nom commence par
-% dateOrYear ('YYYYMMDD' ou juste 'YYYY'). Vide si aucun/plusieurs match.
 sessionPath = '';
 key = strtrim(num2str(dateOrYear));
 if isempty(key), return; end
@@ -259,9 +270,9 @@ end
 function sides = parseSides(sideCode)
 if isnumeric(sideCode)
     if sideCode == 1
-        sideCode = 'L'; % Gauche
+        sideCode = 'L'; 
     elseif sideCode == 0
-        sideCode = 'R'; % Droit
+        sideCode = 'R';
     else
         error('Côté invalide : %g (attendu 0, 1, R, L ou RL)', sideCode);
     end

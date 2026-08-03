@@ -1,44 +1,48 @@
 % Author     :   H. Francalanci
 %                Biomechanics and Translational Research in Surgery Group
 %                University of Geneva
+%                https://www.unige.ch/medecine/chiru/en/research-groups/nicolas-holzer-et-florent-moissenet
+% License    :   Creative Commons Attribution-NonCommercial 4.0 International License
+%                https://creativecommons.org/licenses/by-nc/4.0/legalcode
+% Source code:   To be defined
+% Reference  :   To be defined
 % Date       :   July 2026
 % -------------------------------------------------------------------------
-% Description:   Résumé démographique/clinique d'un patient, à partir des
-%                sorties de ImportSessionData.m (Patient, Session,
-%                Pathology). Age et IMC sont recalculés ici (runProtocol01
-%                ne retourne pas le struct Clinical d'ImportSessionData).
+% Description:   Demographic/clinical summary for one patient, from the
+%                outputs of ImportSessionData.m (Patient, Session,
+%                Pathology). Age and BMI are recomputed here (runProtocol01
+%                does not return ImportSessionData's Clinical struct).
 %
-%                ID = initiale du premier prénom (si plusieurs) + initiale
-%                du nom de famille (ex: "Jean-Pierre Dupont" -> "JD").
-%                Genre : 1 = Femme, 0 = Homme, NaN si non reconnu.
-%                Laterality : 1 = Gauche, 0 = Droit, NaN si Bilateral/non
-%                reconnu (côté atteint/opéré, Pathology.Diagnosis.side).
-%                ASA n'est pas disponible dans Session.xlsx : laissé vide.
+%                ID = first-first-name initial (if several) + last-name
+%                initial (e.g. "Jean-Pierre Dupont" -> "JD").
+%                Gender: 1 = Female, 0 = Male, NaN if not recognised.
+%                Laterality: 1 = Left, 0 = Right, NaN if Bilateral/not
+%                recognised (affected/operated side, Pathology.Diagnosis.side).
+%                ASA is not available in Session.xlsx: left empty.
 %
-%                Age/Height/Mass/BMI sont propres à LA SESSION passée en
-%                entrée (PRE ou POST) — à appeler une fois par condition,
-%                pas juste une fois par patient (voir MAIN_MULTI_Protocol_01.m).
+%                Age/Height/Mass/BMI are specific to THE SESSION passed as
+%                input (PRE or POST) - call once per condition, not just
+%                once per patient (see MAIN_MULTI_Protocol_01.m).
 %
-%                EVA_formula : moyenne des scores de douleur (EVA) des 4
-%                tâches ANALYTIC, sous forme de FORMULE Excel texte (ex:
-%                "=(4+4+4+4)/4") - ExportPatientInfos.m l'écrit comme
-%                vraie formule Excel (cliquer sur la cellule montre le
-%                détail). Priorité au côté atteint (Laterality). Si ce
-%                côté n'a AUCUNE valeur (patients plus anciens où un seul
-%                côté était rempli dans Session.xlsx, pas toujours celui
-%                attendu) ou si Laterality est inconnue/bilatérale, on se
-%                replie sur l'autre côté SEULEMENT s'il a des données -
-%                EVA_fallback (logique) est alors mis à true pour que
-%                ExportPatientInfos.m marque visuellement la cellule
-%                (elle ne représente pas le côté atteint, il ne faut pas
-%                la confondre avec une vraie mesure du côté atteint).
-%                Vide seulement si aucun des deux côtés n'a de valeur.
-%                Les scores bruts viennent de Session.Pain (déjà présents
-%                dans Session, pas besoin de Clinical).
+%                EVA_formula: mean of the pain scores (EVA) across the 4
+%                ANALYTIC tasks, as a text Excel FORMULA (e.g.
+%                "=(4+4+4+4)/4") - ExportPatientInfos.m writes it as a real
+%                Excel formula (clicking the cell shows the detail).
+%                Priority to the affected side (Laterality). If that side
+%                has NO value at all (older patients where only one side
+%                was filled in Session.xlsx, not always the expected one)
+%                or if Laterality is unknown/bilateral, falls back to the
+%                other side ONLY if it has data - EVA_fallback (logical) is
+%                then set to true so ExportPatientInfos.m visually flags
+%                the cell (it does not represent the affected side, it
+%                must not be mistaken for an actual affected-side measure).
+%                Empty only if neither side has a value. Raw scores come
+%                from Session.Pain (already present in Session, no need
+%                for Clinical).
 % -------------------------------------------------------------------------
-% Inputs  : Patient, Session, Pathology (struct) depuis runProtocol01/ImportSessionData
-% Outputs : Info (struct) avec les champs ID, Age, Gender, Height, Mass,
-%           BMI, ASA, Laterality, EVA_formula, EVA_fallback
+% Inputs  : Patient, Session, Pathology (struct) from runProtocol01/ImportSessionData
+% Outputs : Info (struct) with fields ID, Age, Gender, Height, Mass, BMI,
+%           ASA, Laterality, EVA_formula, EVA_fallback
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
@@ -76,10 +80,10 @@ Info.Laterality = sideToBinary(Pathology.Diagnosis.side);
 end
 
 function [f, usedFallback] = painEvaFormula(Session, laterality)
-% Moyenne des EVA des 4 tâches ANALYTIC. Priorité au côté atteint ; repli
-% sur l'autre côté UNIQUEMENT s'il a des données et que le côté atteint
-% n'en a aucune (usedFallback=true dans ce cas, à signaler visuellement -
-% ce n'est PAS une mesure du côté atteint). '' si aucun côté n'a de valeur.
+% Mean EVA across the 4 ANALYTIC tasks. Priority to the affected side;
+% falls back to the other side ONLY if it has data and the affected side
+% has none (usedFallback=true in that case, to be flagged visually - this
+% is NOT a measure of the affected side). '' if neither side has a value.
 f = '';
 usedFallback = false;
 if ~isfield(Session, 'Pain') || ~isfield(Session.Pain, 'label')
@@ -102,8 +106,8 @@ elseif laterality == 0
     primary = valsR; secondary = valsL;
 else
     primary = []; secondary = [];
-    % Latéralité inconnue : si un seul côté a des données, on le prend
-    % (marqué comme repli, puisqu'on ne sait pas si c'est le côté atteint)
+    % Unknown laterality: if only one side has data, use it (flagged as a
+    % fallback, since we don't know if it's the affected side)
     if ~isempty(valsR) && isempty(valsL)
         secondary = valsR;
     elseif ~isempty(valsL) && isempty(valsR)
@@ -140,7 +144,7 @@ end
 end
 
 function id = initialsID(firstname, lastname)
-% Premier prénom (si plusieurs, séparés par espace/tiret) + nom -> initiales
+% First first-name (if several, separated by space/hyphen) + last-name -> initials
 id = '';
 firstToken = regexp(strtrim(firstname), '[^\s\-]+', 'match', 'once');
 lastToken  = regexp(strtrim(lastname),  '[^\s\-]+', 'match', 'once');
@@ -154,9 +158,9 @@ g = NaN;
 s = lower(strtrim(gender));
 if isempty(s), return; end
 if startsWith(s, 'f')
-    g = 1; % Femme / Female
+    g = 1; % Female
 elseif startsWith(s, 'h') || startsWith(s, 'm')
-    g = 0; % Homme / Male
+    g = 0; % Male
 end
 end
 

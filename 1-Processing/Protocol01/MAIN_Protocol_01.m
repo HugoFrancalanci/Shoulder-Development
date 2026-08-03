@@ -46,6 +46,10 @@ addpath(fullfile(Folder.toolbox, 'Templates'));
 addpath(fullfile(Folder.toolbox, 'Tests'));
 disp(' ');
 
+% Raccourcit Folder.data via un lecteur virtuel (subst)
+shortDrive  = 'S:';
+Folder.data = EnsureShortDataPath(Folder.data, shortDrive);
+
 % -------------------------------------------------------------------------
 % GET SESSION DATA
 % -------------------------------------------------------------------------
@@ -184,7 +188,7 @@ PlotComparison(Trial, Folder.data, Pathology); % Comparaison with .mat from orig
 % -------------------------------------------------------------------------
 TestICS(Trial); % Validation posture
 TestHG(Trial); % Validation HG angles
-TestScapularCluster(Trial); % STA scapulaire (AA/IA/TS/AC vs corps rigide), independant de Rab/SCoRE
+TestScapularCluster(Trial); % STA scapulaire 
 
 % SCoRE validation report on ANALYTIC1
 if strcmpi(Processing.GJC.method,'SCoRE')
@@ -212,3 +216,7 @@ ReportDataAvailability(Trial, Patient, Session, Pathology, c3dFiles);
 % END
 % -------------------------------------------------------------------------
 cd(Folder.toolbox);
+
+if ispc
+    system(sprintf('subst %s /d', shortDrive));
+end
