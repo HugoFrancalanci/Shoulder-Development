@@ -6,7 +6,7 @@
 %                https://creativecommons.org/licenses/by-nc/4.0/legalcode
 % Source code:   To be defined
 % Reference  :   To be defined
-% Date       :   July 2026
+% Date       :   Augustles boucle 2026
 % -------------------------------------------------------------------------
 % Description: (1) Research & Development Branch. 
 %              (2) Extension of the KLAB_ShoulderAnalysis_Toolbox (F. Moissenet)
@@ -25,7 +25,7 @@ close all;
 warning off;
 clc;
 disp('------------------------------------------------------------------');
-disp('KLAB_UpperLimb_toolbox_Research_Development_Branch_Hugo_Dev');
+disp('KLAB_UpperLimb_toolbox_PhD_Development_Branch_Shoulder_Dev');
 disp('------------------------------------------------------------------');
 disp(' ');
 
@@ -39,14 +39,16 @@ Folder.dependencies  = [MainFolder,'\Shoulder_Dev\1-Processing\dependencies'];
 addpath(Folder.toolbox);
 addpath(genpath(Folder.dependencies));
 addpath(fullfile(Folder.toolbox, 'Core'));
+addpath(fullfile(Folder.toolbox, 'Core', 'CoR'));
 addpath(fullfile(Folder.toolbox, 'Init'));
 addpath(fullfile(Folder.toolbox, 'IO'));
 addpath(fullfile(Folder.toolbox, 'Plot'));
 addpath(fullfile(Folder.toolbox, 'Templates'));
 addpath(fullfile(Folder.toolbox, 'Tests'));
+addpath(fullfile(Folder.toolbox, 'Tests', 'CoR'));
 disp(' ');
 
-% Raccourcit Folder.data via un lecteur virtuel (subst)
+% Short path
 shortDrive  = 'S:';
 Folder.data = EnsureShortDataPath(Folder.data, shortDrive);
 
@@ -68,11 +70,21 @@ userCommands = fileread(txtFile);
 eval(userCommands);
 
 % -------------------------------------------------------------------------
-% SCoRE CALIBRATION
+% RUN OPTIONS 
+% -------------------------------------------------------------------------
+doPlots      = input('Plots (1 Oui 0 Non) : ');
+doValidation = input('Validation (1 Oui 0 Non) : ');
+doExport     = input('Export (1 Oui 0 Non) : ');
+
+% -------------------------------------------------------------------------
+% CoR CALIBRATION
 % -------------------------------------------------------------------------
 if strcmpi(Processing.GJC.method,'SCoRE')
-    Session.SCoRE = ComputeSCoRE(Folder.data);
-    TestSCoRE(Session);
+    if strcmpi(Processing.GJC.calibTrials,'all')
+        Session.SCoRE = ComputeSCoRE(Folder.data, DiscoverAvailableTrials(Folder.data));
+    else
+        Session.SCoRE = ComputeSCoRE(Folder.data);
+    end
 end
 
 % Load data
@@ -86,8 +98,6 @@ trialOrder = {'CALIBRATION3','CALIBRATION1','CALIBRATION2','CALIBRATION4', ...
               'CALIBRATION5','CALIBRATION6', ...
               'ANALYTIC1','ANALYTIC2','ANALYTIC3','ANALYTIC4','ANALYTIC5', ...
               'FUNCTIONAL1','FUNCTIONAL2','FUNCTIONAL3','FUNCTIONAL4'};
-% Robust alternative for i = [7,5,6,8,9,10,1,2,3,4,11,12,13,14]
-% Order is same but can handle patient having more or less files 
 
 orderedIdx = zeros(1, length(c3dFiles));
 nIdx = 0;
@@ -161,60 +171,46 @@ for i = orderedIdx
 end
 close all;
 
-% -------------------------------------------------------------------------
-% PLOT posture
-% -------------------------------------------------------------------------
-for k_plot = 1:length(Trial)
-    if contains(Trial(k_plot).task, 'ANALYTIC') % Thorax/Patient-ICS and posture for analytics
-        PlotThoraxPosture(Trial(k_plot), Trial(k_plot).task);
-        PlotThoraxInclination(Trial(k_plot), Trial(k_plot).task);
-    end
+% =========================================================================
+% PLOTS
+% =========================================================================
+if doPlots
+    % Posture (thorax/patient-ICS) for ANALYTIC trials
+    PlotThoraxPosture(Trial);
+    PlotThoraxInclination(Trial);
+
+    % Kinematics (HT, GH, ST, SHR, HG) for ANALYTIC trials
+    PlotKinematics(Trial, Pathology);
+    PlotHumeroGravitaire(Trial, Pathology);
+
+    % Comparaison with .mat from original K-LAB toolbox
+    PlotComparison(Trial, Folder.data, Pathology);
 end
 
-% -------------------------------------------------------------------------
-% PLOT Kinematics
-% -------------------------------------------------------------------------
-PlotKinematics(Trial, Pathology); % HT, GH, ST, SHR for ANALYTIC
-PlotHumeroGravitaire(Trial, Pathology); % HG for ANALYTIC
-
-% -------------------------------------------------------------------------
-% PLOT comparaison
-% -------------------------------------------------------------------------
-PlotComparison(Trial, Folder.data, Pathology); % Comparaison with .mat from original K-LAB toolbox
-% 3rd argument : 'C:\...\auteur_data.xlsx' (for future comparaison with other study)
-
-% -------------------------------------------------------------------------
-% Validation
-% -------------------------------------------------------------------------
-TestICS(Trial); % Validation posture
-TestHG(Trial); % Validation HG angles
-TestScapularCluster(Trial); % STA scapulaire 
-
-% SCoRE validation report on ANALYTIC1
-if strcmpi(Processing.GJC.method,'SCoRE')
-    kAnalytic1 = find(contains({Trial.file},'ANALYTIC1'),1);
-    if ~isempty(kAnalytic1)
-        CompareScoreRab(struct('name',Trial(kAnalytic1).file), Session, Trial(kAnalytic1));
-    else
-        warning('MAIN_Protocol_01:noAnalytic1','ANALYTIC1 not found -> SCoRE validation report skipped.');
-    end
+% =========================================================================
+% VALIDATION
+% =========================================================================
+if doValidation
+    TestICS(Trial);              % Validation posture
+    TestHG(Trial);                % Validation HG angles
+    TestSCoRE(Session);            % Qualite calibration SCoRE
+    TestScapularCluster(Trial);   % STA scapulaire
+    CompareScoreRab(Trial, Session, Processing); % Rab vs SCoRE comparaison
 end
 
-% -------------------------------------------------------------------------
-% Export
-% -------------------------------------------------------------------------
-ExportPostureSummary(Trial, Patient, Session);
-ExportKinematicsSummary(Trial);
-
-% -------------------------------------------------------------------------
-% Data available for each patients
-% -------------------------------------------------------------------------
-ReportDataAvailability(Trial, Patient, Session, Pathology, c3dFiles);
+% =========================================================================
+% EXPORT
+% =========================================================================
+if doExport
+    ExportPostureSummary(Trial, Patient, Session);
+    ExportKinematicsSummary(Trial);
+    ReportDataAvailability(Trial, Patient, Session, Pathology, c3dFiles);
+end
 % close all
 
-% -------------------------------------------------------------------------
+% =========================================================================
 % END
-% -------------------------------------------------------------------------
+% =========================================================================
 cd(Folder.toolbox);
 
 if ispc

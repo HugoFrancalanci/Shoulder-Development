@@ -21,10 +21,11 @@
 %                  Colour-coded vertical gauge with inclination zones
 %                  and marker positioned at the patient value.
 %
-% Inputs  : Trial      (struct)  with Joint(11).PostureSummary populated
-%                                and Trial.Marker for marker positions
-%           taskName   (char)    e.g. 'ANALYTIC1'
-%           outputDir  (char)    PNG output folder ('' = no save)
+% Inputs  : Trial (struct array) all trials from MAIN_Protocol_01 ; loops
+%                  internally over ANALYTIC trials (Joint(11).PostureSummary
+%                  and Trial.Marker must be populated), same convention as
+%                  Plot/PlotKinematics.m
+% Outputs : Figure per ANALYTIC trial
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
@@ -34,9 +35,18 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function PlotThoraxInclination(Trial, taskName)
+function PlotThoraxInclination(Trial)
 
-if nargin < 3, outputDir = ''; end
+for k = 1:length(Trial)
+    if contains(Trial(k).task, 'ANALYTIC')
+        plotOneTrial(Trial(k), Trial(k).task);
+    end
+end
+
+end
+
+% -------------------------------------------------------------------------
+function plotOneTrial(Trial, taskName)
 
 if isempty(Trial.Joint) || length(Trial.Joint) < 11 || ...
    ~isfield(Trial.Joint(11),'PostureSummary') || ...

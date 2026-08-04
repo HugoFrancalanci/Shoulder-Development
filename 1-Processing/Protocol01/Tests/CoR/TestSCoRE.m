@@ -37,12 +37,12 @@ function TestSCoRE(Session)
 
 disp(' ');
 disp('------------------------------------------------------------------');
-disp('Test unitaire (calibration SCoRE - centre glenohumeral)');
-disp('Reference : residu de coincidence du CoR (Ehrig et al. 2006), ANALYTIC2+ANALYTIC4+FUNCTIONAL1+FUNCTIONAL3');
+disp('Test unitaire (calibration SCoRE)');
+disp('Reference : residu de coincidence du CoR (Ehrig et al. 2006)');
 disp(' ');
 
 if ~isfield(Session, 'SCoRE') || isempty(Session.SCoRE)
-    disp('  Session.SCoRE absent -> ComputeSCoRE n''a pas ete execute.');
+    disp('  Session.SCoRE absent');
     return;
 end
 

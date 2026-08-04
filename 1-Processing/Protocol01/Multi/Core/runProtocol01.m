@@ -50,6 +50,7 @@ function [Trial, Patient, Session, Pathology, c3dFiles] = runProtocol01(Folder)
 addpath(Folder.toolbox);
 addpath(genpath(Folder.deps));
 addpath(fullfile(Folder.toolbox, 'Core'));
+addpath(fullfile(Folder.toolbox, 'Core', 'CoR'));
 addpath(fullfile(Folder.toolbox, 'Init'));
 addpath(fullfile(Folder.toolbox, 'IO'));
 
@@ -74,7 +75,11 @@ eval(userCommands);
 % CALIBRATION SCoRE
 % -------------------------------------------------------------------------
 if strcmpi(Processing.GJC.method,'SCoRE')
-    Session.SCoRE = ComputeSCoRE(Folder.data);
+    if strcmpi(Processing.GJC.calibTrials,'all')
+        Session.SCoRE = ComputeSCoRE(Folder.data, DiscoverAvailableTrials(Folder.data));
+    else
+        Session.SCoRE = ComputeSCoRE(Folder.data);
+    end
     TestSCoRE(Session);
 end
 

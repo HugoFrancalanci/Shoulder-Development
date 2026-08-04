@@ -31,17 +31,20 @@
 %                standard — pure raw-marker diagnostic, usable on any patient.
 %                Same convention as TestHG.m/TestICS.m : takes the full
 %                Trial array, finds the relevant task itself, loops both sides.
+%                Console report combines both sides into a single table
+%                (one row per landmark pair) instead of two separate blocks.
 % -------------------------------------------------------------------------
 % Inputs  : Trial    (struct array) all trials from MAIN_Protocol_01
 %                     (Segment/Joint must already be populated, i.e. called
 %                     after DefineSegments + ComputeKinematics)
 %           taskName (char, optional) trial to analyse, default 'ANALYTIC1'
-% Outputs : Console report (STA onset angle per landmark pair, deg)
+% Outputs : Console report (single table, Droit + Gauche side by side :
+%                     onset angle if the 5mm STA threshold is ever crossed,
+%                     else std/max deviation at rest, mm)
 %           Figures (per side) : landmark 3D trajectories (thorax-local
-%                     frame, colored by flexion) ; inter-landmark distances
-%                     vs flexion angle ; zoomed deviation-from-rest version
-%                     (all pairs on a common +/-10mm scale, regardless of
-%                     their absolute baseline distance)
+%                     frame, colored by flexion) ; zoomed deviation-from-rest
+%                     version (all pairs on a common +/-10mm scale, regardless
+%                     of their absolute baseline distance)
 % -------------------------------------------------------------------------
 % Dependencies : Tinv_array3.m, Mprod_array3.m
 % -------------------------------------------------------------------------
@@ -62,13 +65,15 @@ if isempty(idx)
     return;
 end
 
-runSTAcheck(Trial(idx), 'R');
-runSTAcheck(Trial(idx), 'L');
+statsR = runSTAcheck(Trial(idx), 'R');
+statsL = runSTAcheck(Trial(idx), 'L');
+
+printSTATable(statsR, statsL, Trial(idx).file);
 
 end
 
 % -------------------------------------------------------------------------
-function runSTAcheck(Trial, side)
+function stats = runSTAcheck(Trial, side)
 
 if strcmpi(side, 'R')
     idxAA = 16; idxIA = 14; idxTS = 15; idxAC = 10; idxJoint = 1;
@@ -77,11 +82,6 @@ else
     idxAA = 39; idxIA = 37; idxTS = 38; idxAC = 33; idxJoint = 6;
     sideLabel = 'Gauche';
 end
-
-disp(' ');
-disp('------------------------------------------------------------------');
-disp(['STA scapulaire (AA/IA/TS/AC) - ', sideLabel, ' - ', Trial.file]);
-disp('------------------------------------------------------------------');
 
 % -------------------------------------------------------------------------
 % LANDMARKS -> repere thorax (retire le mouvement du tronc, convention
@@ -137,32 +137,13 @@ for ip = 1:nPairs
     end
 end
 
-disp('  Angle a partir duquel la deviation depasse 5mm (STA) :');
-for ip = 1:nPairs
-    if isnan(onsetAngle(ip))
-        fprintf('    %-6s : jamais depasse sur cet essai (std=%.2fmm, max ecart=%.2fmm)\n', ...
-                pairs{ip,1}, std(allDeviation_mm(ip,:), 'omitnan'), max(abs(allDeviation_mm(ip,:))));
-    else
-        fprintf('    %-6s : %.0f deg\n', pairs{ip,1}, onsetAngle(ip));
-    end
-end
-disp(' ');
+stats = struct('pair', pairs(:,1), ...
+                'onsetAngle', num2cell(onsetAngle), ...
+                'stdDev',     num2cell(std(allDeviation_mm, 0, 2, 'omitnan')), ...
+                'maxDev',     num2cell(max(abs(allDeviation_mm), [], 2)));
 
 % -------------------------------------------------------------------------
-% PLOT 1/3 : DISTANCES BRUTES (echelle absolue)
-% -------------------------------------------------------------------------
-figure('Name', ['Distances inter-landmarks scapulaires - ', sideLabel], 'NumberTitle', 'off');
-hold on;
-for ip = 1:nPairs
-    scatter(elevAngle, allDist_mm(ip,:), 8, colors(ip,:), 'filled', 'DisplayName', pairs{ip,1});
-end
-xline(90, '--k', '90 deg (litterature)');
-xlabel('Flexion HT (deg, 0=repos)'); ylabel('Distance inter-landmark (mm)');
-legend('Location', 'best'); grid on;
-title({['Verification corps rigide scapulaire - ', sideLabel], Trial.file}, 'Interpreter', 'none');
-
-% -------------------------------------------------------------------------
-% PLOT 2/3 : TRAJECTOIRES 3D (repere thorax), colorees par flexion
+% PLOT 1/2 : TRAJECTOIRES 3D (repere thorax), colorees par flexion
 % -------------------------------------------------------------------------
 figure('Name', ['Trajectoires landmarks scapulaires (repere thorax) - ', sideLabel], 'NumberTitle', 'off');
 hold on;
@@ -178,7 +159,7 @@ axis equal; grid on; view(3); legend('Location', 'best');
 title({['AA/IA/TS/AC - repere thorax - ', sideLabel], Trial.file}, 'Interpreter', 'none');
 
 % -------------------------------------------------------------------------
-% PLOT 3/3 : ZOOM — deviation par rapport a la posture de repos, meme
+% PLOT 2/2 : ZOOM — deviation par rapport a la posture de repos, meme
 % echelle (+/-10mm) pour toutes les paires quelle que soit leur distance
 % de base — rend visible une derive meme petite, masquee sur le plot 1
 % par l'echelle absolue (40-220mm).
@@ -195,6 +176,43 @@ xlabel('Flexion HT (deg, 0=repos)'); ylabel('Deviation vs posture de repos (mm)'
 legend('Location', 'best'); grid on;
 title({['ZOOM - Deviation corps rigide scapulaire - ', sideLabel], Trial.file}, 'Interpreter', 'none');
 
+end
+
+% -------------------------------------------------------------------------
+%  COMBINED CONSOLE TABLE — Droit + Gauche side by side, one row per
+%  landmark pair. "Onset" = flexion angle (deg) beyond which the deviation
+%  exceeds 5mm and stays there ; '-' if never crossed on this trial (in
+%  which case std/max are the meaningful numbers instead).
+% -------------------------------------------------------------------------
+function printSTATable(statsR, statsL, fileName)
+
+disp(' ');
+disp('------------------------------------------------------------------');
+disp('STA scapulaire (AA/IA/TS/AC)');
+disp('Onset = angle a partir duquel la deviation depasse 5mm (sinon "-", et');
+disp('Std/max = ecart au repos observe sur tout l''essai, mm)');
+disp(' ');
+fprintf('  %-7s|%20s|%20s\n', '', '------- Droit -------', '------- Gauche ------');
+fprintf('  %-7s| %-7s %6s %6s | %-7s %6s %6s\n', 'Paire', 'Onset', 'std', 'max', 'Onset', 'std', 'max');
+disp(['  ', repmat('-', 1, 51)]);
+
+nPairs = numel(statsR);
+for ip = 1:nPairs
+    fprintf('  %-7s| %-7s %6.2f %6.2f | %-7s %6.2f %6.2f\n', ...
+            statsR(ip).pair, ...
+            onsetStr(statsR(ip).onsetAngle), statsR(ip).stdDev, statsR(ip).maxDev, ...
+            onsetStr(statsL(ip).onsetAngle), statsL(ip).stdDev, statsL(ip).maxDev);
+end
+disp(' ');
+
+end
+
+function s = onsetStr(onsetAngle)
+if isnan(onsetAngle)
+    s = '-';
+else
+    s = sprintf('%.0f deg', onsetAngle);
+end
 end
 
 % -------------------------------------------------------------------------

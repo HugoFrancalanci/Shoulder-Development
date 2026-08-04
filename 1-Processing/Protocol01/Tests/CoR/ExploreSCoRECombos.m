@@ -28,8 +28,14 @@
 %           candidatePool  (cell, optional) trial name substrings to combine,
 %                          default {'ANALYTIC1'..'ANALYTIC5','FUNCTIONAL1'..'FUNCTIONAL4'}
 %                          (capped at 9 candidates -> 511 combinations)
+%           CTGold         (struct, optional) already-computed gold standard
+%                          (see Core/CoR/ComputeCTGoldStandardCoR.m) — pass
+%                          this when called from Tests/CoR/ValidateCoRvsCT.m,
+%                          which already computed and printed it, to avoid
+%                          recomputing/reprinting the same CT registration
+%                          a second time. Computed fresh if omitted.
 % Outputs : results (table) every combination tested, sorted by mean
-%           distance to CT (mm), ascending. Console top-10 + bar plot.
+%           distance to CT (mm), ascending. Console top-10.
 % -------------------------------------------------------------------------
 % Dependencies : Core/GetCalibrationReferencePose.m, Core/LoadTechnicalFramesForTask.m,
 %                Core/DropNanFrames.m, Core/ComputeCTGoldStandardCoR.m,
@@ -41,7 +47,7 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function results = ExploreSCoRECombos(folderData, ctFolder, validationTask, candidatePool)
+function results = ExploreSCoRECombos(folderData, ctFolder, validationTask, candidatePool, CTGold)
 
 if nargin < 3 || isempty(validationTask), validationTask = 'ANALYTIC1'; end
 if nargin < 4 || isempty(candidatePool)
@@ -49,15 +55,15 @@ if nargin < 4 || isempty(candidatePool)
                       'FUNCTIONAL1', 'FUNCTIONAL2', 'FUNCTIONAL3', 'FUNCTIONAL4'};
 end
 
-disp(' ');
-disp('====================================================================');
-disp('Exploration des combinaisons de calibration SCoRE vs CT gold standard');
-disp('====================================================================');
+disp('  Exploration des combinaisons de calibration SCoRE vs CT gold standard :');
 
 % -------------------------------------------------------------------------
-% CT GOLD STANDARD (independent of every combination tested below)
+% CT GOLD STANDARD (independent of every combination tested below) —
+% skipped if already provided by the caller (see CTGold doc above).
 % -------------------------------------------------------------------------
-CTGold  = ComputeCTGoldStandardCoR(ctFolder, folderData, 'R');
+if nargin < 5 || isempty(CTGold)
+    CTGold = ComputeCTGoldStandardCoR(ctFolder, folderData, 'R');
+end
 CoR_CT  = CTGold.rCsi; % [3x1], scapula-local (CALIBRATION1-instant) numbering
 
 % Same cd()-based file access convention as ComputeSCoRE.m / ComputeCTGoldStandardCoR.m
@@ -82,12 +88,10 @@ if 2^nA - 1 > 511
     error('ExploreSCoRECombos:tooManyCombos', ...
           '%d candidate trials -> %d combinations (cap 511, i.e. 9 trials). Reduce candidatePool.', nA, 2^nA-1);
 end
-disp(['Essais disponibles (', num2str(nA), ') : ', strjoin(available, ', ')]);
-
 xRef  = GetCalibrationReferencePose();
 cache = repmat(struct('Ti_R', [], 'Tj_R', []), 1, nA);
 for i = 1:nA
-    [Ti_R, Tj_R] = LoadTechnicalFramesForTask(available{i}, xRef);
+    [Ti_R, Tj_R] = LoadTechnicalFramesForTask(available{i}, xRef, [], false);
     cache(i).Ti_R = Ti_R;
     cache(i).Tj_R = Tj_R;
 end
@@ -101,7 +105,7 @@ if ~isempty(idxVal)
     Ti_val = cache(idxVal).Ti_R;
     Tj_val = cache(idxVal).Tj_R;
 else
-    [Ti_val, Tj_val] = LoadTechnicalFramesForTask(validationTask, xRef);
+    [Ti_val, Tj_val] = LoadTechnicalFramesForTask(validationTask, xRef, [], false);
 end
 if isempty(Ti_val)
     error('ExploreSCoRECombos:noValidationTrial', '%s not found -> cannot validate against CT.', validationTask);
@@ -150,16 +154,14 @@ results = table(comboLabel, meanDist_mm, maxDist_mm, stdDist_mm, nFrames, ...
 results = sortrows(results, 'MeanDist_mm');
 
 disp(' ');
-disp(['Top 10 combinaisons (validation sur ', validationTask, ', droite) :']);
-disp(results(1:min(10, height(results)), :));
-
-figure('Name', 'SCoRE calibration combos vs CT', 'NumberTitle', 'off');
-nShow = min(15, height(results));
-barh(results.MeanDist_mm(nShow:-1:1));
-set(gca, 'YTick', 1:nShow, 'YTickLabel', results.Combo(nShow:-1:1), 'TickLabelInterpreter', 'none');
-xlabel('Distance moyenne au CT gold standard (mm)');
-title({'Combinaisons de calibration SCoRE - meilleures 15', ...
-       ['Validation : ', validationTask, ' (droite)']}, 'Interpreter', 'none');
-grid on;
+disp(['  Top 10 combinaisons (validation ', validationTask, ', droite) :']);
+fprintf('  %-45s %8s %8s %8s %8s\n', 'Combo', 'Mean', 'Max', 'Std', 'NFrames');
+disp(['  ', repmat('-', 1, 82)]);
+nShow = min(10, height(results));
+for i = 1:nShow
+    fprintf('  %-45s %8.2f %8.2f %8.2f %8d\n', results.Combo{i}, ...
+            results.MeanDist_mm(i), results.MaxDist_mm(i), results.StdDist_mm(i), results.NFrames(i));
+end
+disp(' ');
 
 end

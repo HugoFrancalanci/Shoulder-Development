@@ -18,6 +18,9 @@
 % Inputs  : taskName      (char)   substring identifying the trial (e.g. 'ANALYTIC1')
 %           xRef          (struct) .RS/.RA/.LS/.LA, see GetCalibrationReferencePose.m
 %           clusterLabels (struct, optional) defaults to DefaultClusterLabels()
+%           verbose       (logical, optional) print "loaded (N frames)" ;
+%                         default true, set false when called in a tight
+%                         loop over many candidate trials (e.g. Tests/CoR/ExploreSCoRECombos.m)
 %           (assumes the current directory is already the patient's
 %           'Processed' folder — caller is responsible for cd())
 % Outputs : Ti_R, Tj_R, Ti_L, Tj_L (struct fields) [4x4xN] technical transforms
@@ -34,9 +37,10 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function [Ti_R, Tj_R, Ti_L, Tj_L, rms] = LoadTechnicalFramesForTask(taskName, xRef, clusterLabels)
+function [Ti_R, Tj_R, Ti_L, Tj_L, rms] = LoadTechnicalFramesForTask(taskName, xRef, clusterLabels, verbose)
 
-if nargin < 3, clusterLabels = DefaultClusterLabels(); end
+if nargin < 3 || isempty(clusterLabels), clusterLabels = DefaultClusterLabels(); end
+if nargin < 4, verbose = true; end
 
 Ti_R = []; Tj_R = []; Ti_L = []; Tj_L = [];
 rms.TiR = []; rms.TjR = []; rms.TiL = []; rms.TjL = [];
@@ -62,6 +66,8 @@ clLA = ClusterTrajectoriesFromMarker(Marker, clusterLabels.LA, ratio);
 [Ti_L, rms.TiL] = BuildTechnicalTransform(xRef.LS, clLS);
 [Tj_L, rms.TjL] = BuildTechnicalTransform(xRef.LA, clLA);
 
-disp(['  - ', taskName, ' loaded (', num2str(size(clRA{1}, 3)), ' frames)']);
+if verbose
+    disp(['  - ', taskName, ' loaded (', num2str(size(clRA{1}, 3)), ' frames)']);
+end
 
 end

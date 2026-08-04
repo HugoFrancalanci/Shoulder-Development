@@ -180,12 +180,37 @@ Processing.Marker.smethod.parameter = 15;
 %                                 2006), scapula/humerus clusters,
 %                                 computed once per patient from
 %                                 CALIBRATION1 (static reference) and
-%                                 ANALYTIC2+ANALYTIC4+FUNCTIONAL1+FUNCTIONAL3
-%                                 (calibration movement — default trial
-%                                 combo in Core/ComputeSCoRE.m, chosen via
-%                                 Tests/ExploreSCoRECombos.m against a CT
-%                                 gold standard, see that file's header).
-Processing.GJC.method = 'Rab';
+%                                 the trials selected by Processing.GJC.calibTrials
+%                                 below (calibration movement).
+Processing.GJC.method = 'SCoRE';
+
+% Processing.GJC.calibTrials: Which movements feed the SCoRE calibration
+%                        (Core/CoR/ComputeSCoRE.m), only used when
+%                        Processing.GJC.method = 'SCoRE'.
+%                        'default': optimize movement combination,
+%                                   chosen via Tests/CoR/ExploreSCoRECombos.m
+%                                   against a CT gold standard (see that
+%                                   file's header).
+%                        'all':     every ANALYTIC/FUNCTIONAL trial found
+%                                   for the patient (Core/CoR/DiscoverAvailableTrials.m),
+%                                   pooled together.
+Processing.GJC.calibTrials = 'default';
+
+% Processing.GJC.view: Which technical cluster reprojects the calibrated
+%                        CoR into the global frame (Core/DefineSegments.m),
+%                        only used when Processing.GJC.method = 'SCoRE'.
+%                        The underlying calibration (rCsi/rCsj) is the
+%                        same either way, only the reprojection path
+%                        changes.
+%                        'humerus': Tj(t)*rCsj — historical default, CoR
+%                                   moves with the arm.
+%                        'scapula': Ti(t)*rCsi — found more stable vs a
+%                                   CT gold standard (see Tests/CoR/ValidateCoRvsCT.m),
+%                                   but NOT yet the pipeline default : it
+%                                   changes how the humeral segment is
+%                                   built (RGJC no longer tracks the
+%                                   humerus at all), not just a diagnostic.
+Processing.GJC.view = 'humerus';
 
 % -------------------------------------------------------------------------
 % EMG

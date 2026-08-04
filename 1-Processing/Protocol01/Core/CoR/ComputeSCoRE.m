@@ -63,7 +63,7 @@ end
 
 disp(' ');
 disp('------------------------------------------------------------------');
-disp('SCoRE calibration (glenohumeral CoR, Ehrig et al. 2006)');
+disp('Center of rotation calibration (glenohumeral ScoRe approach, Ehrig et al. 2006)');
 disp(['Calibration trials : ', strjoin(taskList, ', ')]);
 disp('------------------------------------------------------------------');
 
@@ -138,7 +138,7 @@ disp(' ');
 end
 
 % -------------------------------------------------------------------------
-%  CoR SELF-CONSISTENCY RESIDUAL (mm) — Ehrig et al. 2006 quality metric
+%  CoR SELF-CONSISTENCY RESIDUAL (mm) Ehrig et al. 2006 quality metric
 % -------------------------------------------------------------------------
 function residual_mm = corResidual_mm(Ti, Tj, rCsi, rCsj)
 N            = size(Ti, 3);

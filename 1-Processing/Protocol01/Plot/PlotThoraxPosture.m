@@ -14,19 +14,32 @@
 %                Individual cycles (thin lines) + mean + SD (patch).
 %                Cobb and Moroder summary displayed in subtitle if available.
 % -------------------------------------------------------------------------
-% Inputs  : Trial    (struct)  with Joint(11).Euler.full and Rcycle populated
-%           taskName (char)    e.g. 'ANALYTIC1'
-% Outputs : Figure
+% Inputs  : Trial (struct array) all trials from MAIN_Protocol_01 ; loops
+%                  internally over ANALYTIC trials (Joint(11).Euler.full
+%                  and Rcycle must be populated), same convention as
+%                  Plot/PlotKinematics.m
+% Outputs : Figure per ANALYTIC trial
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
-% This work is licensed under the Creative Commons Attribution - 
-% NonCommercial 4.0 International License. To view a copy of this license, 
-% visit http://creativecommons.org/licenses/by-nc/4.0/ or send a letter to 
+% This work is licensed under the Creative Commons Attribution -
+% NonCommercial 4.0 International License. To view a copy of this license,
+% visit http://creativecommons.org/licenses/by-nc/4.0/ or send a letter to
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function PlotThoraxPosture(Trial, taskName)
+function PlotThoraxPosture(Trial)
+
+for k = 1:length(Trial)
+    if contains(Trial(k).task, 'ANALYTIC')
+        plotOneTrial(Trial(k), Trial(k).task);
+    end
+end
+
+end
+
+% -------------------------------------------------------------------------
+function plotOneTrial(Trial, taskName)
 
 % Guard
 if length(Trial.Joint) < 11 || isempty(Trial.Joint(11).Euler.full)

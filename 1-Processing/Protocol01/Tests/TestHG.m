@@ -76,7 +76,6 @@ else
 end
 
 disp(' ');
-disp('  Note : DOF2 (elevation plane) and DOF3 (axial rotation) not evaluated due to glimbal lock');
 
 end
 
