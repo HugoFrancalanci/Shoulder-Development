@@ -1,7 +1,7 @@
 % Author     :   H. Francalanci
 %                Biomechanics and Translational Research in Surgery Group
 %                University of Geneva
-% Date       :   July 2026
+% Date       :   August 2026
 % -------------------------------------------------------------------------
 % Description:   Script maître multi-patients.
 %                Traite uniquement les patients/côtés listés dans

@@ -19,7 +19,7 @@
 %                Calibration frames     : taskList, pooled. Default
 %                {ANALYTIC2, ANALYTIC4, FUNCTIONAL1, FUNCTIONAL3} — chosen
 %                via Tests/ExploreSCoRECombos.m, validated against a CT
-%                gold standard (glenosphere, patient 558792 / Jurg Muller,
+%                gold standard (glenosphere, one CT-validated patient,
 %                see Core/ComputeCTGoldStandardCoR.m) : 21.5mm mean distance
 %                to CT on ANALYTIC1, vs 27.9mm for the previous default
 %                (ANALYTIC1-4). The single best-scoring combo on that same
@@ -43,9 +43,18 @@
 %                                     calibration frame (quality metric)
 %             .R/.L.clusterRMS       .scapula_mm/.humerus_mm mean soder
 %                                     rigid-fit RMS residual (mm)
+%             .clusterLabels.RS/.LS/.RA/.LA  scapula/humerus cluster marker
+%                                     labels actually used (current markers,
+%                                     or a detected legacy set — see
+%                                     Core/CoR/DetectScapulaClusterLabels.m
+%                                     and Core/CoR/DetectHumerusClusterLabels.m).
+%                                     Re-used by Core/DefineSegments.m so
+%                                     the per-trial reconstruction matches
+%                                     what the calibration was built on.
 % -------------------------------------------------------------------------
 % Dependencies : GetCalibrationReferencePose.m, LoadTechnicalFramesForTask.m,
-%                DropNanFrames.m, SCoRE_array3.m
+%                DetectScapulaClusterLabels.m, DetectHumerusClusterLabels.m,
+%                DefaultClusterLabels.m, DropNanFrames.m, SCoRE_array3.m
 % -------------------------------------------------------------------------
 % This work is licensed under the Creative Commons Attribution -
 % NonCommercial 4.0 International License. To view a copy of this license,
@@ -56,8 +65,8 @@
 function SCoRE = ComputeSCoRE(folderData, taskList)
 
 if nargin < 2 || isempty(taskList)
-    % Best-performing combo tested against the CT gold standard (patient
-    % 558792) via Tests/ExploreSCoRECombos.m — see header comment above.
+    % Best-performing combo tested against the CT gold standard
+    % via Tests/ExploreSCoRECombos.m — see header comment above.
     taskList = {'ANALYTIC2', 'ANALYTIC4', 'FUNCTIONAL1', 'FUNCTIONAL3'};
 end
 
@@ -75,9 +84,50 @@ oldDir  = cd(fullfile(folderData, 'Processed'));
 cleanUp = onCleanup(@() cd(oldDir)); %#ok<NASGU>
 
 % -------------------------------------------------------------------------
+% CLUSTER LABELS — detect, once per patient, whether the current markers
+% (Cluster_{R/L}S_01-03 scapula / Cluster_{R/L}A_01-05 humerus) or a legacy
+% naming are actually present (see DetectScapulaClusterLabels.m /
+% DetectHumerusClusterLabels.m header for the priority order). Uses
+% ANALYTIC1 specifically : a real movement trial is needed to disambiguate
+% legacy humerus schemes that can both appear as valid-but-frozen labels in
+% the same C3D (not required for the scapula case, but ANALYTIC1 works
+% fine for it too). Falls back to the current/default labels if ANALYTIC1
+% is missing or nothing usable is detected (unchanged behaviour).
+% -------------------------------------------------------------------------
+clusterLabels = DefaultClusterLabels();
+c3dFilesLocal = dir('*.c3d');
+idxA1         = find(contains({c3dFilesLocal.name}, 'ANALYTIC1'), 1);
+if ~isempty(idxA1)
+    acqA1    = btkReadAcquisition(c3dFilesLocal(idxA1).name);
+    MarkerA1 = btkGetMarkers(acqA1);
+
+    labelsRS = DetectScapulaClusterLabels(MarkerA1, 'R');
+    labelsLS = DetectScapulaClusterLabels(MarkerA1, 'L');
+    if ~isempty(labelsRS) && ~isequal(labelsRS, clusterLabels.RS)
+        clusterLabels.RS = labelsRS;
+        disp(['  Cluster scapula droit (legacy detecte) : ', strjoin(labelsRS, ', ')]);
+    end
+    if ~isempty(labelsLS) && ~isequal(labelsLS, clusterLabels.LS)
+        clusterLabels.LS = labelsLS;
+        disp(['  Cluster scapula gauche (legacy detecte) : ', strjoin(labelsLS, ', ')]);
+    end
+
+    labelsRA = DetectHumerusClusterLabels(MarkerA1, 'R');
+    labelsLA = DetectHumerusClusterLabels(MarkerA1, 'L');
+    if ~isempty(labelsRA) && ~isequal(labelsRA, clusterLabels.RA)
+        clusterLabels.RA = labelsRA;
+        disp(['  Cluster humerus droit (legacy detecte) : ', strjoin(labelsRA, ', ')]);
+    end
+    if ~isempty(labelsLA) && ~isequal(labelsLA, clusterLabels.LA)
+        clusterLabels.LA = labelsLA;
+        disp(['  Cluster humerus gauche (legacy detecte) : ', strjoin(labelsLA, ', ')]);
+    end
+end
+
+% -------------------------------------------------------------------------
 % STATIC REFERENCE POSE (CALIBRATION1)
 % -------------------------------------------------------------------------
-xRef = GetCalibrationReferencePose();
+xRef = GetCalibrationReferencePose(clusterLabels);
 
 % -------------------------------------------------------------------------
 % CALIBRATION FRAMES (pooled across taskList)
@@ -85,7 +135,7 @@ xRef = GetCalibrationReferencePose();
 Ti_R = []; Tj_R = []; Ti_L = []; Tj_L = [];
 rmsTi_R = []; rmsTj_R = []; rmsTi_L = []; rmsTj_L = [];
 for it = 1:numel(taskList)
-    [Ti_R_trial, Tj_R_trial, Ti_L_trial, Tj_L_trial, rms] = LoadTechnicalFramesForTask(taskList{it}, xRef);
+    [Ti_R_trial, Tj_R_trial, Ti_L_trial, Tj_L_trial, rms] = LoadTechnicalFramesForTask(taskList{it}, xRef, clusterLabels);
     if isempty(Ti_R_trial), continue; end
 
     Ti_R = cat(3, Ti_R, Ti_R_trial); Tj_R = cat(3, Tj_R, Tj_R_trial);
@@ -110,11 +160,12 @@ end
 [~, rCsi_R, rCsj_R] = SCoRE_array3(Ti_R, Tj_R);
 [~, rCsi_L, rCsj_L] = SCoRE_array3(Ti_L, Tj_L);
 
-SCoRE.xRef   = xRef;
-SCoRE.R.rCsi = rCsi_R;
-SCoRE.R.rCsj = rCsj_R;
-SCoRE.L.rCsi = rCsi_L;
-SCoRE.L.rCsj = rCsj_L;
+SCoRE.xRef          = xRef;
+SCoRE.clusterLabels = clusterLabels;
+SCoRE.R.rCsi        = rCsi_R;
+SCoRE.R.rCsj        = rCsj_R;
+SCoRE.L.rCsi        = rCsi_L;
+SCoRE.L.rCsj        = rCsj_L;
 
 % -------------------------------------------------------------------------
 % DIAGNOSTICS — agreement between the two independent CoR estimates

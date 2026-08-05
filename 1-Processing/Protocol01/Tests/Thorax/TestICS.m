@@ -51,7 +51,8 @@ WARN_std  = 5.0;
 % -------------------------------------------------------------------------
 calib3_idx = [];
 for k = 1:length(Trial)
-    if contains(Trial(k).task,'CALIBRATION3')
+    % STATIC3 : older-session alias for CALIBRATION3
+    if contains(Trial(k).task,'CALIBRATION3') || contains(Trial(k).task,'STATIC3')
         calib3_idx = k;
         break;
     end

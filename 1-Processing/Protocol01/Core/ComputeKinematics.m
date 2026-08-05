@@ -377,7 +377,7 @@ end
     Trial.Joint(11).T.full            = Mprod_array3(Tinv_array3(Trial.Segment(8).T.full), ...
                                                      Trial.Segment(4).T.full);
 
-if contains(c3dFiles.name,'ANALYTIC') || contains(c3dFiles.name,'FUNCTIONAL') || contains(c3dFiles.name,'CALIBRATION3') % Add for unitary test
+if contains(c3dFiles.name,'ANALYTIC') || contains(c3dFiles.name,'FUNCTIONAL') || contains(c3dFiles.name,'CALIBRATION3') || contains(c3dFiles.name,'STATIC3') % Add for unitary test (STATIC3 : older-session alias)
    Trial.Joint(11).sequence          = 'ZXY';
    Euler                             = R2mobileZXY_array3(Trial.Joint(11).T.full(1:3,1:3,:));
    Trial.Joint(11).Euler.full(1,1,:) = rad2deg(Euler(:,2,:)); % X
@@ -403,7 +403,7 @@ end
 % Homogenous matrix of the rigid transformation between segments
 Trial.Joint(12).T.full = Mprod_array3(Tinv_array3(Trial.Segment(8).T.full), ...
                                       Trial.Segment(1).T.full);
-if contains(c3dFiles.name,'ANALYTIC') || contains(c3dFiles.name,'CALIBRATION3') % Add for unitary test
+if contains(c3dFiles.name,'ANALYTIC') || contains(c3dFiles.name,'CALIBRATION3') || contains(c3dFiles.name,'STATIC3') % Add for unitary test (STATIC3 : older-session alias)
     Trial.Joint(12).sequence          = 'YXY';
     Euler                             = R2mobileYXY_array3(Trial.Joint(12).T.full(1:3,1:3,:));
     Trial.Joint(12).Euler.full(1,1,:) = rad2deg(Euler(:,2,:)); % X
@@ -426,7 +426,7 @@ end
 % Homogenous matrix of the rigid transformation between segments
 Trial.Joint(13).T.full = Mprod_array3(Tinv_array3(Trial.Segment(8).T.full), ...
                                       Trial.Segment(5).T.full);
-if contains(c3dFiles.name,'ANALYTIC') || contains(c3dFiles.name,'CALIBRATION3') % Add for unitary test
+if contains(c3dFiles.name,'ANALYTIC') || contains(c3dFiles.name,'CALIBRATION3') || contains(c3dFiles.name,'STATIC3') % Add for unitary test (STATIC3 : older-session alias)
     Trial.Joint(13).sequence          = 'YXY';
     Euler                             = R2mobileYXY_array3(Trial.Joint(13).T.full(1:3,1:3,:));
     Trial.Joint(13).Euler.full(1,1,:) = rad2deg(Euler(:,2,:)); % X

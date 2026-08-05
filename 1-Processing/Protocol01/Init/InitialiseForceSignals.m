@@ -38,7 +38,8 @@ if contains(Trial.file,'CALIBRATION4')
         Trial.Fsensor.Force.value = []; % N
         Trial.Fsensor.Force.units = 'N';        
     end
-elseif contains(c3dFiles.name,'CALIBRATION5') || contains(c3dFiles.name,'CALIBRATION6') % Isometric tasks only
+elseif contains(c3dFiles.name,'CALIBRATION5') || contains(c3dFiles.name,'CALIBRATION6') || ...
+       contains(c3dFiles.name,'ISOMETRIC1') || contains(c3dFiles.name,'ISOMETRIC2') % Isometric tasks only (ISOMETRIC1/2 : older-session alias for CALIBRATION5/6)
     disp('  - Calibrage des données du capteur de force');
     figure;
     plot(Analog.FORCE);

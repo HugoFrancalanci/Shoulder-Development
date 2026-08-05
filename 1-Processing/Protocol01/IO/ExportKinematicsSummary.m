@@ -48,6 +48,9 @@ function ExportKinematicsSummary(Trial)
 disp(' ');
 disp('------------------------------------------------------------------');
 disp('Kinematics summary');
+disp(' ');
+disp('Functional analysis');
+disp('-------------------');
 
 % -------------------------------------------------------------------------
 % TARGET TRIALS
@@ -138,6 +141,8 @@ disp('         ensures coherent GH/ST/TH decomposition.');
 % TABLEAU 2 — CONTRIBUTIONS EXPRIMÉES EN % DE HT
 % -------------------------------------------------------------------------
 disp(' ');
+disp('Clinical analysis');
+disp('-------------------');
 
 rows2 = {};
 

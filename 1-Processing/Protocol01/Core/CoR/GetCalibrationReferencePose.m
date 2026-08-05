@@ -20,7 +20,8 @@
 %           clusterLabels (struct, optional) defaults to DefaultClusterLabels()
 % Outputs : xRef (struct) .RS/.RA/.LS/.LA [k x 3]
 % -------------------------------------------------------------------------
-% Dependencies : GetUnitRatio.m, ClusterReferencePoseFromMarker.m, DefaultClusterLabels.m
+% Dependencies : GetUnitRatio.m, ClusterReferencePoseFromMarker.m, DefaultClusterLabels.m,
+%                FindTrialFileIndex.m
 % -------------------------------------------------------------------------
 % This work is licensed under the Creative Commons Attribution -
 % NonCommercial 4.0 International License. To view a copy of this license,
@@ -33,10 +34,10 @@ function xRef = GetCalibrationReferencePose(clusterLabels)
 if nargin < 1, clusterLabels = DefaultClusterLabels(); end
 
 c3dFiles  = dir('*.c3d');
-calib1Idx = find(contains({c3dFiles.name}, 'CALIBRATION1'), 1);
+calib1Idx = FindTrialFileIndex(c3dFiles, 'CALIBRATION1');
 if isempty(calib1Idx)
     error('GetCalibrationReferencePose:noCalibration1', ...
-          'CALIBRATION1.c3d not found in the current folder.');
+          'CALIBRATION1.c3d (or its STATIC1 alias) not found in the current folder.');
 end
 acq    = btkReadAcquisition(c3dFiles(calib1Idx).name);
 ratio  = GetUnitRatio(acq);

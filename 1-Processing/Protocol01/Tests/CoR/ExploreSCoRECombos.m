@@ -55,8 +55,6 @@ if nargin < 4 || isempty(candidatePool)
                       'FUNCTIONAL1', 'FUNCTIONAL2', 'FUNCTIONAL3', 'FUNCTIONAL4'};
 end
 
-disp('  Exploration des combinaisons de calibration SCoRE vs CT gold standard :');
-
 % -------------------------------------------------------------------------
 % CT GOLD STANDARD (independent of every combination tested below) —
 % skipped if already provided by the caller (see CTGold doc above).
@@ -154,7 +152,7 @@ results = table(comboLabel, meanDist_mm, maxDist_mm, stdDist_mm, nFrames, ...
 results = sortrows(results, 'MeanDist_mm');
 
 disp(' ');
-disp(['  Top 10 combinaisons (validation ', validationTask, ', droite) :']);
+disp(['  -- Top 10 combinaisons (validation ', validationTask, ', droite) --']);
 fprintf('  %-45s %8s %8s %8s %8s\n', 'Combo', 'Mean', 'Max', 'Std', 'NFrames');
 disp(['  ', repmat('-', 1, 82)]);
 nShow = min(10, height(results));

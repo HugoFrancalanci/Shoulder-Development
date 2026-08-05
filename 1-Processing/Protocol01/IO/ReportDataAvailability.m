@@ -10,12 +10,15 @@
 %                  2. Raw C3D content (BTK)
 %                  3. Markers — segment summary + full nominal listing
 %                     + legacy cluster detection (numbered groups in BTK)
-%                  4. EMG channels — checked across ALL FOUR ANALYTIC1-4
+%                  4. Kinematic cycles per ANALYTIC task
+%                  5. EMG channels — checked across ALL FOUR ANALYTIC1-4
 %                     tasks (not just the ANALYTIC1 reference trial used
 %                     everywhere else in this report): a channel is only
 %                     "Valid" if it has a real signal in every one of them.
-%                  5. Kinematic cycles per ANALYTIC task
-%                  6. Processing status
+%
+%                Report.kinematics_ok is still computed (Joint/Segment
+%                populated) but no longer has its own printed section —
+%                redundant with "Kinematic cycles" above for a quick glance.
 %
 %                Legacy cluster logic:
 %                  Any BTK marker group sharing the same base name + trailing
@@ -64,11 +67,11 @@ if nargin >= 3, Session   = varargin{2}; end
 if nargin >= 4, Pathology = varargin{3}; end
 if nargin >= 5, c3dFiles  = varargin{4}; end
 
-SEP = repmat('=',1,66);
+SEP = repmat('-',1,66);
 
 disp(' ');
 disp(SEP);
-disp('  PATIENT DATA AVAILABILITY REPORT');
+disp('  data availability report');
 
 Report.patientID    = '';
 Report.sessionDate  = '';
@@ -82,8 +85,8 @@ if ~isempty(Pathology), Report.side        = Pathology.Diagnosis.side; end
 % =========================================================================
 %  SECTION 1 — TRIALS PRESENT
 % =========================================================================
-disp(SEP);
-disp('  TRIALS AVAILABLE');
+disp(' ');
+disp('  trials available');
 disp('  ----------------');
 
 allTrialTasks = {Trial.task};
@@ -94,15 +97,39 @@ if ~isempty(c3dFiles)
     c3dNames = {c3dFiles.name};
 end
 
+Report.trials = struct();
+
+% CALIBRATION1-6 : some can be named STATIC1-3 / ISOMETRIC1-2 on older
+% sessions (see Core/CoR/CalibrationTrialAliases.m) - checked via every
+% known alias, reported under the canonical CALIBRATIONn name so this
+% section stays 6 lines regardless of naming convention (previously 3
+% separate STATIC/CALIBRATION/ISOMETRIC blocks, mostly [--] for any given
+% patient since a session only ever uses one convention).
+calibAliases = CalibrationTrialAliases();
+fprintf('  CALIBRATION\n');
+lineStr = '  '; col = 0;
+for ig = 1:numel(calibAliases)
+    names = calibAliases{ig};
+    tk    = names{1}; % canonical name, used for display + Report field
+    found = false;
+    for in = 1:numel(names)
+        found = ismember(names{in}, allTrialTasks) || ...
+                any(cellfun(@(f) contains(f, names{in}), c3dNames));
+        if found, break; end
+    end
+    Report.trials.(matlab.lang.makeValidName(tk)).present = found;
+    lineStr = [lineStr, sprintf('%-14s%-6s   ', tk, ternStr(found,'[OK]','[--]'))]; %#ok<AGROW>
+    col = col + 1;
+    if col == 3, disp(lineStr); lineStr = '  '; col = 0; end
+end
+if col > 0, disp(lineStr); end
+disp(' ');
+
+% ANALYTIC / FUNCTIONAL : no known alias
 taskGroups = { ...
-    'STATIC',       6; ...
-    'CALIBRATION',  6; ...
-    'ISOMETRIC',    6; ...
     'ANALYTIC',     5; ...
     'FUNCTIONAL',   4; ...
 };
-
-Report.trials = struct();
 for ig = 1:size(taskGroups,1)
     prefix = taskGroups{ig,1};
     nmax   = taskGroups{ig,2};
@@ -145,7 +172,7 @@ t = Trial(tidx);
 %  SECTION 2 — RAW C3D CONTENT (BTK)
 % =========================================================================
 disp(SEP);
-disp('  RAW C3D CONTENT  (reference: ANALYTIC1)');
+disp('  raw c3d content  (reference: ANALYTIC1)');
 disp('  -----------------------------------------');
 
 btk_available = isfield(t,'btk') && ~isempty(t.btk);
@@ -155,30 +182,30 @@ if btk_available
     try
         allBtkMarkers = fieldnames(btkGetMarkers(t.btk));
         fprintf('  C3D markers : %d\n', length(allBtkMarkers));
-        printList(allBtkMarkers, 6);
+        % Full name listing shown once, in Section 3 below ("Valid markers"
+        % + "Legacy numbered groups") rather than duplicated here.
     catch
         disp('  [!] Could not read C3D markers from BTK.');
     end
     try
+        % Counts only — per-channel EMG detail is in "EMG channels" below
+        % (checked more strictly, across ANALYTIC1-4). FORCE is the one
+        % channel not covered there, so it gets its own line here.
         analogData = btkGetAnalogs(t.btk);
         allAnalogs = fieldnames(analogData);
         n_ok  = 0;
         n_empty = 0;
-        fprintf('  C3D analogs : %d\n', length(allAnalogs));
-        lineStr = '  '; col = 0;
+        forceTag = '[!] not found';
         for ia = 1:length(allAnalogs)
             lbl = allAnalogs{ia};
-            sig = analogData.(lbl);
-            hasData = hasRealSignal(sig);
-            if hasData; n_ok = n_ok + 1; tag = '[OK]';
-            else;        n_empty = n_empty + 1; tag = '[--]';
+            hasData = hasRealSignal(analogData.(lbl));
+            if hasData; n_ok = n_ok + 1; else; n_empty = n_empty + 1; end
+            if contains(lbl, 'FORCE', 'IgnoreCase', true)
+                forceTag = ternStr(hasData, '[OK]', '[--]');
             end
-            lineStr = [lineStr, sprintf('%-20s%-6s   ', lbl, tag)]; %#ok<AGROW>
-            col = col + 1;
-            if col == 3, disp(lineStr); lineStr = '  '; col = 0; end
         end
-        if col > 0, disp(lineStr); end
-        fprintf('  -> signal present: %d   empty: %d\n', n_ok, n_empty);
+        fprintf('  C3D analogs : %d (present: %d, empty: %d)\n', length(allAnalogs), n_ok, n_empty);
+        fprintf('  FORCE       : %s\n', forceTag);
     catch
         disp('  [!] Could not read C3D analogs from BTK.');
     end
@@ -251,7 +278,8 @@ Report.legacy_groups = legacyGroups;
 %  SECTION 3 — MARKERS
 % =========================================================================
 disp(SEP);
-disp('  MARKERS  (reference: ANALYTIC1)');
+disp('  markers  (reference: ANALYTIC1)');
+disp('  ---------------------------------');
 
 % ------------------------------------------------------------------
 %  3a. Segment summary
@@ -460,10 +488,45 @@ else
 end
 
 % =========================================================================
-%  SECTION 4 — EMG
+%  SECTION 4 — KINEMATIC CYCLES
 % =========================================================================
 disp(SEP);
-disp('  EMG CHANNELS  (checked across ANALYTIC1-4)');
+disp('  kinematic cycles');
+disp('  -----------------------------------------------');
+fprintf('  %-14s  %8s  %8s  %s\n','Task','R cycles','L cycles','Status');
+
+cycleTasks = {'ANALYTIC1','ANALYTIC2','ANALYTIC3','ANALYTIC4','ANALYTIC5'};
+Report.cycles = struct();
+
+for ia = 1:length(cycleTasks)
+    tk = cycleTasks{ia};
+    kidx = [];
+    for k = 1:length(Trial)
+        if strcmp(Trial(k).task, tk), kidx = k; break; end
+    end
+    if isempty(kidx), continue; end
+
+    tr = Trial(kidx);
+    nR = 0; nL = 0;
+    if isfield(tr,'Rcycle') && ~isempty(tr.Rcycle), nR = length(tr.Rcycle); end
+    if isfield(tr,'Lcycle') && ~isempty(tr.Lcycle), nL = length(tr.Lcycle); end
+
+    if     nR == 0 && nL == 0, status = '[!] No cycles';
+    elseif nR == 0,             status = '[!] No R cycles';
+    elseif nL == 0,             status = '[!] No L cycles';
+    else,                       status = '[OK]';
+    end
+    fprintf('  %-14s  %8d  %8d  %s\n', tk, nR, nL, status);
+
+    Report.cycles.(matlab.lang.makeValidName(tk)).R = nR;
+    Report.cycles.(matlab.lang.makeValidName(tk)).L = nL;
+end
+
+% =========================================================================
+%  SECTION 5 — EMG
+% =========================================================================
+disp(SEP);
+disp('  emg channels  (checked across ANALYTIC1-4)');
 disp('  --------------------------------------------');
 
 % Trial.Emg/Trial.EMG is never populated by runProtocol01/MAIN_Protocol_01
@@ -555,58 +618,9 @@ else
     end
 end
 
-% =========================================================================
-%  SECTION 5 — KINEMATIC CYCLES
-% =========================================================================
-disp(SEP);
-disp('  KINEMATIC CYCLES');
-fprintf('  %-14s  %8s  %8s  %s\n','Task','R cycles','L cycles','Status');
-disp('  -----------------------------------------------');
-
-analyticTasks = {'ANALYTIC1','ANALYTIC2','ANALYTIC3','ANALYTIC4','ANALYTIC5'};
-Report.cycles = struct();
-
-for ia = 1:length(analyticTasks)
-    tk = analyticTasks{ia};
-    kidx = [];
-    for k = 1:length(Trial)
-        if strcmp(Trial(k).task, tk), kidx = k; break; end
-    end
-    if isempty(kidx), continue; end
-
-    tr = Trial(kidx);
-    nR = 0; nL = 0;
-    if isfield(tr,'Rcycle') && ~isempty(tr.Rcycle), nR = length(tr.Rcycle); end
-    if isfield(tr,'Lcycle') && ~isempty(tr.Lcycle), nL = length(tr.Lcycle); end
-
-    if     nR == 0 && nL == 0, status = '[!] No cycles';
-    elseif nR == 0,             status = '[!] No R cycles';
-    elseif nL == 0,             status = '[!] No L cycles';
-    else,                       status = '[OK]';
-    end
-    fprintf('  %-14s  %8d  %8d  %s\n', tk, nR, nL, status);
-
-    Report.cycles.(matlab.lang.makeValidName(tk)).R = nR;
-    Report.cycles.(matlab.lang.makeValidName(tk)).L = nL;
-end
-
-% =========================================================================
-%  SECTION 6 — PROCESSING STATUS
-% =========================================================================
-disp(SEP);
-disp('  PROCESSING STATUS  (reference: ANALYTIC1)');
-disp('  -------------------------------------------');
-
-hasJoints  = isfield(t,'Joint')   && ~isempty(t.Joint)   && isfield(t.Joint(1),'Euler');
-hasThorax  = isfield(t,'Segment') && ~isempty(t.Segment);
-hasRcycles = isfield(t,'Rcycle')  && ~isempty(t.Rcycle);
-hasLcycles = isfield(t,'Lcycle')  && ~isempty(t.Lcycle);
-
-fprintf('  Kinematics (Joints) : %s\n', ternStr(hasJoints,  '[OK]', '[missing]'));
-fprintf('  Segments defined    : %s\n', ternStr(hasThorax,  '[OK]', '[missing]'));
-fprintf('  Right cycles cut    : %s\n', ternStr(hasRcycles, '[OK]', '[missing/0]'));
-fprintf('  Left  cycles cut    : %s\n', ternStr(hasLcycles, '[OK]', '[missing/0]'));
-
+% Report.kinematics_ok (documented output field, no console section for it)
+hasJoints = isfield(t,'Joint')   && ~isempty(t.Joint)   && isfield(t.Joint(1),'Euler');
+hasThorax = isfield(t,'Segment') && ~isempty(t.Segment);
 Report.kinematics_ok = hasJoints && hasThorax;
 
 disp(SEP);

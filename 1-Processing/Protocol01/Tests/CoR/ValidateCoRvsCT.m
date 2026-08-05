@@ -9,8 +9,8 @@
 % Date       :   July 2026
 % -------------------------------------------------------------------------
 % Description:   CT-based gold-standard validation of the glenohumeral CoR
-%                (patient 558792 / Jurg Muller only — only patient with
-%                post-op CT available). Split out of Tests/CoR/CompareScoreRab.m
+%                (only meaningful for a patient with post-op CT available).
+%                Split out of Tests/CoR/CompareScoreRab.m
 %                so the CT-imaging theme can be read/run on its own.
 %                  1) Rab vs SCoRE (vue humerus, the one used pipeline-wide)
 %                     vs CT gold standard (glenosphere sphere fit, registered
@@ -56,7 +56,7 @@
 
 function CTGold = ValidateCoRvsCT(TrialRab, TrialSCoRE, Session, ctFolder, ctMocapData)
 
-disp('  Comparaison au gold standard CT (glenosphere, cote droit) :');
+disp('  2) Comparaison au gold standard CT (glenosphere, cote droit) :');
 CTGold = ComputeCTGoldStandardCoR(ctFolder, ctMocapData, 'R');
 
 Ti_trial = BuildTechnicalTransform(Session.SCoRE.xRef.RS, ...
@@ -99,7 +99,6 @@ disp(' ');
 
 plotCoR3D(TrialRab, TrialSCoRE, Session, CTGold, ctFolder);
 
-disp('  Exploration des combinaisons de calibration SCoRE (vs CT) :');
 ExploreSCoRECombos(ctMocapData, ctFolder, 'ANALYTIC1', [], CTGold);
 
 end
@@ -133,6 +132,7 @@ humV_m  = (CTGold.humerus.Rreg  * (humMesh.Points'/1e3)  + CTGold.humerus.dreg)'
 % Numeric check (camera-angle independent) : bounding boxes + closest
 % point between the two transformed meshes, to confirm/refute a visual
 % impression of a gap between scapula and humerus.
+disp('  -- Figure 3D : maillages CT + trajectoires Rab/SCoRE/CT --');
 checkMeshGap(scapV_m, humV_m);
 
 % Rab/SCoRE RGJC trajectories -> scapula-local (CALIBRATION1-instant) frame
@@ -150,25 +150,6 @@ RGJC_SCoRE_h          = ones(4, 1, N);
 RGJC_SCoRE_h(1:3,1,:) = TrialSCoRE.Vmarker(11).Trajectory.full;
 RGJC_SCoRE_local       = Mprod_array3(TiInv, RGJC_SCoRE_h);
 RGJC_SCoRE_local_mm    = squeeze(RGJC_SCoRE_local(1:3,1,:))' * 1e3; % [Nx3], mm
-
-% -------------------------------------------------------------------------
-% SANITY CHECK (prof's remark) : RCAJ (acromion marker, rigidly attached
-% to the scapula, index 10 in markerSet, NOT one of the Cluster_RS_01-03
-% markers used to build the technical frame -> independent check) should
-% appear near-stationary once expressed in the scapula-local frame. If it
-% doesn't, there is a real bug in the technical-frame code. If it IS
-% stationary but Rab's full RGJC still sweeps an arc, that arc is a real
-% property of Rab's formula (RCAJ + fixed-magnitude offset along
-% thoraxSIaxis, which is thorax-anchored, not scapula-anchored -> its
-% direction rotates relative to the scapula during scapulothoracic rhythm).
-% -------------------------------------------------------------------------
-RCAJ_h          = ones(4, 1, N);
-RCAJ_h(1:3,1,:) = TrialRab.Marker(10).Trajectory.full;
-RCAJ_local       = Mprod_array3(TiInv, RCAJ_h);
-RCAJ_local_mm    = squeeze(RCAJ_local(1:3,1,:))' * 1e3; % [Nx3], mm
-RCAJ_range_mm    = max(RCAJ_local_mm, [], 1) - min(RCAJ_local_mm, [], 1);
-fprintf('  [check prof] RCAJ (acromion) range in scapula-local frame (mm) : X=%.1f Y=%.1f Z=%.1f\n', ...
-        RCAJ_range_mm(1), RCAJ_range_mm(2), RCAJ_range_mm(3));
 
 CoR_CT_mm = CTGold.rCsi' * 1e3; % [1x3]
 

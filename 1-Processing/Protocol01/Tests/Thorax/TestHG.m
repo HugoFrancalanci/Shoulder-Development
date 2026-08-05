@@ -45,7 +45,8 @@ WARN_tol = 40.0;
 % -------------------------------------------------------------------------
 calib3_idx = [];
 for k = 1:length(Trial)
-    if contains(Trial(k).task,'CALIBRATION3'), calib3_idx = k; end
+    % STATIC3 : older-session alias for CALIBRATION3
+    if contains(Trial(k).task,'CALIBRATION3') || contains(Trial(k).task,'STATIC3'), calib3_idx = k; end
 end
 
 % -------------------------------------------------------------------------

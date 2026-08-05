@@ -24,7 +24,7 @@ if nargin < 4 || ~isfield(Processing,'GJC') || ~isfield(Processing.GJC,'method')
     Processing.GJC.method = 'Rab'; % Default : unchanged behaviour
 end
 if ~isfield(Processing.GJC,'view')
-    Processing.GJC.view = 'humerus'; % Default : unchanged behaviour (SCoRE case only)
+    Processing.GJC.view = 'humerus'; % Default : unchanged behaviour (SCoRE)
 end
 
 % -------------------------------------------------------------------------
@@ -83,7 +83,7 @@ switch Processing.GJC.method
         RGJC            = referenceMarker+(offset+Session.markerHeight1)*thoraxSIaxis;
     case 'SCoRE'
         % Method 2: SCoRE functional calibration (Ehrig et al. 2006).
-        % Same constant local CoR either way — only which segment's
+        % Same constant local CoR either way, only which segment's
         % technical cluster reprojects it into the global frame changes
         % (Processing.GJC.view). 'humerus' is the historical default (CoR
         % moves with the arm) ; 'scapula' reuses Session.SCoRE.R.rCsi
@@ -91,12 +91,26 @@ switch Processing.GJC.method
         % Tests/CoR/ValidateCoRvsCT.m).
         switch Processing.GJC.view
             case 'scapula'
-                Ti_trial = BuildTechnicalTransform(Session.SCoRE.xRef.RS, ...
-                               {Trial.Marker(11).Trajectory.full,Trial.Marker(12).Trajectory.full,Trial.Marker(13).Trajectory.full});
+                % Same rationale as the 'humerus' case below : raw c3d
+                % re-read with the patient-specific detected labels
+                % (Session.SCoRE.clusterLabels.RS — see
+                % Core/CoR/DetectScapulaClusterLabels.m), not Trial.Marker(11-13)
+                % which only knows the CURRENT 3-marker labels.
+                scapTraj = ClusterTrajectoriesFromMarker(btkGetMarkers(Trial.btk), Session.SCoRE.clusterLabels.RS, GetUnitRatio(Trial.btk));
+                Ti_trial = BuildTechnicalTransform(Session.SCoRE.xRef.RS, scapTraj);
                 RGJC     = Mprod_array3(Ti_trial, repmat([Session.SCoRE.R.rCsi;1],[1,1,size(SJN,3)]));
             otherwise % 'humerus'
-                Tj_trial = BuildTechnicalTransform(Session.SCoRE.xRef.RA, ...
-                               {Cluster_RA_01,Cluster_RA_02,Cluster_RA_03,Cluster_RA_04,Cluster_RA_05});
+                % Re-reads the humerus cluster from the RAW c3d markers
+                % (not Trial.Marker, which only knows the CURRENT 5-marker
+                % labels declared in userCommands.txt's markerSet), using
+                % whichever labels were detected for this patient during
+                % calibration (Session.SCoRE.clusterLabels.RA — see
+                % Core/CoR/DetectHumerusClusterLabels.m), so a
+                % legacy-naming patient's humerus cluster is reconstructed
+                % with the SAME labels the calibration (xRef.RA / rCsj)
+                % was built on.
+                humTraj  = ClusterTrajectoriesFromMarker(btkGetMarkers(Trial.btk), Session.SCoRE.clusterLabels.RA, GetUnitRatio(Trial.btk));
+                Tj_trial = BuildTechnicalTransform(Session.SCoRE.xRef.RA, humTraj);
                 RGJC     = Mprod_array3(Tj_trial, repmat([Session.SCoRE.R.rCsj;1],[1,1,size(SJN,3)]));
         end
         RGJC(4,:,:) = [];
@@ -184,12 +198,15 @@ switch Processing.GJC.method
         % See right-side case above for the Processing.GJC.view rationale.
         switch Processing.GJC.view
             case 'scapula'
-                Ti_trial = BuildTechnicalTransform(Session.SCoRE.xRef.LS, ...
-                               {Trial.Marker(34).Trajectory.full,Trial.Marker(35).Trajectory.full,Trial.Marker(36).Trajectory.full});
+                % See right-side case above for the rationale.
+                scapTraj = ClusterTrajectoriesFromMarker(btkGetMarkers(Trial.btk), Session.SCoRE.clusterLabels.LS, GetUnitRatio(Trial.btk));
+                Ti_trial = BuildTechnicalTransform(Session.SCoRE.xRef.LS, scapTraj);
                 LGJC     = Mprod_array3(Ti_trial, repmat([Session.SCoRE.L.rCsi;1],[1,1,size(SJN,3)]));
             otherwise % 'humerus'
-                Tj_trial = BuildTechnicalTransform(Session.SCoRE.xRef.LA, ...
-                               {Cluster_LA_01,Cluster_LA_02,Cluster_LA_03,Cluster_LA_04,Cluster_LA_05});
+                % See right-side case above for the rationale (raw c3d
+                % re-read, patient-specific detected labels).
+                humTraj  = ClusterTrajectoriesFromMarker(btkGetMarkers(Trial.btk), Session.SCoRE.clusterLabels.LA, GetUnitRatio(Trial.btk));
+                Tj_trial = BuildTechnicalTransform(Session.SCoRE.xRef.LA, humTraj);
                 LGJC     = Mprod_array3(Tj_trial, repmat([Session.SCoRE.L.rCsj;1],[1,1,size(SJN,3)]));
         end
         LGJC(4,:,:) = [];

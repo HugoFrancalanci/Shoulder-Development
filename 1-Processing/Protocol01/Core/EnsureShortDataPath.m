@@ -62,4 +62,6 @@ else
         shortDrive, longPath, strtrim(mkOut));
 end
 
+disp(' ');
+
 end

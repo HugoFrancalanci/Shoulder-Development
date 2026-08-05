@@ -49,7 +49,9 @@ rows = {};
 for k = 1:length(Trial)
     t = Trial(k);
 
-    if ~(contains(t.task,'ANALYTIC') || contains(t.task,'FUNCTIONAL') || contains(t.task,'CALIBRATION3'))
+    % STATIC3 : older-session alias for CALIBRATION3
+    if ~(contains(t.task,'ANALYTIC') || contains(t.task,'FUNCTIONAL') || ...
+         contains(t.task,'CALIBRATION3') || contains(t.task,'STATIC3'))
         continue;
     end
     if isempty(t.Joint) || length(t.Joint) < 11

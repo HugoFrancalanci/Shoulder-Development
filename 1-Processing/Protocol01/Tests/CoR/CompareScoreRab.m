@@ -29,11 +29,16 @@
 %                Tests/CoR/TestSCoRE.m, called separately (also
 %                unconditionally — it no-ops if Session.SCoRE is absent).
 %
-%                CT-based validation and scapular STA visualisation
-%                (patient 558792 / Jurg Muller only) are delegated to
-%                Tests/CoR/ValidateCoRvsCT.m and Tests/CoR/PlotScapularMeshSTA.m
-%                — split out of this file so each theme (core Rab/SCoRE,
-%                CT imaging, STA) can be read/run independently.
+%                CT-based validation and scapular STA visualisation are
+%                delegated to Tests/CoR/ValidateCoRvsCT.m and
+%                Tests/CoR/PlotScapularMeshSTA.m — split out of this file
+%                so each theme (core Rab/SCoRE, CT imaging, STA) can be
+%                read/run independently. Gated on compareCT (below) and on
+%                CT data actually being found for this patient : looks for
+%                a 'CT' folder as a SIBLING of folderData (.../<patient>/CT
+%                next to .../<patient>/<session date>), containing at least a
+%                '*_scapula.fcsv' file. If compareCT is true but no such
+%                data is found, prints a message and continues (no error).
 %
 %                Not part of the automatic per-trial pipeline (cost =
 %                computing both methods).
@@ -41,8 +46,19 @@
 % Inputs  : Trial      (struct array) all trials from MAIN_Protocol_01
 %           Session    (struct) session info; Session.SCoRE used/computed if missing
 %           Processing (struct) needs Processing.GJC.method ('Rab'/'SCoRE')
-%           folderData (char)   patient folder, only needed if Session.SCoRE
-%                                is not yet computed (optional)
+%           folderData (char)   patient's session folder, possibly shortened
+%                                via a subst drive (Folder.data in
+%                                MAIN_Protocol_01.m) — used for the
+%                                Session.SCoRE fallback and passed through to
+%                                ValidateCoRvsCT.m for its own c3d reads
+%           compareCT  (logical, optional) attempt the CT comparison ;
+%                                default true
+%           patientFolder (char, optional) REAL (non-subst'd) session folder
+%                                (Folder.dataLong in MAIN_Protocol_01.m) —
+%                                used only to locate the sibling 'CT' folder
+%                                (fileparts on a subst drive has no real
+%                                parent to climb to). Defaults to folderData
+%                                if omitted.
 % Outputs : Console report (mean/max/std distance in mm, right and left)
 %           Figures    : RGJC/LGJC distance vs frame ; HT/GH/ST Euler angles
 % -------------------------------------------------------------------------
@@ -57,9 +73,11 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function CompareScoreRab(Trial, Session, Processing, folderData)
+function CompareScoreRab(Trial, Session, Processing, folderData, compareCT, patientFolder)
 
 if nargin < 4, folderData = ''; end
+if nargin < 5 || isempty(compareCT), compareCT = true; end
+if nargin < 6 || isempty(patientFolder), patientFolder = folderData; end
 
 if ~strcmpi(Processing.GJC.method, 'SCoRE')
     return;
@@ -82,9 +100,8 @@ if ~isfield(Session, 'SCoRE') || isempty(Session.SCoRE)
 end
 
 disp(' ');
-disp('====================================================================');
+disp('------------------------------------------------------------------');
 disp('SCoRE validation report');
-disp('====================================================================');
 
 % -------------------------------------------------------------------------
 % 1) Rab vs SCoRE — same call chain as MAIN_Protocol_01.m, computed
@@ -119,18 +136,29 @@ PrintCoRStats('LGJC (gauche)', dL);
 disp(' ');
 
 % -------------------------------------------------------------------------
-% 2) IMAGERIE (CT) + STA scapulaire — patient 558792 (Jurg Muller) uniquement
+% 2) IMAGERIE (CT) + STA scapulaire — 'CT' attendu comme dossier frere de
+% patientFolder (ex: .../<patient>/CT a cote de .../<patient>/<date session>).
+% Utilise patientFolder (chemin REEL, non subst) pour trouver ce dossier,
+% mais folderData (potentiellement raccourci via subst) pour les lectures
+% c3d en aval (ValidateCoRvsCT.m) — meme raison que le subst existe deja
+% dans MAIN_Protocol_01.m (chemins OneDrive imbriques trop longs).
 % -------------------------------------------------------------------------
-if contains(TrialOne.file, '558792')
-    ctFolder    = ['C:\Users\franc\OneDrive - Université de Genève\PhD Hugo\05_Ressources\', ...
-                   '01_Data\01_Etudes\E02_Classification_rTSA\Clinique\Données\KLAB-UPPERLIMB-PROTOCOL01\Data\Muller_Jurg_558792\CT'];
-    ctMocapData = ['C:\Users\franc\OneDrive - Université de Genève\PhD Hugo\05_Ressources\', ...
-                   '01_Data\01_Etudes\E02_Classification_rTSA\Clinique\Données\KLAB-UPPERLIMB-PROTOCOL01\Data\Muller_Jurg_558792\20260324'];
-
-    CTGold = ValidateCoRvsCT(TrialRab, TrialSCoRE, Session, ctFolder, ctMocapData);
-    PlotScapularMeshSTA(TrialRab, Session, CTGold, ctFolder);
+if compareCT
+    if isempty(patientFolder)
+        disp('  2) Section imagerie (CT) ignoree : dossier patient non fourni.');
+        disp(' ');
+    else
+        ctFolder = fullfile(fileparts(patientFolder), 'CT');
+        if isempty(dir(fullfile(ctFolder, '*_scapula.fcsv')))
+            disp('  2) Section imagerie (CT) ignoree : pas de donnees CT pour ce patient.');
+            disp(' ');
+        else
+            CTGold = ValidateCoRvsCT(TrialRab, TrialSCoRE, Session, ctFolder, folderData);
+            PlotScapularMeshSTA(TrialRab, Session, CTGold, ctFolder);
+        end
+    end
 else
-    disp('  2) Section imagerie (CT) ignoree : essai non associe au patient 558792.');
+    disp('  2) Section imagerie (CT) ignoree (option desactivee).');
     disp(' ');
 end
 

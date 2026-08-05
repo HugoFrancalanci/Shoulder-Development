@@ -206,10 +206,10 @@ Processing.GJC.calibTrials = 'default';
 %                                   moves with the arm.
 %                        'scapula': Ti(t)*rCsi — found more stable vs a
 %                                   CT gold standard (see Tests/CoR/ValidateCoRvsCT.m),
-%                                   but NOT yet the pipeline default : it
+%                                   but not yet the pipeline default : it
 %                                   changes how the humeral segment is
 %                                   built (RGJC no longer tracks the
-%                                   humerus at all), not just a diagnostic.
+%                                   humerus at all).
 Processing.GJC.view = 'humerus';
 
 % -------------------------------------------------------------------------

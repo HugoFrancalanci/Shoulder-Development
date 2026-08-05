@@ -80,7 +80,6 @@ if strcmpi(Processing.GJC.method,'SCoRE')
     else
         Session.SCoRE = ComputeSCoRE(Folder.data);
     end
-    TestSCoRE(Session);
 end
 
 % -------------------------------------------------------------------------
@@ -88,12 +87,15 @@ end
 % -------------------------------------------------------------------------
 cd(fullfile(Folder.data, 'Processed'));
 c3dFiles   = dir('*.c3d');
-trialTypes = {'CALIBRATION', 'ANALYTIC', 'FUNCTIONAL'};
+trialTypes = {'CALIBRATION', 'STATIC', 'ISOMETRIC', 'ANALYTIC', 'FUNCTIONAL'};
 k          = 1;
 Trial      = [];
 
-trialOrder = {'CALIBRATION3','CALIBRATION1','CALIBRATION2','CALIBRATION4', ...
-              'CALIBRATION5','CALIBRATION6', ...
+% CALIBRATION1-3/5-6 can be named STATIC1-3/ISOMETRIC1-2 on older sessions
+% (CALIBRATION4 has no alias) — see Core/CoR/CalibrationTrialAliases.m.
+trialOrder = {'CALIBRATION3','STATIC3','CALIBRATION1','STATIC1','CALIBRATION2','STATIC2', ...
+              'CALIBRATION4', ...
+              'CALIBRATION5','ISOMETRIC1','CALIBRATION6','ISOMETRIC2', ...
               'ANALYTIC1','ANALYTIC2','ANALYTIC3','ANALYTIC4','ANALYTIC5', ...
               'FUNCTIONAL1','FUNCTIONAL2','FUNCTIONAL3','FUNCTIONAL4'};
 

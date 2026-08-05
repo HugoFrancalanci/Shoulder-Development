@@ -22,7 +22,7 @@
 
 function Trial = InitialiseEmgSignals(EmgSet,Trial,Trial2,Emg)
 
-if contains(Trial.file,'CALIBRATION3') % May be used to defined EMG baselines
+if contains(Trial.file,'CALIBRATION3') || contains(Trial.file,'STATIC3') % May be used to defined EMG baselines (STATIC3 : older-session alias)
     for iemg = 1:length(EmgSet)
         Trial.Emg(iemg).label = EmgSet{iemg,2};
         Trial.Emg(iemg).type  = '';

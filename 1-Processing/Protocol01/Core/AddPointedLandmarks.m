@@ -21,7 +21,7 @@
 function [Trial,Vmarker] = AddPointedLandmarks(Trial,Marker,Vmarker,Event,pointList,stylus)
 
 disp('  - Ajout des marqueurs pointés');
-if contains(Trial.file,'CALIBRATION3')       
+if contains(Trial.file,'CALIBRATION3') || contains(Trial.file,'STATIC3') % STATIC3 : older-session alias for CALIBRATION3
 	Vmarker   = [];
 	if strcmp(stylus,'Stylus1')
 		% Set local position of the stylus tip 

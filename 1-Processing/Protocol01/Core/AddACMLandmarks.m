@@ -20,7 +20,7 @@
 
 function [Trial,Vmarker] = AddACMLandmarks(Session,Trial,Marker,Vmarker)
 
-if contains(Trial.file,'CALIBRATION1')
+if contains(Trial.file,'CALIBRATION1') || contains(Trial.file,'STATIC1') % STATIC1 : older-session alias for CALIBRATION1
     disp('  - Ajout des landmarks scapulaires');
     % -------------------------------------------------------------------------
     % RIGHT ACM
@@ -80,7 +80,7 @@ if contains(Trial.file,'CALIBRATION1')
     Vmarker.LACM1                       = Marker.LACM1';
     Vmarker.LACM2                       = Marker.LACM2';
     Vmarker.LACM3                       = Marker.LACM3';
-elseif ~contains(Trial.file,'CALIBRATION3') && ~contains(Trial.file,'CALIBRATION4')
+elseif ~contains(Trial.file,'CALIBRATION3') && ~contains(Trial.file,'STATIC3') && ~contains(Trial.file,'CALIBRATION4')
     disp('  - Ajout des landmarks scapulaires');
     % -------------------------------------------------------------------------
     % RIGHT ACM

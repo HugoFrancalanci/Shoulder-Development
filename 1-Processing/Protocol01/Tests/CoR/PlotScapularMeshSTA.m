@@ -10,7 +10,8 @@
 % -------------------------------------------------------------------------
 % Description:   STA VISUALISATION : scapular anatomical markers (AA/IA/TS/AC,
 %                same landmarks as Tests/CoR/TestScapularCluster.m) overlaid
-%                on the CT scapula mesh (patient 558792 / Jurg Muller only),
+%                on the CT scapula mesh (only meaningful for a patient with
+%                CT data available),
 %                reprojected into the scapula-local (CALIBRATION1-instant)
 %                frame and coloured by flexion angle. If a marker is rigid
 %                on the bone, its point cloud should sit as a tight dot on
@@ -87,7 +88,7 @@ dAC_mm = distanceToMesh(AC, meshVerts_mm);
 RmatAA = corrcoef(elevAngle, dAA_mm); RmatIA = corrcoef(elevAngle, dIA_mm);
 RmatTS = corrcoef(elevAngle, dTS_mm); RmatAC = corrcoef(elevAngle, dAC_mm);
 
-disp('  Distance marqueur -> maillage CT (mm) :');
+disp('  -- Distance entre marqueurs cinematiques et maillage CT (mm) --');
 fprintf('  %-4s %7s %7s %7s\n', 'Rep.', 'Mean', 'Max', 'r');
 disp(['  ', repmat('-', 1, 28)]);
 fprintf('  %-4s %7.2f %7.2f %7.2f\n', 'AA', mean(dAA_mm,'omitnan'), max(dAA_mm), RmatAA(1,2));

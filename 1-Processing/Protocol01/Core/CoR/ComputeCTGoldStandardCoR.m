@@ -69,7 +69,8 @@
 %                                     position — 0 would mean the two STL
 %                                     exports are perfectly co-registered
 % -------------------------------------------------------------------------
-% Dependencies : ReadFcsvPoints.m, FitSphereLS.m, soder.m, SetUnits.m
+% Dependencies : ReadFcsvPoints.m, FitSphereLS.m, soder.m, SetUnits.m,
+%                FindTrialFileIndex.m
 % -------------------------------------------------------------------------
 % This work is licensed under the Creative Commons Attribution -
 % NonCommercial 4.0 International License. To view a copy of this license,
@@ -80,9 +81,7 @@
 function CTGold = ComputeCTGoldStandardCoR(ctFolder, folderData, side)
 
 disp(' ');
-disp('------------------------------------------------------------------');
-disp('CT gold-standard CoR (glenosphere sphere fit + CT->lab registration)');
-disp('------------------------------------------------------------------');
+disp('  -- CT gold-standard CoR (glenosphere sphere fit + CT->lab registration) --');
 
 if strcmpi(side, 'R')
     lbl    = {'RSRS', 'RSAA', 'RSIA'};
@@ -147,9 +146,9 @@ ptsCup       = ptsHumerus(idxCup, :);
 oldDir  = cd(fullfile(folderData, 'Processed'));
 cleanUp = onCleanup(@() cd(oldDir)); %#ok<NASGU>
 c3dFiles  = dir('*.c3d');
-calib1Idx = find(contains({c3dFiles.name}, 'CALIBRATION1'), 1);
+calib1Idx = FindTrialFileIndex(c3dFiles, 'CALIBRATION1');
 if isempty(calib1Idx)
-    error('ComputeCTGoldStandardCoR:noCalibration1', 'CALIBRATION1.c3d not found in %s', folderData);
+    error('ComputeCTGoldStandardCoR:noCalibration1', 'CALIBRATION1.c3d (or its STATIC1 alias) not found in %s', folderData);
 end
 acq             = btkReadAcquisition(c3dFiles(calib1Idx).name);
 tmpTrial(1).btk = acq;

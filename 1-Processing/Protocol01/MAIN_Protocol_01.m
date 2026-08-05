@@ -6,7 +6,7 @@
 %                https://creativecommons.org/licenses/by-nc/4.0/legalcode
 % Source code:   To be defined
 % Reference  :   To be defined
-% Date       :   Augustles boucle 2026
+% Date       :   August 2026
 % -------------------------------------------------------------------------
 % Description: (1) Research & Development Branch. 
 %              (2) Extension of the KLAB_ShoulderAnalysis_Toolbox (F. Moissenet)
@@ -36,21 +36,27 @@ MainFolder           = 'C:\Users\franc\Desktop\Programming\01_Projects\E02_Class
 Folder.toolbox       = [MainFolder,'\Shoulder_Dev\1-Processing\Protocol01'];
 Folder.data          = uigetdir(); 
 Folder.dependencies  = [MainFolder,'\Shoulder_Dev\1-Processing\dependencies'];
+
+% Folder access
 addpath(Folder.toolbox);
 addpath(genpath(Folder.dependencies));
 addpath(fullfile(Folder.toolbox, 'Core'));
 addpath(fullfile(Folder.toolbox, 'Core', 'CoR'));
+addpath(fullfile(Folder.toolbox, 'Core', 'Thorax'));
+addpath(fullfile(Folder.toolbox, 'Core', 'SHR'));
 addpath(fullfile(Folder.toolbox, 'Init'));
 addpath(fullfile(Folder.toolbox, 'IO'));
 addpath(fullfile(Folder.toolbox, 'Plot'));
 addpath(fullfile(Folder.toolbox, 'Templates'));
 addpath(fullfile(Folder.toolbox, 'Tests'));
 addpath(fullfile(Folder.toolbox, 'Tests', 'CoR'));
+addpath(fullfile(Folder.toolbox, 'Tests', 'Thorax'));
 disp(' ');
 
 % Short path
-shortDrive  = 'S:';
-Folder.data = EnsureShortDataPath(Folder.data, shortDrive);
+Folder.dataLong = Folder.data;
+shortDrive       = 'S:';
+Folder.data      = EnsureShortDataPath(Folder.data, shortDrive);
 
 % -------------------------------------------------------------------------
 % GET SESSION DATA
@@ -75,6 +81,7 @@ eval(userCommands);
 doPlots      = input('Plots (1 Oui 0 Non) : ');
 doValidation = input('Validation (1 Oui 0 Non) : ');
 doExport     = input('Export (1 Oui 0 Non) : ');
+doCoRvsCT    = input('Comparaison CT (1 Oui 0 Non) : ');
 
 % -------------------------------------------------------------------------
 % CoR CALIBRATION
@@ -90,12 +97,15 @@ end
 % Load data
 cd([Folder.data,'\Processed\']);
 c3dFiles   = dir('*.c3d');
-trialTypes = {'CALIBRATION','ANALYTIC','FUNCTIONAL'};
+trialTypes = {'CALIBRATION','STATIC','ISOMETRIC','ANALYTIC','FUNCTIONAL'};
 k          = 1;
 
 %%
-trialOrder = {'CALIBRATION3','CALIBRATION1','CALIBRATION2','CALIBRATION4', ...
-              'CALIBRATION5','CALIBRATION6', ...
+% CALIBRATION1-3/5-6 can be named STATIC1-3/ISOMETRIC1-2 on older sessions
+% (CALIBRATION4 has no alias) — see Core/CoR/CalibrationTrialAliases.m.
+trialOrder = {'CALIBRATION3','STATIC3','CALIBRATION1','STATIC1','CALIBRATION2','STATIC2', ...
+              'CALIBRATION4', ...
+              'CALIBRATION5','ISOMETRIC1','CALIBRATION6','ISOMETRIC2', ...
               'ANALYTIC1','ANALYTIC2','ANALYTIC3','ANALYTIC4','ANALYTIC5', ...
               'FUNCTIONAL1','FUNCTIONAL2','FUNCTIONAL3','FUNCTIONAL4'};
 
@@ -113,16 +123,14 @@ orderedIdx = orderedIdx(1:nIdx);
 
 for i = orderedIdx
     for j = 1:size(trialTypes,2)
-        if contains(c3dFiles(i).name, trialTypes{j}) 
+        if contains(c3dFiles(i).name, trialTypes{j})
             disp(' ');
-            % Extract data from C3D files 
-            if contains(c3dFiles(i).name,'CALIBRATION')
-                Trial(k).task = c3dFiles(i).name(end-18:end-7);
-            elseif contains(c3dFiles(i).name,'ANALYTIC')
-                Trial(k).task = c3dFiles(i).name(end-15:end-7);
-            elseif contains(c3dFiles(i).name,'FUNCTIONAL')
-                Trial(k).task = c3dFiles(i).name(end-17:end-7);
-            end
+            % Extract data from C3D files
+            % Task name = whichever trialOrder entry actually matches this
+            % file — robust to STATIC/ISOMETRIC aliases (their name length
+            % differs from CALIBRATION, so a fixed character offset can't
+            % be used here).
+            Trial(k).task = trialOrder{find(cellfun(@(t) contains(c3dFiles(i).name, t), trialOrder), 1)};
             Trial(k).file        = c3dFiles(i).name;
             Trial(k).btk         = btkReadAcquisition(c3dFiles(i).name);
             Trial(k).n0          = btkGetFirstFrame(Trial(k).btk);
@@ -195,7 +203,7 @@ if doValidation
     TestHG(Trial);                % Validation HG angles
     TestSCoRE(Session);            % Qualite calibration SCoRE
     TestScapularCluster(Trial);   % STA scapulaire
-    CompareScoreRab(Trial, Session, Processing); % Rab vs SCoRE comparaison
+    CompareScoreRab(Trial, Session, Processing, Folder.data, doCoRvsCT, Folder.dataLong); % Rab vs SCoRE comparaison
 end
 
 % =========================================================================
