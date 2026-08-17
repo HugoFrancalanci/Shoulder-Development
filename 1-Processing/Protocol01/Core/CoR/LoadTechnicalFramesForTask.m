@@ -67,7 +67,12 @@ clLA = ClusterTrajectoriesFromMarker(Marker, clusterLabels.LA, ratio);
 [Tj_L, rms.TjL] = BuildTechnicalTransform(xRef.LA, clLA);
 
 if verbose
-    disp(['  - ', taskName, ' loaded (', num2str(size(clRA{1}, 3)), ' frames)']);
+    % Frame count from the acquisition itself, not from a specific
+    % cluster's trajectory (clRA{1} would crash here if the RIGHT humerus
+    % cluster is unavailable for this patient - clRA is then a 1x0 empty
+    % cell, see ClusterTrajectoriesFromMarker.m/BuildTechnicalTransform.m).
+    nFrames = btkGetLastFrame(acq) - btkGetFirstFrame(acq) + 1;
+    disp(['  - ', taskName, ' loaded (', num2str(nFrames), ' frames)']);
 end
 
 end

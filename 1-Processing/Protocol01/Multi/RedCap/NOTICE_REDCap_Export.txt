@@ -36,9 +36,10 @@ CRÉER UN NOUVEAU TABLEAU
 2. Copier un script existant comme modèle :
      - export_redcap_preOP.py   -> 4 blocs (Géométrie + Classification + ASA
                                    + CMS pré-opératoire)
-     - export_redcap_postOP.py  -> 6 blocs (Opération + Prothèse + Planning
+     - export_redcap_postOP.py  -> 7 blocs (Opération + Prothèse + Planning
                                    + Paramètres intra-opératoires + Simulation
-                                   + CMS à 1 an), tout dans un seul Excel
+                                   + CMS à 1 an + Complications), tout dans
+                                   un seul Excel
 3. Adapter dans le nouveau script : la liste des variables (libellé +
    nom de colonne REDCap), les en-têtes/fusions, et build_row()
 4. Vérifier que les noms de colonnes REDCap existent bien dans le CSV
@@ -55,6 +56,23 @@ CRÉER UN NOUVEAU TABLEAU
   intra-opératoires = valeur définitive (_def) ; si elle vaut "-" (=
   identique au plan côté REDCap), la valeur planifiée (_prim) est prise à
   la place. Dans les deux cas, cellule vide -> "R".
+- Champ REDCap de type "checkbox" (plusieurs cases à cocher, ex:
+  arthro_comppostop_type dans postOP.py) : REDCap exporte UNE COLONNE CSV
+  PAR CASE (suffixe "___N", N = code de la case), valant "0" ou "1", et
+  plusieurs peuvent valoir "1" en même temps pour un même patient. Pattern
+  utilisé (voir resolve_complications() dans postOP.py) : une liste
+  (libellé, nom de colonne) par case, un flag binaire (1 si au moins une
+  case cochée, 0 sinon), et une colonne "Type" = libellés des cases
+  cochées joints par ", ".
+  ATTENTION - "jamais évalué" vs "évalué, rien coché" : les cases à cocher
+  seules ne suffisent PAS à faire cette distinction, REDCap les remplit
+  souvent à "0" par défaut même si le formulaire n'a jamais été ouvert
+  pour ce patient. Utiliser plutôt le champ de statut de formulaire que
+  REDCap génère automatiquement pour chaque instrument, nommé
+  "<nom_instrument>_complete" (0=Incomplet, 1=Non vérifié, 2=Complet, vide
+  = jamais ouvert) - ex: complication_postop_complete pour l'instrument
+  contenant arthro_comppostop_type. Vide sur ce champ = "R" (jamais
+  évalué), peu importe l'état des cases à cocher.
 - Ligne remplie de "R" = patient sans aucune donnée pour ce tableau.
   "ID RedCap not available" = aucun id_redcap renseigné pour ce patient.
 - Une ligne vide est insérée avant chaque patient, pour la lisibilité.

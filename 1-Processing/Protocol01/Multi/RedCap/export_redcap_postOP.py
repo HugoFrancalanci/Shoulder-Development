@@ -1,6 +1,6 @@
 """
 Export REDCap - tableau Opération / Prothèse / Planning / Paramètres
-intra-opératoires / Simulation / CMS
+intra-opératoires / Simulation / CMS / Complications
 -----------------------------------------------------------------
 Combine en un seul script + un seul Excel ce qui était avant 2 tableaux
 séparés (PostOP_operation_prothese + PostOP_planning) : mêmes variables,
@@ -26,6 +26,21 @@ conversion numérique) vient de redcap_common.py.
                      (suivi à 1 an) via val_for_event (le champ n'est
                      pas dédoublé en colonnes, il est répété sur
                      plusieurs events REDCap selon la visite)
+  Bloc "Complications" : champ REDCap checkbox arthro_comppostop_type
+                     (20 cases à cocher, une colonne CSV par case -
+                     arthro_comppostop_type___36 à ___55, une ou plusieurs
+                     peuvent être cochées à la fois pour un même patient).
+                     2 colonnes : "Complications" (1 si au moins une case
+                     cochée, 0 si aucune, "R" si jamais évalué) et "Type"
+                     (libellés des cases cochées, joints par ", " ; vide
+                     si 0 ; "R" si "R").
+                     "jamais évalué" est déterminé via le champ de statut
+                     de formulaire REDCap complication_postop_complete
+                     (vide = formulaire jamais ouvert), PAS via les cases
+                     à cocher elles-mêmes : REDCap les remplit souvent à
+                     "0" par défaut même quand le formulaire n'a jamais été
+                     ouvert pour ce patient, donc "tout à 0" ne suffit pas
+                     à conclure "pas de complication".
 """
 
 import datetime
@@ -90,6 +105,31 @@ CMS_FIELDS = [
     ("Rotation interne", "cms_rotint"),
     ("Force", "cms_force"),
     ("Total", "cms_total"),
+]
+
+# Champ REDCap checkbox arthro_comppostop_type : une colonne CSV par case
+# (arthro_comppostop_type___36 à ___55), plusieurs peuvent être cochées.
+COMPLICATION_FIELDS = [
+    ("Hématome", "arthro_comppostop_type___36"),
+    ("Déhiscence de plaie", "arthro_comppostop_type___37"),
+    ("Infection", "arthro_comppostop_type___38"),
+    ("Raideur (EAA<90° à 3 mois)", "arthro_comppostop_type___39"),
+    ("Insuffisance rotateurs externes", "arthro_comppostop_type___40"),
+    ("Douleurs persistantes (>2-3 mois)", "arthro_comppostop_type___41"),
+    ("Lésion vasculaire", "arthro_comppostop_type___42"),
+    ("Lésion nerveuse", "arthro_comppostop_type___43"),
+    ("Notching", "arthro_comppostop_type___44"),
+    ("Instabilité", "arthro_comppostop_type___45"),
+    ("Fracture périprothétique humérus postopératoire", "arthro_comppostop_type___46"),
+    ("Fracture périprothétique omoplate postopératoire", "arthro_comppostop_type___47"),
+    ("Fracture acromiale", "arthro_comppostop_type___48"),
+    ("Décompensation arthropathie AC", "arthro_comppostop_type___49"),
+    ("Descellement composant glénoïdien", "arthro_comppostop_type___50"),
+    ("Descellement composant huméral", "arthro_comppostop_type___51"),
+    ("Lésion deltoïde", "arthro_comppostop_type___52"),
+    ("Thrombose veineuse profonde", "arthro_comppostop_type___53"),
+    ("Embolie pulmonaire", "arthro_comppostop_type___54"),
+    ("Décès", "arthro_comppostop_type___55"),
 ]
 
 # Codes REDCap -> libellé affiché, pour les champs qui en ont besoin.
@@ -162,6 +202,26 @@ def resolve_intraop_value(row, prim, deff):
     return to_number(d)
 
 
+def resolve_complications(row):
+    """Champ checkbox arthro_comppostop_type (une colonne CSV par case,
+    plusieurs cochables à la fois). Retourne (complications, type) :
+    - complications : 1 si au moins une case cochée, 0 si le formulaire
+      REDCap a été ouvert (complication_postop_complete renseigné - statut
+      Incomplet/Non vérifié/Complet) sans aucune case cochée, "R" si le
+      formulaire n'a jamais été ouvert (complication_postop_complete vide).
+      IMPORTANT : une case checkbox à "0" ne suffit PAS à elle seule à
+      distinguer "pas de complication" de "jamais évalué" - REDCap remplit
+      souvent les checkbox à "0" par défaut même quand le formulaire n'a
+      jamais été ouvert pour ce patient. D'où l'utilisation du statut de
+      formulaire comme signal de référence.
+    - type : libellés des cases cochées, joints par ", " ; "" si 0 ;
+      "R" si complications == "R"."""
+    if val(row, "complication_postop_complete") == "":
+        return "R", "R"
+    checked = [label for label, field in COMPLICATION_FIELDS if str(val(row, field)).strip() == "1"]
+    return (1 if checked else 0), ", ".join(checked)
+
+
 # -------------------------------------------------------------------------
 # EN-TÊTE (2 lignes)
 # -------------------------------------------------------------------------
@@ -169,6 +229,7 @@ n_op, n_pr = len(OPERATION_FIELDS), len(PROTHESE_FIELDS)
 n_plan, n_intraop = len(PLANNING_FIELDS), len(PLANNING_FIELDS)  # mêmes 10 variables, prim puis def
 n_sim = len(SIMULATION_FIELDS)
 n_cms = len(CMS_FIELDS)
+n_comp = 2  # Complications, Type
 
 header1 = (
     [""]
@@ -178,6 +239,7 @@ header1 = (
     + [""] + ["Paramètres intra-opératoires"] + [""] * (n_intraop - 1)
     + [""] + ["Simulation"] + [""] * (n_sim - 1)
     + [""] + ["CMS"] + [""] * (n_cms - 1)
+    + [""] + ["Complications"] + [""] * (n_comp - 1)
 )
 header2 = (
     ["ID REDCap"]
@@ -192,6 +254,8 @@ header2 = (
     + [label for label, _ in SIMULATION_FIELDS]
     + [""]
     + [label for label, _ in CMS_FIELDS]
+    + [""]
+    + ["Complications", "Type"]
 )
 
 merges = [
@@ -201,6 +265,8 @@ merges = [
     (n_op + n_pr + n_plan + 5, n_op + n_pr + n_plan + 4 + n_intraop),
     (n_op + n_pr + n_plan + n_intraop + 6, n_op + n_pr + n_plan + n_intraop + 5 + n_sim),
     (n_op + n_pr + n_plan + n_intraop + n_sim + 7, n_op + n_pr + n_plan + n_intraop + n_sim + 6 + n_cms),
+    (n_op + n_pr + n_plan + n_intraop + n_sim + n_cms + 8,
+     n_op + n_pr + n_plan + n_intraop + n_sim + n_cms + 7 + n_comp),
 ]
 
 check_columns(
@@ -209,7 +275,9 @@ check_columns(
     + [f for _, f in PROTHESE_FIELDS]
     + [f for _, prim, deff in PLANNING_FIELDS for f in (prim, deff)]
     + [f for _, f in SIMULATION_FIELDS]
-    + [f for _, f in CMS_FIELDS] + ["redcap_event_name"],
+    + [f for _, f in CMS_FIELDS]
+    + [f for _, f in COMPLICATION_FIELDS]
+    + ["complication_postop_complete", "redcap_event_name"],
 )
 
 
@@ -227,6 +295,7 @@ def build_row(df, rid):
         or any(val(row, prim) != "" or val(row, deff) != "" for _, prim, deff in PLANNING_FIELDS)
         or any(val(row, f) != "" for _, f in SIMULATION_FIELDS)
         or any(v != "" for v in cms_raw)
+        or any(val(row, f) != "" for _, f in COMPLICATION_FIELDS)
     )
     if not has_data:
         return False, None
@@ -237,6 +306,7 @@ def build_row(df, rid):
     intraop_vals = [resolve_intraop_value(row, prim, deff) for _, prim, deff in PLANNING_FIELDS]
     simulation_vals = [to_number(val(row, f)) for _, f in SIMULATION_FIELDS]
     cms_vals = [to_number(v) for v in cms_raw]
+    complications, complications_type = resolve_complications(row)
 
     line = (
         operation_vals + [""]
@@ -244,7 +314,8 @@ def build_row(df, rid):
         + planning_vals + [""]
         + intraop_vals + [""]
         + simulation_vals + [""]
-        + cms_vals
+        + cms_vals + [""]
+        + [complications, complications_type]
     )
     return True, line
 

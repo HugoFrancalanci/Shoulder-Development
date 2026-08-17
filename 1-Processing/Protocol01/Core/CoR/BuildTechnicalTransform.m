@@ -38,6 +38,16 @@
 function [T, rmsFrames] = BuildTechnicalTransform(xRef, clusterMarkers)
 
 k = numel(clusterMarkers);
+if k == 0
+    % Cluster unavailable for this segment/side (ComputeSCoRE.m found no
+    % usable marker set - current or legacy - for this patient) : no
+    % marker to size N against, return an explicit 0-frame placeholder
+    % (4x4x0, distinguishable from LoadTechnicalFramesForTask's own 0x0
+    % "trial file not found" case) rather than crashing on clusterMarkers{1}.
+    T = nan(4, 4, 0);
+    rmsFrames = nan(1, 0);
+    return;
+end
 N = size(clusterMarkers{1}, 3);
 
 T           = nan(4, 4, N);

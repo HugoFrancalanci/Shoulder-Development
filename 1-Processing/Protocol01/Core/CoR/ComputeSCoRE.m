@@ -95,6 +95,16 @@ cleanUp = onCleanup(@() cd(oldDir)); %#ok<NASGU>
 % is missing or nothing usable is detected (unchanged behaviour).
 % -------------------------------------------------------------------------
 clusterLabels = DefaultClusterLabels();
+% Per-side/segment availability : false when NEITHER the current markers
+% NOR any legacy naming was found (e.g. a side genuinely never
+% instrumented - documented cases: prior contralateral prosthesis, or an
+% operator omission). SCoRE calibration for a side needs BOTH its scapula
+% AND humerus cluster ; see "SCoRE / SKIP UNAVAILABLE SIDES" below for how
+% this is used, and DefineSegments.m for the per-side Rab fallback this
+% enables.
+scapulaOK.R = true; scapulaOK.L = true;
+humerusOK.R = true; humerusOK.L = true;
+
 c3dFilesLocal = dir('*.c3d');
 idxA1         = find(contains({c3dFilesLocal.name}, 'ANALYTIC1'), 1);
 if ~isempty(idxA1)
@@ -103,22 +113,34 @@ if ~isempty(idxA1)
 
     labelsRS = DetectScapulaClusterLabels(MarkerA1, 'R');
     labelsLS = DetectScapulaClusterLabels(MarkerA1, 'L');
-    if ~isempty(labelsRS) && ~isequal(labelsRS, clusterLabels.RS)
+    if isempty(labelsRS)
+        clusterLabels.RS = {}; scapulaOK.R = false;
+        disp('  Cluster scapula droit : aucun marqueur trouve pour ce patient.');
+    elseif ~isequal(labelsRS, clusterLabels.RS)
         clusterLabels.RS = labelsRS;
         disp(['  Cluster scapula droit (legacy detecte) : ', strjoin(labelsRS, ', ')]);
     end
-    if ~isempty(labelsLS) && ~isequal(labelsLS, clusterLabels.LS)
+    if isempty(labelsLS)
+        clusterLabels.LS = {}; scapulaOK.L = false;
+        disp('  Cluster scapula gauche : aucun marqueur trouve pour ce patient.');
+    elseif ~isequal(labelsLS, clusterLabels.LS)
         clusterLabels.LS = labelsLS;
         disp(['  Cluster scapula gauche (legacy detecte) : ', strjoin(labelsLS, ', ')]);
     end
 
     labelsRA = DetectHumerusClusterLabels(MarkerA1, 'R');
     labelsLA = DetectHumerusClusterLabels(MarkerA1, 'L');
-    if ~isempty(labelsRA) && ~isequal(labelsRA, clusterLabels.RA)
+    if isempty(labelsRA)
+        clusterLabels.RA = {}; humerusOK.R = false;
+        disp('  Cluster humerus droit : aucun marqueur trouve pour ce patient.');
+    elseif ~isequal(labelsRA, clusterLabels.RA)
         clusterLabels.RA = labelsRA;
         disp(['  Cluster humerus droit (legacy detecte) : ', strjoin(labelsRA, ', ')]);
     end
-    if ~isempty(labelsLA) && ~isequal(labelsLA, clusterLabels.LA)
+    if isempty(labelsLA)
+        clusterLabels.LA = {}; humerusOK.L = false;
+        disp('  Cluster humerus gauche : aucun marqueur trouve pour ce patient.');
+    elseif ~isequal(labelsLA, clusterLabels.LA)
         clusterLabels.LA = labelsLA;
         disp(['  Cluster humerus gauche (legacy detecte) : ', strjoin(labelsLA, ', ')]);
     end
@@ -134,9 +156,16 @@ xRef = GetCalibrationReferencePose(clusterLabels);
 % -------------------------------------------------------------------------
 Ti_R = []; Tj_R = []; Ti_L = []; Tj_L = [];
 rmsTi_R = []; rmsTj_R = []; rmsTi_L = []; rmsTj_L = [];
+anyTaskFound = false;
 for it = 1:numel(taskList)
     [Ti_R_trial, Tj_R_trial, Ti_L_trial, Tj_L_trial, rms] = LoadTechnicalFramesForTask(taskList{it}, xRef, clusterLabels);
-    if isempty(Ti_R_trial), continue; end
+    % isequal(size(...),[0 0]) = LoadTechnicalFramesForTask's own early
+    % return (trial file not found) -> skip the whole task. A 4x4x0 (not
+    % 0x0) here instead means the FILE was found but one side's cluster is
+    % unavailable (BuildTechnicalTransform.m) -> still usable for the
+    % other side, must not be treated the same as "task not found".
+    if isequal(size(Ti_R_trial), [0 0]), continue; end
+    anyTaskFound = true;
 
     Ti_R = cat(3, Ti_R, Ti_R_trial); Tj_R = cat(3, Tj_R, Tj_R_trial);
     Ti_L = cat(3, Ti_L, Ti_L_trial); Tj_L = cat(3, Tj_L, Tj_L_trial);
@@ -144,21 +173,36 @@ for it = 1:numel(taskList)
     rmsTi_L = [rmsTi_L, rms.TiL]; rmsTj_L = [rmsTj_L, rms.TjL]; %#ok<AGROW>
 end
 
-if isempty(Ti_R)
+if ~anyTaskFound
     error('ComputeSCoRE:noCalibrationFrames', ...
           'None of the requested trials (%s) were found -> no SCoRE calibration possible.', strjoin(taskList, ', '));
 end
 
-% Drop frames with a missing marker on either segment of the pair
-% (a single NaN would otherwise corrupt the whole pinv solution, not just that frame)
-[Ti_R, Tj_R] = DropNanFrames(Ti_R, Tj_R);
-[Ti_L, Tj_L] = DropNanFrames(Ti_L, Tj_L);
+% -------------------------------------------------------------------------
+% SCoRE (Ehrig et al. 2006) — SKIP UNAVAILABLE SIDES
+% A side needs BOTH its scapula and humerus cluster, and actual pooled
+% frames, to be calibratable. An unavailable side gets NaN outputs (never
+% fed through DropNanFrames/SCoRE_array3, which assume real cluster data)
+% instead of crashing ; DefineSegments.m falls back to the Rab regression
+% for that side when it sees this NaN.
+% -------------------------------------------------------------------------
+canCalibrate.R = scapulaOK.R && humerusOK.R && size(Ti_R, 3) > 0;
+canCalibrate.L = scapulaOK.L && humerusOK.L && size(Ti_L, 3) > 0;
 
-% -------------------------------------------------------------------------
-% SCoRE (Ehrig et al. 2006)
-% -------------------------------------------------------------------------
-[~, rCsi_R, rCsj_R] = SCoRE_array3(Ti_R, Tj_R);
-[~, rCsi_L, rCsj_L] = SCoRE_array3(Ti_L, Tj_L);
+if canCalibrate.R
+    [Ti_R, Tj_R] = DropNanFrames(Ti_R, Tj_R); % drop frames with a missing marker on either segment
+    [~, rCsi_R, rCsj_R] = SCoRE_array3(Ti_R, Tj_R);
+else
+    rCsi_R = nan(3, 1); rCsj_R = nan(3, 1);
+    disp('  SCoRE droit ignore (cluster scapula/humerus indisponible pour ce patient).');
+end
+if canCalibrate.L
+    [Ti_L, Tj_L] = DropNanFrames(Ti_L, Tj_L);
+    [~, rCsi_L, rCsj_L] = SCoRE_array3(Ti_L, Tj_L);
+else
+    rCsi_L = nan(3, 1); rCsj_L = nan(3, 1);
+    disp('  SCoRE gauche ignore (cluster scapula/humerus indisponible pour ce patient).');
+end
 
 SCoRE.xRef          = xRef;
 SCoRE.clusterLabels = clusterLabels;
@@ -170,9 +214,18 @@ SCoRE.L.rCsj        = rCsj_L;
 % -------------------------------------------------------------------------
 % DIAGNOSTICS — agreement between the two independent CoR estimates
 % (rC via scapula frame vs rC via humerus frame), see Tests/TestSCoRE.m
+% NaN (not computed) for a side skipped above.
 % -------------------------------------------------------------------------
-SCoRE.R.residual_mm = corResidual_mm(Ti_R, Tj_R, rCsi_R, rCsj_R);
-SCoRE.L.residual_mm = corResidual_mm(Ti_L, Tj_L, rCsi_L, rCsj_L);
+if canCalibrate.R
+    SCoRE.R.residual_mm = corResidual_mm(Ti_R, Tj_R, rCsi_R, rCsj_R);
+else
+    SCoRE.R.residual_mm = NaN;
+end
+if canCalibrate.L
+    SCoRE.L.residual_mm = corResidual_mm(Ti_L, Tj_L, rCsi_L, rCsj_L);
+else
+    SCoRE.L.residual_mm = NaN;
+end
 
 % Cluster rigidity quality (soder RMS fit residual), in mm
 SCoRE.R.clusterRMS.scapula_mm = mean(rmsTi_R, 'omitnan') * 1e3;

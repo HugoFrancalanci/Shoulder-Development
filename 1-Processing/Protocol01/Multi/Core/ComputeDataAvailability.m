@@ -162,6 +162,9 @@ Row = struct( ...
     'Force_Nombre', 0, 'Force', 0);
 
 allTrialTasks = {Trial.task};
+allTrialTasks(~cellfun(@ischar, allTrialTasks)) = {''}; % defensive: a non-text
+% .task (e.g. a naming variant runProtocol01 doesn't recognise) would make
+% contains() throw "First argument must be text" below - see findTask/presentAny.
 c3dNames = {};
 if ~isempty(c3dFiles), c3dNames = {c3dFiles.name}; end
 
@@ -345,7 +348,8 @@ end
 function tidx = findTask(Trial, taskName)
 tidx = [];
 for k = 1:length(Trial)
-    if contains(Trial(k).task, taskName), tidx = k; return; end
+    tk = Trial(k).task;
+    if ischar(tk) && contains(tk, taskName), tidx = k; return; end
 end
 end
 

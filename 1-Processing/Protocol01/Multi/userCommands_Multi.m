@@ -204,12 +204,12 @@ PatientSelection = { ...
     '307818', 'L', '2025', '2026'; ... % 180
     '66072', 'R', '2025', '2026'; ... % 181
     '762166', 'R', '2025', '2026'; ... % 182
-};
+    };
 
 % SkipKinematics : true pour sauter le calcul cinématique complet
 % dans runProtocol01 et n'obtenir que PatientInfos et DataAvailability,
-% plus rapidement. Rcycle/Lcycle restent a 0 dans ce mode (pas calcules).
-SkipKinematics = true;
+% plus rapidement.
+SkipKinematics = false;
 
 % ResultsFolder : dossier où sont écrits les Excels de sortie. 
 ResultsFolder = fullfile(fileparts(mfilename('fullpath')), 'Results');

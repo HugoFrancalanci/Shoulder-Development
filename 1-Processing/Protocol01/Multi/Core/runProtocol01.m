@@ -51,6 +51,8 @@ addpath(Folder.toolbox);
 addpath(genpath(Folder.deps));
 addpath(fullfile(Folder.toolbox, 'Core'));
 addpath(fullfile(Folder.toolbox, 'Core', 'CoR'));
+addpath(fullfile(Folder.toolbox, 'Core', 'Thorax'));
+addpath(fullfile(Folder.toolbox, 'Core', 'SHR'));
 addpath(fullfile(Folder.toolbox, 'Init'));
 addpath(fullfile(Folder.toolbox, 'IO'));
 
@@ -121,13 +123,19 @@ for i = orderedIdx
     for j = 1:size(trialTypes, 2)
         if contains(c3dFiles(i).name, trialTypes{j})
             disp(' ');
-            % Task name
-            if contains(c3dFiles(i).name, 'CALIBRATION')
-                Trial(k).task = c3dFiles(i).name(end-18:end-7);
-            elseif contains(c3dFiles(i).name, 'ANALYTIC')
-                Trial(k).task = c3dFiles(i).name(end-15:end-7);
-            elseif contains(c3dFiles(i).name, 'FUNCTIONAL')
-                Trial(k).task = c3dFiles(i).name(end-17:end-7);
+            % Task name = whichever trialOrder entry actually matches this
+            % file — robust to STATIC/ISOMETRIC aliases (their name length
+            % differs from CALIBRATION, so a fixed character offset can't
+            % be used here). Same approach as MAIN_Protocol_01.m (kept
+            % consistent on purpose): a fixed-offset version here used to
+            % leave Trial(k).task empty for STATIC/ISOMETRIC files, causing
+            % "First argument must be text" downstream in any
+            % contains(Trial(k).task, ...) call.
+            matchOrder = find(cellfun(@(t) contains(c3dFiles(i).name, t), trialOrder), 1);
+            if ~isempty(matchOrder)
+                Trial(k).task = trialOrder{matchOrder};
+            else
+                Trial(k).task = '';
             end
             Trial(k).file    = c3dFiles(i).name;
             Trial(k).btk     = btkReadAcquisition(c3dFiles(i).name);
