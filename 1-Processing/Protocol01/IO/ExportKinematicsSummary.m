@@ -14,23 +14,21 @@
 %                Trials : ANALYTIC1, ANALYTIC2
 %                Sides  : Right (R) and Left (L) separately
 %
+%                Functional analysis (table 1) uses the sequence-free
+%                quaternion total rotation angle (Joint(i).QuatAngle, see
+%                Core/ComputeQuaternionKinematics.m) instead of a single
+%                Euler DOF -- no per-task DOF/sequence selection needed,
+%                since the total angle does not depend on which plane the
+%                movement happens to be in.
+%
 %                Metrics :
-%                  HG range : max(|DOF1|) - min(|DOF1|) on cycle
+%                  HG range : max(QuatAngle) - min(QuatAngle) on cycle
 %                  %GH      : range_GH / range_HG * 100
 %                  %ST      : range_ST / range_HG * 100
 %                  %TH      : range_TH / range_HG * 100
 %
-%                DOF mapping per task :
-%                  ANALYTIC1 (sagittal elevation) :
-%                    HG Joint(12/13) DOF1 X — elevation     (YXY)
-%                    GH Joint(2/7)   DOF3 Z — flexion       (ZXY)
-%                    ST Joint(3/8)   DOF1 X — upward rot.   (YXZ)
-%                    TH Joint(11)    DOF3 Z — flexion       (ZXY)
-%                  ANALYTIC2 (coronal elevation) :
-%                    HG Joint(12/13) DOF1 X — elevation     (YXY)
-%                    GH Joint(2/7)   DOF1 X — abduction     (XZY)
-%                    ST Joint(3/8)   DOF1 X — upward rot.   (YXZ)
-%                    TH Joint(11)    DOF3 Z — flexion       (ZXY)
+%                Clinical analysis (table 2, unchanged) stays Euler/HT-
+%                referenced, matching prior clinical-literature convention.
 %
 % Inputs  : Trial (struct array) all trials from MAIN_Protocol_01
 % Outputs : Console table
@@ -49,8 +47,8 @@ disp(' ');
 disp('------------------------------------------------------------------');
 disp('Kinematics summary');
 disp(' ');
-disp('Functional analysis');
-disp('-------------------');
+disp('Functional analysis (quaternions)');
+disp('------------------------------------------------');
 
 % -------------------------------------------------------------------------
 % TARGET TRIALS
@@ -78,32 +76,15 @@ for itask = 1:length(targetTasks)
     t       = Trial(tidx);
     isCalib = contains(task, 'CALIBRATION');
 
-    % DOF selection per task
-    if contains(t.task, 'ANALYTIC1')
-        dofHG = 1; % HG YXY — elevation      (X -> DOF1)
-        dofGH = 3; % GH ZXY — flexion        (Z -> DOF3)
-        dofST = 1; % ST YXZ — upward rot.    (X -> DOF1)
-        dofTX = 3; % TH ZXY — flexion        (Z -> DOF3)
-    elseif contains(t.task, 'ANALYTIC2')
-        dofHG = 1; % HG YXY — elevation      (X -> DOF1)
-        dofGH = 1; % GH XZY — abduction      (X -> DOF1)
-        dofST = 1; % ST YXZ — upward rot.    (X -> DOF1)
-        dofTX = 3; % TH ZXY — flexion        (Z -> DOF3)
-    else
-        continue;
-    end
-
     % ---- RIGHT SIDE ----
-    [hg_R, gh_R, st_R, th_R] = computeContributions(t, 12, 2, 3, 11, ...
-        isCalib, 'rcycle', dofHG, dofGH, dofST, dofTX);
+    [hg_R, gh_R, st_R, th_R] = computeQuatContributions(t, 12, 2, 3, 11, isCalib, 'rcycle');
     pgh_R = safePct(gh_R, hg_R);
     pst_R = safePct(st_R, hg_R);
     pth_R = safePct(th_R, hg_R);
     rows{end+1} = {[task, ' R'], hg_R, gh_R, pgh_R, st_R, pst_R, th_R, pth_R}; %#ok<AGROW>
 
     % ---- LEFT SIDE ----
-    [hg_L, gh_L, st_L, th_L] = computeContributions(t, 13, 7, 8, 11, ...
-        isCalib, 'lcycle', dofHG, dofGH, dofST, dofTX);
+    [hg_L, gh_L, st_L, th_L] = computeQuatContributions(t, 13, 7, 8, 11, isCalib, 'lcycle');
     pgh_L = safePct(gh_L, hg_L);
     pst_L = safePct(st_L, hg_L);
     pth_L = safePct(th_L, hg_L);
@@ -133,15 +114,14 @@ for i = 1:length(rows)
 end
 
 disp(repmat('-', 1, 90));
+disp('  Range = amplitude de l''angle de rotation total (quaternion), pas d''un DOF Euler isole.');
 disp('  %  = contribution range / HG range * 100');
-disp('  Note : ANALYTIC2 (coronal elevation) selected --> uniplanar movement');
-disp('         ensures coherent GH/ST/TH decomposition.');
 
 % -------------------------------------------------------------------------
 % TABLEAU 2 — CONTRIBUTIONS EXPRIMÉES EN % DE HT
 % -------------------------------------------------------------------------
 disp(' ');
-disp('Clinical analysis');
+disp('Clinical analysis (euler)');
 disp('-------------------');
 
 rows2 = {};
@@ -211,29 +191,38 @@ end
 end
 
 function [hg_range, gh_range, st_range, th_range] = ...
-    computeContributions(t, jiHG, jiGH, jiST, jiTH, isCalib, cycField, ...
-                         dofHG, dofGH, dofST, dofTX)
+    computeQuatContributions(t, jiHG, jiGH, jiST, jiTH, isCalib, cycField)
 
-hg_range = NaN; gh_range = NaN; st_range = NaN; th_range = NaN;
-
-if isCalib
-    hg_range = getRange(t, jiHG, dofHG);
-    gh_range = getRange(t, jiGH, dofGH);
-    st_range = getRange(t, jiST, dofST);
-    th_range = getRange(t, jiTH, dofTX);
-else
-    hg_range = getRangeCycle(t, jiHG, dofHG, cycField);
-    gh_range = getRangeCycle(t, jiGH, dofGH, cycField);
-    st_range = getRangeCycle(t, jiST, dofST, cycField);
-    th_range = getRangeCycleTH(t, jiTH, dofTX, cycField);
-end
+hg_range = getQuatRange(t, jiHG, isCalib, cycField);
+gh_range = getQuatRange(t, jiGH, isCalib, cycField);
+st_range = getQuatRange(t, jiST, isCalib, cycField);
+th_range = getQuatRangeTH(t, jiTH, isCalib, cycField);
 end
 
-function r = getRange(t, ji, dof)
+function r = getQuatRange(t, ji, isCalib, cycField)
 r = NaN;
-if length(t.Joint) < ji || isempty(t.Joint(ji).Euler.full), return; end
-data = abs(squeeze(t.Joint(ji).Euler.full(1, dof, :)));
-r    = max(data, [], 'omitnan') - min(data, [], 'omitnan');
+if length(t.Joint) < ji, return; end
+if isCalib
+    if isempty(t.Joint(ji).QuatAngle.full), return; end
+    data = squeeze(t.Joint(ji).QuatAngle.full);
+    r    = max(data, [], 'omitnan') - min(data, [], 'omitnan');
+else
+    if isempty(t.Joint(ji).QuatAngle.(cycField)), return; end
+    data = squeeze(t.Joint(ji).QuatAngle.(cycField));
+    if isvector(data), data = data(:); end
+    ranges = max(data, [], 1) - min(data, [], 1);
+    r      = mean(ranges, 'omitnan');
+end
+end
+
+function r = getQuatRangeTH(t, ji, isCalib, cycField)
+r  = NaN;
+if length(t.Joint) < ji, return; end
+cf = cycField;
+if ~isCalib && (~isfield(t.Joint(ji).QuatAngle, cf) || isempty(t.Joint(ji).QuatAngle.(cf)))
+    if strcmp(cf,'rcycle'), cf = 'lcycle'; else, cf = 'rcycle'; end
+end
+r = getQuatRange(t, ji, isCalib, cf);
 end
 
 function r = getRangeCycle(t, ji, dof, cycField)

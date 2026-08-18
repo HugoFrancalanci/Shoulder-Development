@@ -38,10 +38,10 @@
 %__________________________________________________________________________
 %
 % CHANGELOG
-% Created by Raphaël Dumas
+% Created by Raphaï¿½l Dumas
 % March 2010
 %
-% Modified by Raphaël Dumas
+% Modified by Raphaï¿½l Dumas
 % July 2016
 % Last updates for Matlab Central
 %__________________________________________________________________________
@@ -70,7 +70,15 @@ M = [Tr; R11; R22; R33];
 % Maximal value out of 4
 [~,imax] = max(M); % Imax = 1,2,3 or 4
 % Terms associated with maximal value in dimension (1*n)
-pmax = abs(sqrt(1 + 2*M(imax) - Tr)); % p is 2*q
+% LOCAL PATCH (H. Francalanci, Aug 2026) : M(imax) is linear indexing, not
+% per-column selection -- for n>1 it silently reads column 1 for every
+% frame instead of M(imax(j),j). Confirmed with M=[100 1 1;1 200 1;
+% 1 1 300;1 1 1]; [~,imax]=max(M); M(imax) returns [100 1 1], not
+% [100 200 300]. Bug is invisible for n=1 calls (only column 1 exists),
+% which is presumably why it was never caught. sub2ind fixes the
+% per-column selection. If updating this file from MATLAB Central,
+% re-apply this fix.
+pmax = abs(sqrt(1 + 2*M(sub2ind(size(M), imax, 1:size(M,2))) - Tr)); % p is 2*q
 
 % 4 Cases
 % Frame where maximal value is Tr

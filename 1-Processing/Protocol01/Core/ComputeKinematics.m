@@ -12,15 +12,15 @@
 %                (Wu et al. 2005).
 %
 %                Joints computed :
-%                  Joint  1 — Right humerothoracic (HT_R)
-%                  Joint  2 — Right glenohumeral   (GH_R)
-%                  Joint  3 — Right scapulothoracic (ST_R)
-%                  Joint  6 — Left humerothoracic  (HT_L)
-%                  Joint  7 — Left glenohumeral    (GH_L)
-%                  Joint  8 — Left scapulothoracic (ST_L)
-%                  Joint 11 — Thorax / patient-ICS
-%                  Joint 12 — Right humerus / patient-ICS
-%                  Joint 13 — Left humerus  / patient-ICS
+%                  Joint  1  Right humerothoracic (HT_R)
+%                  Joint  2  Right glenohumeral   (GH_R)
+%                  Joint  3  Right scapulothoracic (ST_R)
+%                  Joint  6  Left humerothoracic  (HT_L)
+%                  Joint  7  Left glenohumeral    (GH_L)
+%                  Joint  8  Left scapulothoracic (ST_L)
+%                  Joint 11  Thorax / patient-ICS
+%                  Joint 12  Right humerus / patient-ICS
+%                  Joint 13  Left humerus  / patient-ICS
 %
 %                Euler sequences are task-dependent (ANALYTIC1-5) to avoid
 %                gimbal lock. Left-side DOFs include selective sign inversions
@@ -437,3 +437,36 @@ if contains(c3dFiles.name,'ANALYTIC') || contains(c3dFiles.name,'CALIBRATION3') 
     Trial.Joint(13).ElevationPlane.full = [];
     clear Euler dj x y p x1 y1;
 end
+
+% -------------------------------------------------------------------------
+% QUATERNION / AXIS-ANGLE KINEMATICS (GH, ST, TX, HG)
+% -------------------------------------------------------------------------
+% Sequence-free complement to the Euler decomposition above: total 3D
+% rotation magnitude (bounded [0,180], no gimbal lock, no rotation
+% sequence to pick) and its axis, computed uniformly from each joint's
+% own T.full.
+%   Joint  2/7  GH
+%   Joint  3/8  ST
+%   Joint 11    TX
+%   Joint 12/13 HG
+
+leftFix  = diag([1 1 -1]);
+rightFix = diag([-1 1 1]);
+
+quatJoints = [2 3 7 8 11 12 13];
+for qj = quatJoints
+    if ~isempty(Trial.Joint(qj).T.full)
+        Tq = Trial.Joint(qj).T.full(1:3,1:3,:);
+        if qj == 8 || qj == 13
+            n  = size(Tq,3);
+            Tq = Mprod_array3(repmat(leftFix,[1,1,n]), Tq);
+            Tq = Mprod_array3(Tq, repmat(rightFix,[1,1,n]));
+        end
+        [q, TotalAngle, Axis] = ComputeQuaternionKinematics(Tq);
+        Trial.Joint(qj).Quaternion.full = q;
+        Trial.Joint(qj).QuatAngle.full  = TotalAngle;
+        Trial.Joint(qj).QuatAxis.full   = Axis;
+    end
+end
+clear Tq leftFix rightFix n
+clear q TotalAngle Axis quatJoints qj

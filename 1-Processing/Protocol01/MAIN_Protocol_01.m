@@ -101,8 +101,6 @@ trialTypes = {'CALIBRATION','STATIC','ISOMETRIC','ANALYTIC','FUNCTIONAL'};
 k          = 1;
 
 %%
-% CALIBRATION1-3/5-6 can be named STATIC1-3/ISOMETRIC1-2 on older sessions
-% (CALIBRATION4 has no alias) — see Core/CoR/CalibrationTrialAliases.m.
 trialOrder = {'CALIBRATION3','STATIC3','CALIBRATION1','STATIC1','CALIBRATION2','STATIC2', ...
               'CALIBRATION4', ...
               'CALIBRATION5','ISOMETRIC1','CALIBRATION6','ISOMETRIC2', ...
@@ -190,6 +188,7 @@ if doPlots
     % Kinematics (HT, GH, ST, SHR, HG) for ANALYTIC trials
     PlotKinematics(Trial, Pathology);
     PlotHumeroGravitaire(Trial, Pathology);
+    PlotQuaternionKinematics(Trial, Pathology); 
 
     % Comparaison with .mat from original K-LAB toolbox
     PlotComparison(Trial, Folder.data, Pathology);
@@ -201,6 +200,7 @@ end
 if doValidation
     TestICS(Trial);              % Validation posture
     TestHG(Trial);                % Validation HG angles
+    TestQuaternionValidation(Trial); % Validation quaternion
     TestSCoRE(Session);            % Qualite calibration SCoRE
     TestScapularCluster(Trial);   % STA scapulaire
     CompareScoreRab(Trial, Session, Processing, Folder.data, doCoRvsCT, Folder.dataLong); % Rab vs SCoRE comparaison

@@ -264,7 +264,7 @@ for is = 1:length(Trial.Segment)
 end
 
 for ij = 1:length(Trial.Joint)
-    for fn = {'T','Euler','dj'}
+    for fn = {'T','Euler','dj','Quaternion','QuatAngle','QuatAxis'}
         if isfield(Trial.Joint(ij), fn{1})
             Trial.Joint(ij).(fn{1}) = normaliseField( ...
                 Trial.Joint(ij).(fn{1}), Rcycles, Lcycles, Trial.n1);

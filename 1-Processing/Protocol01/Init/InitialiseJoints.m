@@ -34,10 +34,23 @@ for i = 1:length(jointLabels)
     Trial.Joint(i).Euler.full   = [];
     Trial.Joint(i).Euler.rcycle = [];
     Trial.Joint(i).Euler.lcycle = [];
-    Trial.Joint(i).Euler.units  = '°deg';
+    Trial.Joint(i).Euler.units  = 'ï¿½deg';
     Trial.Joint(i).dj.full      = [];
     Trial.Joint(i).dj.rcycle    = [];
     Trial.Joint(i).dj.lcycle    = [];
     Trial.Joint(i).dj.units     = 'm';
     Trial.Joint(i).sequence     = '';
+    % Sequence-free quaternion / axis-angle complement (see
+    % Core/ComputeQuaternionKinematics.m) -- populated for GH, ST, TX, HG
+    % (Joint 2,3,7,8,11,12,13) only, empty elsewhere.
+    Trial.Joint(i).Quaternion.full   = [];
+    Trial.Joint(i).Quaternion.rcycle = [];
+    Trial.Joint(i).Quaternion.lcycle = [];
+    Trial.Joint(i).QuatAngle.full    = [];
+    Trial.Joint(i).QuatAngle.rcycle  = [];
+    Trial.Joint(i).QuatAngle.lcycle  = [];
+    Trial.Joint(i).QuatAngle.units   = 'deg';
+    Trial.Joint(i).QuatAxis.full     = [];
+    Trial.Joint(i).QuatAxis.rcycle   = [];
+    Trial.Joint(i).QuatAxis.lcycle   = [];
 end
