@@ -7,20 +7,22 @@
 %                Traite uniquement les patients/côtés listés dans
 %                userCommands_Multi.m (voir ce fichier pour la config),
 %                appelle runProtocol01() pour chaque session PRE/POST, et
-%                exporte le rapport humérothoracique (contributions
-%                GH/ST/TX) dans un fichier Excel.
-%
+%                exporte PatientInfos + DataAvailability en Excel. Si
+
 %                Fonctions propres au pipeline multi (Compute*/Export*/Plot*)
-%                rangées dans Multi/Core, Multi/IO, Multi/Plot - séparées des
+%                rangées dans Multi/Core, Multi/IO, Multi/Plot, séparées des
 %                dossiers Core/IO/Plot partagés avec le protocole solo, que
 %                seul runProtocol01() ajoute encore au path (il en a besoin
 %                pour le calcul cinématique commun aux deux pipelines).
 %
-%                Pour ajouter un nouvel export :
-%                  1. Créer une fonction ComputeMaMetrique(Trial) dans Multi/Core/
-%                     (voir Multi/Core/ComputeHTContributions.m comme modèle)
-%                  2. L'appeler dans la boucle patients ci-dessous
-%                  3. Ajouter les colonnes correspondantes aux "rows"
+%                Pour ajouter un nouvel export calculé depuis Trial :
+%                  - Analyse à faire pendant le run C3D (dépend d'un état
+%                    live, ex: c3dFiles) : l'ajouter ici, comme
+%                    ComputeDataAvailability/ComputePatientInfos.
+%                  - Analyse sur des valeurs déjà calculées (Segment/Joint/
+%                    Euler...) : en faire une fonction Multi/Core/ComputeXxxFromDatabase.m
+%                    (voir ComputeClinicalContributionsFromDatabase.m comme
+%                    modèle), pour bénéficier du calcul instantané depuis le .mat.
 % -------------------------------------------------------------------------
 
 clearvars; close all; warning off; clc;
@@ -35,9 +37,10 @@ Folder.deps    = [MainFolder, '\Shoulder_Dev\1-Processing\dependencies'];
 addpath(fullfile(Folder.toolbox, 'Multi'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'Core'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'IO'));
-addpath(fullfile(Folder.toolbox, 'Multi', 'Plot'));
+addpath(fullfile(Folder.toolbox, 'Multi', 'RedCap'));
+addpath(fullfile(Folder.toolbox, 'Multi', 'Results'));
 
-run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DataFolder, PatientSelection, OutputFile
+run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m'));
 
 if isempty(DataFolder)
     DataFolder = uigetdir('', 'Sélectionner le dossier Data');
@@ -56,31 +59,7 @@ disp(['Patients à traiter : ', num2str(size(PatientSelection, 1))]);
 % -------------------------------------------------------------------------
 % BOUCLE PATIENTS / SESSIONS
 % -------------------------------------------------------------------------
-% Numero = ligne de PatientSelection (iP) qui a produit cette entrée - la
-% recherche d'une entrée existante se fait sur (Numero, Side), pas sur
-% (PatientID, Side) : un ID Cinésiologie répété sur 2 lignes de
-% PatientSelection (patient bilatéral avec 2 opérations du MÊME côté à des
-% dates différentes - cas rare mais possible, différent des 5 patients
-% bilatéraux actuels qui ont chacun un côté différent par ligne) serait
-% sinon fusionné à tort sur la même ligne, comme on l'a eu pour
-% PatientInfos/DataAvailability avant leur fix.
-Results = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
-    'HT_PRE_deg', {}, 'GH_PRE_deg', {}, 'GH_PRE_pct', {}, ...
-    'ST_PRE_deg', {}, 'ST_PRE_pct', {}, 'TX_PRE_deg', {}, 'TX_PRE_pct', {}, ...
-    'HT_POST_deg', {}, 'GH_POST_deg', {}, 'GH_POST_pct', {}, ...
-    'ST_POST_deg', {}, 'ST_POST_pct', {}, 'TX_POST_deg', {}, 'TX_POST_pct', {});
-
-% Courbes angle vs % cycle
-Curves = struct('Numero', {}, 'PatientID', {}, 'Side', {}, ...
-    'HT_PRE', {}, 'HT_POST', {}, 'GH_PRE', {}, 'GH_POST', {}, 'ST_PRE', {}, 'ST_POST', {});
-
 % Infos démographiques/cliniques
-% Une ligne par ligne de PatientSelection (indexée directement par iP, pas
-% par recherche d'ID) : les patients bilatéraux ont le même ID Cinésiologie
-% sur 2 lignes de PatientSelection (côté/dates différents) - indexer par
-% recherche d'ID les aurait fusionnés à tort sur une seule ligne. Pré-alloué
-% à la taille de PatientSelection pour garder exactement l'ordre établi,
-% même si un patient échoue entièrement (PRE et POST introuvables/erreur).
 nPatientRows = size(PatientSelection, 1);
 PatientInfos = struct('PatientID', {}, 'ID', {}, 'Gender', {}, 'Laterality', {}, 'ASA', {}, ...
     'Age_PRE', {}, 'Age_POST', {}, 'Height_PRE', {}, 'Height_POST', {}, ...
@@ -91,6 +70,16 @@ PatientInfos(nPatientRows).PatientID = [];
 
 % Rapport de disponibilité des données (une ligne par examen PRE/POST)
 DataAvail = struct([]);
+
+% Base de données patient complète
+if SaveDatabase
+    if SkipKinematics
+        warning(['SaveDatabase=true mais SkipKinematics=true : Trial.Segment/.Joint ', ...
+            'seront vides dans PatientDatabase.mat (calcul cinematique saute).']);
+    end
+    Database = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'PRE', {}, 'POST', {});
+    Database(nPatientRows).Numero = [];
+end
 
 ErrorLog = {};
 
@@ -115,11 +104,6 @@ for iP = 1:size(PatientSelection, 1)
     % Sessions PRE/POST : dossier "YYYYMMDD"
     sessions.PRE  = findSessionFolder(patientFolder, PatientSelection{iP, 3});
     sessions.POST = findSessionFolder(patientFolder, PatientSelection{iP, 4});
-
-    % Numéro/ID de CETTE ligne de PatientSelection (iP) uniquement - remis
-    % à false à chaque iP, pour ne pas confondre avec une ligne antérieure
-    % du même ID Cinésiologie (patients bilatéraux, même ID sur 2 lignes
-    % de PatientSelection avec côté/dates différents).
     numeroWrittenForThisRow = false;
 
     conditions = fieldnames(sessions);
@@ -138,6 +122,17 @@ for iP = 1:size(PatientSelection, 1)
         try
             Folder.data = sessionPath;
             [Trial, Patient, Session, Pathology, c3dFiles] = runProtocol01(Folder);
+
+            if SaveDatabase
+                Database(iP).Numero    = iP;
+                Database(iP).PatientID = patientID;
+                Database(iP).Side      = sidesToReport;
+                Database(iP).(condition).Trial     = StripBtkFromTrial(Trial);
+                Database(iP).(condition).Patient   = Patient;
+                Database(iP).(condition).Session   = Session;
+                Database(iP).(condition).Pathology = Pathology;
+                Database(iP).(condition).Date      = sessionPath;
+            end
 
             % Age uses the session FOLDER NAME date (e.g. '20241217') rather
             % than Session.date (free-text cell in Session.xlsx, manually
@@ -183,57 +178,15 @@ for iP = 1:size(PatientSelection, 1)
             PatientInfos(pi_idx).(['Mass_', condition])   = info.Mass;
             PatientInfos(pi_idx).(['BMI_', condition])    = info.BMI;
 
-            if ~SkipKinematics
-                Contrib = ComputeHTContributions(Trial);
-
-                for iS = 1:length(Contrib)
-                    c = Contrib(iS);
-                    if ~ismember(c.side, sidesToReport), continue; end
-
-                    ri = find([Results.Numero] == iP & strcmp({Results.Side}, c.side), 1);
-                    if isempty(ri)
-                        ri = length(Results) + 1;
-                        Results(ri).Numero       = iP;
-                        Results(ri).PatientID    = patientID;
-                        Results(ri).Side         = c.side;
-                        Results(ri).Task         = c.task;
-                        Results(ri).HT_PRE_deg   = NaN; Results(ri).HT_POST_deg  = NaN;
-                        Results(ri).GH_PRE_deg   = NaN; Results(ri).GH_POST_deg  = NaN;
-                        Results(ri).GH_PRE_pct   = NaN; Results(ri).GH_POST_pct  = NaN;
-                        Results(ri).ST_PRE_deg   = NaN; Results(ri).ST_POST_deg  = NaN;
-                        Results(ri).ST_PRE_pct   = NaN; Results(ri).ST_POST_pct  = NaN;
-                        Results(ri).TX_PRE_deg   = NaN; Results(ri).TX_POST_deg  = NaN;
-                        Results(ri).TX_PRE_pct   = NaN; Results(ri).TX_POST_pct  = NaN;
-                    end
-
-                    Results(ri).(['HT_', condition, '_deg']) = c.HT_range;
-                    Results(ri).(['GH_', condition, '_deg']) = c.GH_range;
-                    Results(ri).(['GH_', condition, '_pct']) = c.GH_pct;
-                    Results(ri).(['ST_', condition, '_deg']) = c.ST_range;
-                    Results(ri).(['ST_', condition, '_pct']) = c.ST_pct;
-                    Results(ri).(['TX_', condition, '_deg']) = c.TX_range;
-                    Results(ri).(['TX_', condition, '_pct']) = c.TX_pct;
-
-                    if length(Curves) < ri
-                        Curves(ri).Numero    = iP;
-                        Curves(ri).PatientID = patientID;
-                        Curves(ri).Side      = c.side;
-                    end
-                    Curves(ri).(['HT_', condition]) = c.HT_curve;
-                    Curves(ri).(['GH_', condition]) = c.GH_curve;
-                    Curves(ri).(['ST_', condition]) = c.ST_curve;
-                end
-            end
+            % Contributions cliniques HT/GH/ST/TX : plus calculées ici. Voir
+            % Multi/Core/ComputeClinicalContributionsFromDatabase.m (section
+            % dédiée en bas de ce script), qui refait le même calcul mais
+            % depuis PatientDatabase.mat - en quelques secondes sur toute la
+            % cohorte, sans repasser par les C3D.
 
             % Rapport de disponibilité des données (une ligne par examen)
             avail = ComputeDataAvailability(Trial, Patient, Session, Pathology, c3dFiles, sidesToReport);
             di = length(DataAvail) + 1;
-            % Numéro/ID sur la 1re ligne de CETTE ligne de PatientSelection
-            % (PRE normalement, mais POST si la session PRE a échoué/est
-            % introuvable) - basé sur numeroWrittenForThisRow (propre à cet
-            % iP), pas une recherche d'ID sur tout DataAvail : un ID
-            % Cinésiologie répété sur une AUTRE ligne (patient bilatéral)
-            % ne doit pas empêcher celle-ci d'avoir son propre Numéro/ID.
             avail.Numero   = '';
             avail.ID       = '';
             avail.IDRedCap = '';
@@ -257,23 +210,11 @@ for iP = 1:size(PatientSelection, 1)
             ErrorLog{end+1} = sprintf('%s | %s | %s', patientName, condition, ME.message); %#ok<AGROW>
         end
     end
-end
 
-% -------------------------------------------------------------------------
-% EXPORT EXCEL
-% -------------------------------------------------------------------------
-if ~isempty(Results)
-    T = struct2table(Results);
-    % writetable never clears a pre-existing sheet, only overwrites the
-    % range it writes to - a previous run with more rows would leave stale
-    % data behind. Delete first for a fully fresh sheet.
-    if isfile(OutputFile), delete(OutputFile); end
-    writetable(T, OutputFile, 'Sheet', 'HT_Contributions');
-    disp(' ');
-    disp(['Excel exporté : ', OutputFile]);
-else
-    disp(' ');
-    disp('Aucune donnée à exporter.');
+    % Sauvegarde apres chaque patient
+    if SaveDatabase
+        save(DatabaseFile, 'Database', '-v7.3');
+    end
 end
 
 if ~isempty(ErrorLog)
@@ -289,7 +230,6 @@ end
 % -------------------------------------------------------------------------
 ExportPatientInfos(PatientInfos, PatientInfosFile);
 ExportDataAvailability(DataAvail, DataAvailabilityFile);
-PlotHTContributionsCurves(Curves);
 
 if isfolder(ResultsFolder)
     cd(ResultsFolder);
@@ -336,3 +276,15 @@ switch upper(strtrim(sideCode))
         error('Côté invalide : "%s" (attendu R, L ou RL)', sideCode);
 end
 end
+
+
+%% ========================================================================
+%  Results extraction from.mat
+MainFolder     = 'C:\Users\franc\Desktop\Programming\01_Projects\E02_Classification_rTSA';
+Folder.toolbox = [MainFolder, '\Shoulder_Dev\1-Processing\Protocol01'];
+addpath(fullfile(Folder.toolbox, 'Multi'));
+addpath(fullfile(Folder.toolbox, 'Multi', 'Core'));
+addpath(fullfile(Folder.toolbox, 'Multi', 'IO'));
+run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DatabaseFile, OutputFile, ResultsFolder
+
+ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder);

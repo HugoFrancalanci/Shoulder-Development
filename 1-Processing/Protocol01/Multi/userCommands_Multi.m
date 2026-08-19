@@ -206,21 +206,25 @@ PatientSelection = { ...
     '762166', 'R', '2025', '2026'; ... % 182
     };
 
-% SkipKinematics : true pour sauter le calcul cinématique complet
-% dans runProtocol01 et n'obtenir que PatientInfos et DataAvailability,
-% plus rapidement.
+% SkipKinematics : true pour sauter le calcul cinématique
 SkipKinematics = false;
 
 % ResultsFolder : dossier où sont écrits les Excels de sortie. 
 ResultsFolder = fullfile(fileparts(mfilename('fullpath')), 'Results');
 
-% OutputFile : fichier Excel de sortie (contributions HT/GH/ST)
-OutputFile = fullfile(ResultsFolder, 'HT_Contributions_Summary.xlsx');
+% OutputFile : fichier Excel de sortie (contributions cliniques HT/GH/ST/TX)
+OutputFile = fullfile(ResultsFolder, 'ClinicalContributions_Summary.xlsx');
 
 % PatientInfosFile : fichier Excel de sortie (infos démographiques patients)
 PatientInfosFile = fullfile(ResultsFolder, 'PatientInfos_Summary.xlsx');
 
 % DataAvailabilityFile : fichier Excel de sortie (disponibilité des données)
 DataAvailabilityFile = fullfile(ResultsFolder, 'DataAvailability_Summary.xlsx');
+
+% SaveDatabase : true pour sauvegarder, en plus des Excels, un seul fichier
+% PatientDatabase.mat contenant le Trial complet de chaque patient, avec Patient/Session/
+% Pathology.
+SaveDatabase = true;
+DatabaseFile = fullfile(ResultsFolder, 'Database_182_E02_01_Posture_rTSA.mat');
 
 

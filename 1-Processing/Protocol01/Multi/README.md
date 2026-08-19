@@ -6,27 +6,50 @@ sans jamais écrire dans les données patients (lecture seule).
 
 ## Fichiers
 
-- **`MAIN_MULTI_Protocol_01.m`** — script à lancer. Boucle sur les patients,
-  appelle `runProtocol01()` par session, accumule les résultats, exporte l'Excel.
+- **`MAIN_MULTI_Protocol_01.m`** — script à lancer en premier. Boucle sur les
+  patients, appelle `runProtocol01()` par session (relit les C3D - c'est
+  l'étape lente), exporte `PatientInfos`/`DataAvailability` en Excel. Si
+  `SaveDatabase=true` (voir `userCommands_Multi.m`), sauvegarde aussi
+  `Trial` (sans `.btk`) + `Patient`/`Session`/`Pathology` de chaque patient
+  dans `Results/PatientDatabase.mat` — après chaque patient, pas juste à la
+  fin, pour ne rien perdre si le run s'interrompt sur une grosse cohorte.
 - **`userCommands_Multi.m`** — le seul fichier à modifier pour choisir les
   patients à traiter. Jamais touché par le script lui-même.
-- **`Core/`, `IO/`, `Plot/`** — fonctions propres au pipeline multi, ajoutées
-  au path par `MAIN_MULTI_Protocol_01.m` lui-même. Séparées des dossiers
-  `Core/`, `IO/`, `Plot/` de `Protocol01/` (ceux-là restent partagés avec le
+- **`Core/`, `IO/`** — fonctions propres au pipeline multi, ajoutées au path
+  par `MAIN_MULTI_Protocol_01.m`. Séparées des dossiers `Core/`, `IO/`,
+  `Plot/` de `Protocol01/` (ceux-là restent partagés avec le
   solo, et sont ajoutés au path par `runProtocol01.m` pour le calcul
   cinématique commun) :
   - `Core/runProtocol01.m` — version "fonction" de `MAIN_Protocol_01.m` (voir
     plus bas). Ne pas supprimer : c'est le moteur de calcul utilisé par le
     script multi.
-  - `Core/ComputeHTContributions.m`, `Core/ComputePatientInfos.m`,
-    `IO/ExportPatientInfos.m`, `Plot/PlotHTContributionsCurves.m` — reporting.
+  - `Core/StripBtkFromTrial.m` — retire `.btk` (handle BTK non réutilisable)
+    de `Trial` avant sauvegarde dans `PatientDatabase.mat`.
+  - `Core/ComputeClinicalContributionsFromDatabase.m` — **pas appelée pendant le run C3D**,
+    callable à tout moment depuis la fenêtre de commande une fois
+    `PatientDatabase.mat` généré : `ComputeClinicalContributionsFromDatabase(DatabaseFile,
+    OutputFile, ResultsFolder)`. Recharge le `.mat` et calcule le rapport
+    HT/GH/ST/TX en quelques secondes sur toute la cohorte, sans repasser
+    par les C3D. Fonction centralisée : la décomposition HT/GH/ST/TX
+    (ex-`ComputeHTContributions.m`, renommée `ComputeClinicalContributions` -
+    même convention DOF/joint que le Tableau 2 "Clinical analysis" de
+    `Protocol01/IO/ExportKinematicsSummary.m`, vérifié identique) et le
+    tracé PRE/POST (ex-`PlotHTContributionsCurves.m`), auparavant des
+    fichiers séparés, sont fusionnés dedans comme fonctions locales, à la
+    fin du fichier.
+    Nouvelle analyse du même genre (posture, Moroder...) : même patron - un
+    fichier `Multi/Core/ComputeXxxFromDatabase.m` séparé, appelée sur
+    `Database(i).PRE.Trial`/`.POST.Trial`.
+  - `Core/ComputePatientInfos.m`, `Core/ComputeDataAvailability.m`,
+    `IO/ExportPatientInfos.m`, `IO/ExportDataAvailability.m` — reporting.
 - **`RedCap/`** — copie locale du prototype Python (Spyder) d'export REDCap ;
   la version de référence à jour (avec sa notice) vit sur OneDrive, hors
   dépôt git (voir mémoire de session pour le chemin).
-- **`Results/`** — les deux Excels de sortie (`HT_Contributions_Summary.xlsx`,
-  `PatientInfos_Summary.xlsx`) y sont écrits (chemins définis dans
-  `userCommands_Multi.m` via `ResultsFolder`). Le script s'y termine (`cd`)
-  une fois le run fini, pour les retrouver facilement.
+- **`Results/`** — tous les fichiers de sortie y sont écrits (chemins
+  définis dans `userCommands_Multi.m`) : `ClinicalContributions_Summary.xlsx`,
+  `PatientInfos_Summary.xlsx`, `DataAvailability_Summary.xlsx`, et
+  `PatientDatabase.mat` (si `SaveDatabase=true`). Les scripts s'y terminent
+  (`cd`) une fois le run fini, pour les retrouver facilement.
 
 ## Comment le script accède aux patients
 
@@ -67,25 +90,30 @@ patient suivant — un patient en erreur ne bloque jamais les autres.
 Toute évolution du calcul cinématique lui-même (nouvelle correction, nouveau
 joint...) se fait dans les fichiers `Protocol01/Core/` communs aux deux
 pipelines — pas besoin de dupliquer entre solo et multi. Les fonctions
-propres au reporting multi-patients (Compute*/Export*/Plot* listées
-ci-dessus), elles, vivent dans `Multi/Core/`, `Multi/IO/`, `Multi/Plot/`.
+propres au reporting multi-patients (Compute*/Export* listées ci-dessus),
+elles, vivent dans `Multi/Core/`, `Multi/IO/`.
 
-## Reporting actuel : contributions humérothoraciques (GH/ST/TX)
+## Reporting actuel : contributions cliniques humérothoraciques (GH/ST/TX)
 
-`Multi/Core/ComputeHTContributions.m` décompose le range humérothoracique (HT) en
+`Multi/Core/ComputeClinicalContributionsFromDatabase.m` recharge `PatientDatabase.mat` et
+décompose, pour chaque patient/côté, le range humérothoracique (HT) en
 contributions gléno-humérale (GH), scapulo-thoracique (ST) et thoracique
 (TX), pour ANALYTIC2 (seule tâche uniplanaire, donc seule décomposition
-jugée fiable — voir les commentaires du fichier pour le détail des DOF).
+jugée fiable — voir les commentaires de la fonction locale
+`ComputeClinicalContributions` en bas du fichier pour le détail des DOF).
+Callable à tout moment depuis la fenêtre de commande, sans repasser par les
+C3D ni par `MAIN_MULTI_Protocol_01.m`.
 
 Le résultat est accumulé dans le struct `Results` (une ligne par
 patient/côté), avec les colonnes PRE et POST côte à côte :
 `PatientID, Side, Task, HT_PRE_deg, GH_PRE_deg, GH_PRE_pct, ST_PRE_deg,
 ST_PRE_pct, TX_PRE_deg, TX_PRE_pct, HT_POST_deg, GH_POST_deg, ...`
 
-`Multi/Core/ComputeHTContributions.m` extrait aussi `HT_curve`/`GH_curve`/
-`ST_curve` (angle vs % cycle), accumulées à part dans `Curves` et tracées
-par `Multi/Plot/PlotHTContributionsCurves.m` (PRE en rouge, POST en bleu,
-courbes individuelles transparentes + moyenne en gras).
+Elle extrait aussi `HT_curve`/`GH_curve`/`ST_curve`/`TX_curve` (angle vs % cycle),
+accumulées à part dans `Curves` et tracées par la fonction locale
+`PlotHTContributionsCurves` (aussi fusionnée dans `ComputeClinicalContributionsFromDatabase.m`)
+- PRE en rouge, POST en bleu, courbes individuelles transparentes + moyenne
+en gras.
 
 ## Autre reporting : infos démographiques/cliniques patient
 
@@ -100,17 +128,31 @@ côté atteint.
 
 ## Ajouter un nouveau reporting
 
-1. Écrire une fonction `Multi/Core/ComputeMaMetrique.m` qui prend `Trial` en
-   entrée et retourne un struct/valeurs (voir `ComputeHTContributions.m`
-   comme modèle : une entrée par côté, gestion des cas manquants avec `NaN`).
-2. Dans `MAIN_MULTI_Protocol_01.m`, l'appeler juste après
-   `ComputeHTContributions(Trial)` (même endroit, dans la boucle patient/session).
-3. Ajouter les champs correspondants au struct `Results` (au début du
-   script, dans les deux blocs d'initialisation NaN et de remplissage) —
-   même logique PRE/POST côte à côte que pour HT/GH/ST/TX.
-4. `struct2table(Results)` reprend automatiquement les nouvelles colonnes,
-   rien à changer côté export Excel.
+D'abord choisir où : est-ce que le calcul a besoin d'un état qui n'existe
+que PENDANT le run C3D (ex: `c3dFiles`, comme `ComputeDataAvailability.m`),
+ou seulement de valeurs déjà calculées dans `Trial` (`.Segment`, `.Joint`,
+`.Euler`, `.rcycle`/`.lcycle`...) ? Dans le 2e cas (le plus courant),
+préférer une fonction `Multi/Core/ComputeXxxFromDatabase.m` (voir
+`ComputeClinicalContributionsFromDatabase.m` comme modèle) : le calcul tourne en quelques
+secondes sur toute la cohorte au lieu de re-router par `runProtocol01`/C3D,
+et reste callable à tout moment sans rien relancer.
 
-Pas besoin de toucher à `runProtocol01.m` : le `Trial` retourné contient déjà
-toutes les données cinématiques (`Trial(k).Joint`, `.Euler`, `.rcycle`,
-`.lcycle`...) nécessaires à n'importe quelle nouvelle métrique.
+1. Écrire une fonction `ComputeMaMetrique(Trial)` qui retourne un
+   struct/valeurs (voir la fonction locale `ComputeClinicalContributions`
+   en bas de `ComputeClinicalContributionsFromDatabase.m` comme modèle : une entrée par côté,
+   gestion des cas manquants avec `NaN`).
+2. L'appeler pour chaque patient/condition :
+   - Depuis `PatientDatabase.mat` : une fonction `Multi/Core/ComputeMaMetriqueFromDatabase.m`
+     (voir `ComputeClinicalContributionsFromDatabase.m` comme modèle) qui charge le `.mat` et
+     boucle sur `Database(i).PRE.Trial`/`.POST.Trial`.
+   - Depuis le run C3D live : dans `MAIN_MULTI_Protocol_01.m`, juste après
+     l'appel à `runProtocol01()`.
+3. Ajouter les champs correspondants au struct accumulateur (`Results` ou
+   équivalent, au début du script, dans les deux blocs d'initialisation NaN
+   et de remplissage) — même logique PRE/POST côte à côte que pour HT/GH/ST/TX.
+4. `struct2table(...)` reprend automatiquement les nouvelles colonnes, rien
+   à changer côté export Excel.
+
+Pas besoin de toucher à `runProtocol01.m` : le `Trial` qu'il retourne (et
+donc celui sauvegardé dans `PatientDatabase.mat`) contient déjà toutes les
+données cinématiques nécessaires à n'importe quelle nouvelle métrique.
