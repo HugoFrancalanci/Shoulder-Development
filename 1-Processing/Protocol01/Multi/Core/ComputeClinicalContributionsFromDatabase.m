@@ -56,15 +56,16 @@ function Results = ComputeClinicalContributionsFromDatabase(DatabaseFile, Output
 
 if nargin < 3, ResultsFolder = ''; end
 
-if ~isfile(DatabaseFile)
+% La base peut être répartie sur plusieurs fichiers .mat (voir
+% NumDatabaseParts dans userCommands_Multi.m, DatabaseFile_partXofY.mat) -
+% détecté automatiquement ; repli sur DatabaseFile seul si aucune partie
+% trouvée (compatibilité avec un run à un seul fichier).
+fileList = discoverDatabaseFiles(DatabaseFile);
+if isempty(fileList)
     error('ComputeClinicalContributionsFromDatabase:noDatabase', ...
-        'PatientDatabase.mat introuvable (%s) - lancer MAIN_MULTI_Protocol_01.m avec SaveDatabase=true d''abord.', ...
+        'PatientDatabase.mat introuvable (%s, ni fichiers _partXofY correspondants) - lancer MAIN_MULTI_Protocol_01.m avec SaveDatabase=true d''abord.', ...
         DatabaseFile);
 end
-disp(['Chargement : ', DatabaseFile]);
-loaded   = load(DatabaseFile, 'Database');
-Database = loaded.Database;
-disp(['Patients dans la base : ', num2str(numel(Database))]);
 
 % -------------------------------------------------------------------------
 % BOUCLE PATIENTS (depuis Database, pas depuis PatientSelection/C3D)
@@ -82,8 +83,20 @@ Curves = struct('Numero', {}, 'PatientID', {}, 'Side', {}, ...
 
 conditions = {'PRE', 'POST'};
 
-for iP = 1:numel(Database)
-    d = Database(iP);
+totalPatients = 0;
+for iFile = 1:numel(fileList)
+    disp(['Chargement : ', fileList{iFile}]);
+    % Lecture patient par patient via matfile, jamais un load() complet :
+    % même un seul fichier de partie peut peser plusieurs Go, largement
+    % plus que la RAM disponible d'un coup - même principe que le
+    % paquetage dans MAIN_MULTI_Protocol_01.m.
+    dbFile       = matfile(fileList{iFile});
+    databaseSize = size(dbFile, 'Database');
+    nInFile      = databaseSize(2);
+    totalPatients = totalPatients + nInFile;
+
+for iP = 1:nInFile
+    d = dbFile.Database(1, iP);
     if isempty(d.Numero)
         continue; % ligne pré-allouée jamais remplie (patient introuvable/erreur aux deux conditions)
     end
@@ -137,6 +150,8 @@ for iP = 1:numel(Database)
         end
     end
 end
+end
+disp(['Patients dans la base : ', num2str(totalPatients)]);
 
 % -------------------------------------------------------------------------
 % EXPORT EXCEL
@@ -158,6 +173,33 @@ if ~isempty(ResultsFolder) && isfolder(ResultsFolder)
     cd(ResultsFolder);
 end
 
+end
+
+% =========================================================================
+%  DECOUVERTE DES FICHIERS DE PARTIES (voir NumDatabaseParts,
+%  userCommands_Multi.m / MAIN_MULTI_Protocol_01.m)
+% =========================================================================
+function fileList = discoverDatabaseFiles(DatabaseFile)
+[dbFolder, dbName, dbExt] = fileparts(DatabaseFile);
+parts = dir(fullfile(dbFolder, [dbName, '_part*of*', dbExt]));
+if isempty(parts)
+    if isfile(DatabaseFile)
+        fileList = {DatabaseFile};
+    else
+        fileList = {};
+    end
+    return;
+end
+% Tri par numero de partie (part1of4, part2of4...) plutot que par ordre
+% alphabetique (qui casserait a partir de 10 parties : "part10" < "part2").
+partNum = zeros(numel(parts), 1);
+for i = 1:numel(parts)
+    tok = regexp(parts(i).name, '_part(\d+)of\d+', 'tokens', 'once');
+    partNum(i) = str2double(tok{1});
+end
+[~, order] = sort(partNum);
+parts = parts(order);
+fileList = fullfile({parts.folder}, {parts.name});
 end
 
 % =========================================================================

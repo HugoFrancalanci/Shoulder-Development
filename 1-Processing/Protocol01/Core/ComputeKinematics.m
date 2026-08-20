@@ -439,12 +439,13 @@ if contains(c3dFiles.name,'ANALYTIC') || contains(c3dFiles.name,'CALIBRATION3') 
 end
 
 % -------------------------------------------------------------------------
-% QUATERNION / AXIS-ANGLE KINEMATICS (GH, ST, TX, HG)
+% QUATERNION / AXIS-ANGLE KINEMATICS (HT, GH, ST, TX, HG)
 % -------------------------------------------------------------------------
 % Sequence-free complement to the Euler decomposition above: total 3D
 % rotation magnitude (bounded [0,180], no gimbal lock, no rotation
 % sequence to pick) and its axis, computed uniformly from each joint's
 % own T.full.
+%   Joint  1/6  HT
 %   Joint  2/7  GH
 %   Joint  3/8  ST
 %   Joint 11    TX
@@ -453,11 +454,14 @@ end
 leftFix  = diag([1 1 -1]);
 rightFix = diag([-1 1 1]);
 
-quatJoints = [2 3 7 8 11 12 13];
+quatJoints = [1 2 3 6 7 8 11 12 13];
 for qj = quatJoints
     if ~isempty(Trial.Joint(qj).T.full)
         Tq = Trial.Joint(qj).T.full(1:3,1:3,:);
-        if qj == 8 || qj == 13
+        % Left-side fix applies to joints whose proximal segment is the
+        % common thorax frame (not a per-side-mirrored segment like the
+        % scapula in GH 7): HT-left (6), ST-left (8), HG-left (13).
+        if qj == 6 || qj == 8 || qj == 13
             n  = size(Tq,3);
             Tq = Mprod_array3(repmat(leftFix,[1,1,n]), Tq);
             Tq = Mprod_array3(Tq, repmat(rightFix,[1,1,n]));

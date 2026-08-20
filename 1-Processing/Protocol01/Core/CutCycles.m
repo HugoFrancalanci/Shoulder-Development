@@ -23,6 +23,9 @@
 %                the interactive ginput selection in this mode (that popup
 %                must never fire unattended in a fast/batch run) - missing
 %                cycles just come back empty (Rcycle/Lcycle = 0 count).
+%                Same protection applies inside a parfor worker (Multi
+%                pipeline) regardless of lightweight, since a worker has no
+%                usable display for ginput either.
 % -------------------------------------------------------------------------
 % Inputs  : c3dFiles    (struct)  output of dir('*.c3d'), used for file name
 %           Trial       (struct)  with .Joint and .Segment populated
@@ -70,14 +73,35 @@ end
 % Joint/Marker aren't computed in that mode. Never falls back to the
 % interactive ginput selection here - that popup must never fire
 % unattended in a fast/batch run; missing cycles just come back empty.
+%
+% Meme protection quand on tourne dans un worker parfor (pipeline multi,
+% MAIN_MULTI_Protocol_01.m) : un worker n'a pas d'affichage utilisable, un
+% ginput y resterait bloque indefiniment sans jamais planter ni logger
+% d'erreur - donc traite comme "cycles absents" plutot que d'appeler ginput.
+inWorker = ~isempty(getCurrentTask());
+
 if ~isempty(matFile)
     [Rcycles, Lcycles] = getCyclesFromMat(matFile, Trial.file);
 
     if isempty(Rcycles) && isempty(Lcycles) && ~lightweight
-        warning('No cycle found in .mat for %s -> ginput mode.', Trial.file);
-        [Rcycles, Lcycles] = selectCyclesManual(Trial, c3dFiles.name);
+        if inWorker
+            disp(['  [!] Cycles manquants pour ', Trial.file, ...
+                ' et selection manuelle (ginput) indisponible dans un worker ', ...
+                'parallele - a traiter en pipeline solo pour selection manuelle.']);
+            Rcycles = struct('range', {});
+            Lcycles = struct('range', {});
+        else
+            warning('No cycle found in .mat for %s -> ginput mode.', Trial.file);
+            [Rcycles, Lcycles] = selectCyclesManual(Trial, c3dFiles.name);
+        end
     end
 elseif lightweight
+    Rcycles = struct('range', {});
+    Lcycles = struct('range', {});
+elseif inWorker
+    disp(['  [!] Pas de .mat de cycles pour ', Trial.file, ...
+        ' et selection manuelle (ginput) indisponible dans un worker ', ...
+        'parallele - a traiter en pipeline solo pour selection manuelle.']);
     Rcycles = struct('range', {});
     Lcycles = struct('range', {});
 else

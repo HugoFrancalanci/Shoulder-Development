@@ -41,8 +41,8 @@ for i = 1:length(jointLabels)
     Trial.Joint(i).dj.units     = 'm';
     Trial.Joint(i).sequence     = '';
     % Sequence-free quaternion / axis-angle complement (see
-    % Core/ComputeQuaternionKinematics.m) -- populated for GH, ST, TX, HG
-    % (Joint 2,3,7,8,11,12,13) only, empty elsewhere.
+    % Core/ComputeQuaternionKinematics.m) -- populated for HT, GH, ST, TX, HG
+    % (Joint 1,2,3,6,7,8,11,12,13) only, empty elsewhere.
     Trial.Joint(i).Quaternion.full   = [];
     Trial.Joint(i).Quaternion.rcycle = [];
     Trial.Joint(i).Quaternion.lcycle = [];

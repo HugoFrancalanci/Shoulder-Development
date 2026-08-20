@@ -1,5 +1,12 @@
-% -------------------------------------------------------------------------
-% MULTI-PATIENT USER COMMANDS
+% Author     :   H. Francalanci
+%                Biomechanics and Translational Research in Surgery Group
+%                University of Geneva
+%                https://www.unige.ch/medecine/chiru/en/research-groups/nicolas-holzer-et-florent-moissenet
+% License    :   Creative Commons Attribution-NonCommercial 4.0 International License 
+%                https://creativecommons.org/licenses/by-nc/4.0/legalcode
+% Source code:   To be defined
+% Reference  :   To be defined
+% Date       :   August 2026
 % -------------------------------------------------------------------------
 % Configuration lue par MAIN_MULTI_Protocol_01.m avant de lancer le
 % traitement. Modifier ce fichier pour choisir les patients et le côté à
@@ -221,10 +228,16 @@ PatientInfosFile = fullfile(ResultsFolder, 'PatientInfos_Summary.xlsx');
 % DataAvailabilityFile : fichier Excel de sortie (disponibilité des données)
 DataAvailabilityFile = fullfile(ResultsFolder, 'DataAvailability_Summary.xlsx');
 
-% SaveDatabase : true pour sauvegarder, en plus des Excels, un seul fichier
-% PatientDatabase.mat contenant le Trial complet de chaque patient, avec Patient/Session/
-% Pathology.
+% SaveDatabase : true pour sauvegarder .mat
 SaveDatabase = true;
 DatabaseFile = fullfile(ResultsFolder, 'Database_182_E02_01_Posture_rTSA.mat');
+
+% BatchSize : nombre de patients traités en parallele (parfor) avant
+% d'ecrire sur disque et de vider la RAM.
+BatchSize = 10;
+
+% NumDatabaseParts : nombre de fichiers .mat sur lesquels repartir la
+% cohorte
+NumDatabaseParts = 10;
 
 

@@ -6,13 +6,22 @@ sans jamais écrire dans les données patients (lecture seule).
 
 ## Fichiers
 
-- **`MAIN_MULTI_Protocol_01.m`** — script à lancer en premier. Boucle sur les
-  patients, appelle `runProtocol01()` par session (relit les C3D - c'est
-  l'étape lente), exporte `PatientInfos`/`DataAvailability` en Excel. Si
-  `SaveDatabase=true` (voir `userCommands_Multi.m`), sauvegarde aussi
-  `Trial` (sans `.btk`) + `Patient`/`Session`/`Pathology` de chaque patient
-  dans `Results/PatientDatabase.mat` — après chaque patient, pas juste à la
-  fin, pour ne rien perdre si le run s'interrompt sur une grosse cohorte.
+- **`MAIN_MULTI_Protocol_01.m`** — script à lancer en premier. Traite les
+  patients par paquets de `BatchSize` (voir `userCommands_Multi.m`), chaque
+  paquet en parallèle (`parfor` - un patient par worker), appelle
+  `runProtocol01()` par session (relit les C3D - c'est l'étape lente),
+  exporte `PatientInfos`/`DataAvailability` en Excel. Si `SaveDatabase=true`,
+  sauvegarde aussi `Trial` (sans `.btk`) + `Patient`/`Session`/`Pathology` de
+  chaque patient dans `Results/PatientDatabase.mat` — écrit sur disque paquet
+  par paquet (`matfile`, écriture partielle) et vidé de la RAM entre chaque,
+  plutôt que tout accumulé en mémoire (un patient PRE+POST pèse ~180 Mo
+  compressé, largement plus décompressé - 182 patients d'un coup dépasserait
+  la RAM d'une machine courante).
+  **Reprise automatique** : le statut (léger - pas les `Trial` complets) est
+  suivi dans `Results/PatientDatabase_progress.mat` ; si le script est
+  interrompu (plantage, fermeture), les patients déjà écrits dans
+  `PatientDatabase.mat` lors du run précédent ne sont pas retraités au
+  prochain lancement.
 - **`userCommands_Multi.m`** — le seul fichier à modifier pour choisir les
   patients à traiter. Jamais touché par le script lui-même.
 - **`Core/`, `IO/`** — fonctions propres au pipeline multi, ajoutées au path
@@ -47,9 +56,12 @@ sans jamais écrire dans les données patients (lecture seule).
   dépôt git (voir mémoire de session pour le chemin).
 - **`Results/`** — tous les fichiers de sortie y sont écrits (chemins
   définis dans `userCommands_Multi.m`) : `ClinicalContributions_Summary.xlsx`,
-  `PatientInfos_Summary.xlsx`, `DataAvailability_Summary.xlsx`, et
-  `PatientDatabase.mat` (si `SaveDatabase=true`). Les scripts s'y terminent
-  (`cd`) une fois le run fini, pour les retrouver facilement.
+  `PatientInfos_Summary.xlsx`, `DataAvailability_Summary.xlsx`,
+  `PatientDatabase.mat` et son compagnon `PatientDatabase_progress.mat`
+  (si `SaveDatabase=true` - voir reprise automatique ci-dessus ; ne pas
+  supprimer l'un sans l'autre, sinon la reprise redémarre de zéro ou, pire,
+  se croit à jour alors que `PatientDatabase.mat` a été effacé). Les scripts
+  s'y terminent (`cd`) une fois le run fini, pour les retrouver facilement.
 
 ## Comment le script accède aux patients
 

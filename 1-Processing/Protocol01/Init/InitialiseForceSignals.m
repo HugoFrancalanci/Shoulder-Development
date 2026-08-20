@@ -40,16 +40,30 @@ if contains(Trial.file,'CALIBRATION4')
     end
 elseif contains(c3dFiles.name,'CALIBRATION5') || contains(c3dFiles.name,'CALIBRATION6') || ...
        contains(c3dFiles.name,'ISOMETRIC1') || contains(c3dFiles.name,'ISOMETRIC2') % Isometric tasks only (ISOMETRIC1/2 : older-session alias for CALIBRATION5/6)
-    disp('  - Calibrage des données du capteur de force');
-    figure;
-    plot(Analog.FORCE);
-    title('Sélectionner le début et la fin de la ligne de base');
-    baseline = ginput(2);
-    close gcf;
-    Trial.Fsensor.label = 'Force sensor';
-    Trial.Fsensor.calibration = calibration;
-    Trial.Fsensor.Force.value = permute((Analog.FORCE-mean(Analog.FORCE(baseline(1):baseline(2))))*calibration,[2,3,1]); % N
-    Trial.Fsensor.Force.units = 'N';
+    if ~isempty(getCurrentTask())
+        % Worker parfor (pipeline multi, MAIN_MULTI_Protocol_01.m) : pas
+        % d'affichage utilisable pour la figure/ginput ci-dessous, qui
+        % resterait bloquee indefiniment. Meme protection que
+        % Core/CutCycles.m pour la selection manuelle des cycles.
+        disp(['  [!] Calibrage capteur de force pour ', c3dFiles.name, ...
+            ' necessite une selection manuelle (ginput) indisponible dans un ', ...
+            'worker parallele - a traiter en pipeline solo pour calibration manuelle.']);
+        Trial.Fsensor.label = 'Force sensor';
+        Trial.Fsensor.calibration = calibration;
+        Trial.Fsensor.Force.value = []; % N
+        Trial.Fsensor.Force.units = 'N';
+    else
+        disp('  - Calibrage des données du capteur de force');
+        figure;
+        plot(Analog.FORCE);
+        title('Sélectionner le début et la fin de la ligne de base');
+        baseline = ginput(2);
+        close gcf;
+        Trial.Fsensor.label = 'Force sensor';
+        Trial.Fsensor.calibration = calibration;
+        Trial.Fsensor.Force.value = permute((Analog.FORCE-mean(Analog.FORCE(baseline(1):baseline(2))))*calibration,[2,3,1]); % N
+        Trial.Fsensor.Force.units = 'N';
+    end
 else
     Trial.Fsensor.label = 'Force sensor';
     Trial.Fsensor.calibration = calibration;

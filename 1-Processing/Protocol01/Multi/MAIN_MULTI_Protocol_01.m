@@ -1,14 +1,35 @@
 % Author     :   H. Francalanci
 %                Biomechanics and Translational Research in Surgery Group
 %                University of Geneva
+%                https://www.unige.ch/medecine/chiru/en/research-groups/nicolas-holzer-et-florent-moissenet
+% License    :   Creative Commons Attribution-NonCommercial 4.0 International License 
+%                https://creativecommons.org/licenses/by-nc/4.0/legalcode
+% Source code:   To be defined
+% Reference  :   To be defined
 % Date       :   August 2026
 % -------------------------------------------------------------------------
-% Description:   Script maître multi-patients.
+% Description:   Script multi-patients.
 %                Traite uniquement les patients/côtés listés dans
-%                userCommands_Multi.m (voir ce fichier pour la config),
-%                appelle runProtocol01() pour chaque session PRE/POST, et
-%                exporte PatientInfos + DataAvailability en Excel. Si
-
+%                userCommands_Multi.m (voir ce fichier pour la config), par
+%                paquets de BatchSize patients traités en parallèle (parfor,
+%                un patient par worker) ; appelle runProtocol01() pour
+%                chaque session PRE/POST, et exporte PatientInfos +
+%                DataAvailability en Excel. Si SaveDatabase=true, sauvegarde
+%                aussi Trial (sans .btk) + Patient/Session/Pathology de
+%                chaque patient, réparti sur NumDatabaseParts fichiers .mat
+%                indépendants (voir userCommands_Multi.m - DatabaseFile sert
+%                de nom de base, ex: Database_182..._part1of4.mat), écrits
+%                sur disque paquet par paquet (matfile, écriture partielle)
+%                plutôt que tout accumulé en RAM sur les 182 patients : un
+%                patient (PRE+POST) pèse au moins ~40 Mo compressé (après
+%                filtrage, voir FilterTrialForDatabase.m), largement plus une
+%                fois décompressé en mémoire. Plusieurs fichiers plutôt qu'un
+%                seul limitent aussi les dégâts si l'un se corrompt. Reprise
+%                automatique : si le script a été interrompu (plantage,
+%                fermeture) lors d'un run précédent, les patients déjà écrits
+%                ne sont pas retraités au prochain lancement (statut suivi
+%                dans PatientDatabase_progress.mat).
+%
 %                Fonctions propres au pipeline multi (Compute*/Export*/Plot*)
 %                rangées dans Multi/Core, Multi/IO, Multi/Plot, séparées des
 %                dossiers Core/IO/Plot partagés avec le protocole solo, que
@@ -61,161 +82,253 @@ disp(['Patients à traiter : ', num2str(size(PatientSelection, 1))]);
 % -------------------------------------------------------------------------
 % Infos démographiques/cliniques
 nPatientRows = size(PatientSelection, 1);
-PatientInfos = struct('PatientID', {}, 'ID', {}, 'Gender', {}, 'Laterality', {}, 'ASA', {}, ...
-    'Age_PRE', {}, 'Age_POST', {}, 'Height_PRE', {}, 'Height_POST', {}, ...
-    'Mass_PRE', {}, 'Mass_POST', {}, 'BMI_PRE', {}, 'BMI_POST', {}, ...
-    'EVA_PRE', {}, 'EVA_POST', {}, 'EVA_PRE_fallback', {}, 'EVA_POST_fallback', {}, ...
-    'Diagnostic', {}, 'PreviousSurgery', {});
-PatientInfos(nPatientRows).PatientID = [];
+PatientInfos = newPatientInfosStruct(nPatientRows);
 
-% Rapport de disponibilité des données (une ligne par examen PRE/POST)
-DataAvail = struct([]);
+ErrorLogPerPatient  = cell(nPatientRows, 1);
+DataAvailPerPatient = cell(nPatientRows, 1);
 
-% Base de données patient complète
+% Base de données patient complète : répartie sur NumDatabaseParts
+% fichiers .mat indépendants (voir userCommands_Multi.m)
+
+Done = false(nPatientRows, 1);
 if SaveDatabase
     if SkipKinematics
         warning(['SaveDatabase=true mais SkipKinematics=true : Trial.Segment/.Joint ', ...
             'seront vides dans PatientDatabase.mat (calcul cinematique saute).']);
     end
-    Database = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'PRE', {}, 'POST', {});
-    Database(nPatientRows).Numero = [];
-end
 
-ErrorLog = {};
+    ProgressFile = strrep(DatabaseFile, '.mat', '_progress.mat');
+    if isfile(ProgressFile)
+        prog    = load(ProgressFile, 'Done', 'PatientInfos', 'DataAvailPerPatient');
+        nCommon = min(nPatientRows, numel(prog.Done));
+        Done(1:nCommon)                = prog.Done(1:nCommon);
+        PatientInfos(1:nCommon)        = prog.PatientInfos(1:nCommon);
+        DataAvailPerPatient(1:nCommon) = prog.DataAvailPerPatient(1:nCommon);
+        disp(['Reprise : ', num2str(sum(Done)), '/', num2str(nPatientRows), ...
+              ' patients déjà traités (', ProgressFile, '), non retraités.']);
+        clear prog
+    end
+
+    [dbFolder, dbName, dbExt] = fileparts(DatabaseFile);
+    partSize   = ceil(nPatientRows / NumDatabaseParts);
+    partBounds = zeros(NumDatabaseParts, 2);
+    dbFiles    = cell(NumDatabaseParts, 1);
+    for p = 1:NumDatabaseParts
+        partBounds(p, 1) = (p-1)*partSize + 1;
+        partBounds(p, 2) = min(p*partSize, nPatientRows);
+        nInPart          = partBounds(p, 2) - partBounds(p, 1) + 1;
+        if nInPart <= 0
+            continue; % NumDatabaseParts > nPatientRows : cette partie est vide
+        end
+        partFile = fullfile(dbFolder, sprintf('%s_part%dof%d%s', dbName, p, NumDatabaseParts, dbExt));
+        if isfile(partFile)
+            dbFiles{p}   = matfile(partFile, 'Writable', true);
+            existingSize = size(dbFiles{p}, 'Database');
+            if existingSize(2) < nInPart
+                dbFiles{p}.Database(1, nInPart) = newDatabaseStruct(1);
+            end
+        else
+            Database = newDatabaseStruct(nInPart);
+            save(partFile, 'Database', '-v7.3');
+            clear Database
+            dbFiles{p} = matfile(partFile, 'Writable', true);
+        end
+    end
+end
 
 dataDirList = dir(DataFolder);
 dataDirList = dataDirList([dataDirList.isdir] & ~startsWith({dataDirList.name}, '.'));
 
-for iP = 1:size(PatientSelection, 1)
+% Fenêtre de progression, mise à jour en direct pendant le run
+hWait = waitbar(sum(Done) / max(nPatientRows,1), ...
+    sprintf('%d/%d patients traités', sum(Done), nPatientRows), ...
+    'Name', 'Pipeline multi-patients');
+hWait.UserData = sum(Done);
+progressQueue = parallel.pool.DataQueue;
+afterEach(progressQueue, @(~) updateProgressWaitbar(hWait, nPatientRows));
 
-    % Dossier patient 
-    patientID     = num2str(PatientSelection{iP, 1});
-    sidesToReport = parseSides(PatientSelection{iP, 2});
+nBatches = ceil(nPatientRows / BatchSize);
+for iBatch = 1:nBatches
+    batchIdx       = (iBatch-1)*BatchSize + 1 : min(iBatch*BatchSize, nPatientRows);
+    nBatchPatients = numel(batchIdx);
 
-    matchIdx = find(contains({dataDirList.name}, patientID));
-    if isempty(matchIdx)
-        warning('Dossier introuvable pour l''ID %s', patientID);
-        ErrorLog{end+1} = sprintf('%s | dossier introuvable', patientID); %#ok<AGROW>
-        continue;
+    disp(' ');
+    disp(['=== Paquet ', num2str(iBatch), '/', num2str(nBatches), ...
+          ' (patients ', num2str(batchIdx(1)), '-', num2str(batchIdx(end)), ') ===']);
+
+    % Accumulateurs propres à ce paquet uniquement (vidés de la RAM après
+    % écriture sur disque, voir fin de boucle)
+    BatchPatientInfos  = newPatientInfosStruct(nBatchPatients);
+    BatchErrorLog      = cell(nBatchPatients, 1);
+    BatchDataAvail     = cell(nBatchPatients, 1);
+    if SaveDatabase
+        BatchDatabase = newDatabaseStruct(nBatchPatients);
     end
-    patientName   = dataDirList(matchIdx(1)).name;
-    patientFolder = fullfile(DataFolder, patientName);
 
-    % Sessions PRE/POST : dossier "YYYYMMDD"
-    sessions.PRE  = findSessionFolder(patientFolder, PatientSelection{iP, 3});
-    sessions.POST = findSessionFolder(patientFolder, PatientSelection{iP, 4});
-    numeroWrittenForThisRow = false;
+    parfor k = 1:nBatchPatients
+        iP = batchIdx(k);
+        if Done(iP)
+            continue; % déjà traité lors d'un run précédent (reprise)
+        end
+        warning off;
+        localErrors = {};
+        localAvail  = struct([]);
 
-    conditions = fieldnames(sessions);
-    for iC = 1:length(conditions)
-        condition   = conditions{iC};
-        sessionPath = sessions.(condition);
-        if isempty(sessionPath)
-            warning('Session %s introuvable pour %s (%s)', condition, patientID, num2str(PatientSelection{iP, 2 + iC}));
-            ErrorLog{end+1} = sprintf('%s | %s | session introuvable', patientID, condition); %#ok<AGROW>
+        % Dossier patient
+        patientID     = num2str(PatientSelection{iP, 1});
+        sidesToReport = parseSides(PatientSelection{iP, 2});
+
+        matchIdx = find(contains({dataDirList.name}, patientID));
+        if isempty(matchIdx)
+            warning('Dossier introuvable pour l''ID %s', patientID);
+            localErrors{end+1} = sprintf('%s | dossier introuvable', patientID); %#ok<AGROW>
+            BatchErrorLog{k} = localErrors;
+            send(progressQueue, 1);
             continue;
         end
+        patientName   = dataDirList(matchIdx(1)).name;
+        patientFolder = fullfile(DataFolder, patientName);
 
-        disp(' ');
-        disp(['--- ', patientName, ' — ', condition, ' (', strjoin(sidesToReport, '/'), ') ---']);
+        % Sessions PRE/POST : dossier "YYYYMMDD". Construit en une seule
+        % assignation (pas en deux lignes sessions.PRE=.../sessions.POST=...) :
+        % parfor a besoin de voir "sessions" pleinement défini d'un coup pour
+        % le classer comme variable temporaire propre à chaque itération.
+        sessions = struct( ...
+            'PRE',  findSessionFolder(patientFolder, PatientSelection{iP, 3}), ...
+            'POST', findSessionFolder(patientFolder, PatientSelection{iP, 4}));
+        numeroWrittenForThisRow = false;
 
-        try
-            Folder.data = sessionPath;
-            [Trial, Patient, Session, Pathology, c3dFiles] = runProtocol01(Folder);
-
-            if SaveDatabase
-                Database(iP).Numero    = iP;
-                Database(iP).PatientID = patientID;
-                Database(iP).Side      = sidesToReport;
-                Database(iP).(condition).Trial     = StripBtkFromTrial(Trial);
-                Database(iP).(condition).Patient   = Patient;
-                Database(iP).(condition).Session   = Session;
-                Database(iP).(condition).Pathology = Pathology;
-                Database(iP).(condition).Date      = sessionPath;
+        conditions = fieldnames(sessions);
+        for iC = 1:length(conditions)
+            condition   = conditions{iC};
+            sessionPath = sessions.(condition);
+            if isempty(sessionPath)
+                warning('Session %s introuvable pour %s (%s)', condition, patientID, num2str(PatientSelection{iP, 2 + iC}));
+                localErrors{end+1} = sprintf('%s | %s | session introuvable', patientID, condition); %#ok<AGROW>
+                continue;
             end
 
-            % Age uses the session FOLDER NAME date (e.g. '20241217') rather
-            % than Session.date (free-text cell in Session.xlsx, manually
-            % typed and occasionally wrong/stale) - the folder name is
-            % already trusted to locate this exact session on disk.
-            [~, sessionFolderName] = fileparts(sessionPath);
-            examDate = [];
-            dateDigits = regexp(sessionFolderName, '^\d{8}', 'match', 'once');
-            if ~isempty(dateDigits)
-                try
-                    examDate = datetime(dateDigits, 'InputFormat', 'yyyyMMdd');
-                catch
-                    examDate = [];
+            disp(' ');
+            disp(['--- ', patientName, ' — ', condition, ' (', strjoin(sidesToReport, '/'), ') ---']);
+
+            try
+                % Copie locale : Folder est une broadcast variable (lue par
+                % tous les workers)
+                FolderLocal      = Folder;
+                FolderLocal.data = sessionPath;
+                [Trial, Patient, Session, Pathology, c3dFiles] = runProtocol01(FolderLocal);
+
+                if SaveDatabase
+                    BatchDatabase(k).Numero    = iP;
+                    BatchDatabase(k).PatientID = patientID;
+                    BatchDatabase(k).Side      = sidesToReport;
+                    BatchDatabase(k).(condition).Trial     = StripBtkFromTrial(FilterTrialForDatabase(Trial));
+                    BatchDatabase(k).(condition).Patient   = Patient;
+                    BatchDatabase(k).(condition).Session   = Session;
+                    BatchDatabase(k).(condition).Pathology = Pathology;
+                    BatchDatabase(k).(condition).Date      = sessionPath;
+                end
+
+                [~, sessionFolderName] = fileparts(sessionPath);
+                examDate = [];
+                dateDigits = regexp(sessionFolderName, '^\d{8}', 'match', 'once');
+                if ~isempty(dateDigits)
+                    try
+                        examDate = datetime(dateDigits, 'InputFormat', 'yyyyMMdd');
+                    catch
+                        examDate = [];
+                    end
+                end
+
+                info = ComputePatientInfos(Patient, Session, Pathology, examDate);
+
+                if isempty(BatchPatientInfos(k).PatientID)
+                    BatchPatientInfos(k).PatientID  = patientID;
+                    BatchPatientInfos(k).ID         = info.ID;
+                    BatchPatientInfos(k).Gender     = info.Gender;
+                    BatchPatientInfos(k).Laterality = info.Laterality;
+                    BatchPatientInfos(k).ASA        = info.ASA;
+                    BatchPatientInfos(k).Diagnostic      = info.Diagnostic;
+                    BatchPatientInfos(k).PreviousSurgery = info.PreviousSurgery;
+                    BatchPatientInfos(k).Age_PRE    = NaN; BatchPatientInfos(k).Age_POST    = NaN;
+                    BatchPatientInfos(k).Height_PRE = NaN; BatchPatientInfos(k).Height_POST = NaN;
+                    BatchPatientInfos(k).Mass_PRE   = NaN; BatchPatientInfos(k).Mass_POST   = NaN;
+                    BatchPatientInfos(k).BMI_PRE    = NaN; BatchPatientInfos(k).BMI_POST    = NaN;
+                    BatchPatientInfos(k).EVA_PRE    = '';  BatchPatientInfos(k).EVA_POST    = '';
+                    BatchPatientInfos(k).EVA_PRE_fallback  = false;
+                    BatchPatientInfos(k).EVA_POST_fallback = false;
+                end
+
+                BatchPatientInfos(k).(['EVA_', condition])             = info.EVA_formula;
+                BatchPatientInfos(k).(['EVA_', condition, '_fallback']) = info.EVA_fallback;
+                BatchPatientInfos(k).(['Age_', condition])    = info.Age;
+                BatchPatientInfos(k).(['Height_', condition]) = info.Height;
+                BatchPatientInfos(k).(['Mass_', condition])   = info.Mass;
+                BatchPatientInfos(k).(['BMI_', condition])    = info.BMI;
+
+                % Rapport de disponibilité des données
+                avail = ComputeDataAvailability(Trial, Patient, Session, Pathology, c3dFiles, sidesToReport);
+                avail.Numero   = '';
+                avail.ID       = '';
+                avail.IDRedCap = '';
+                if ~numeroWrittenForThisRow
+                    avail.Numero = iP;
+                    avail.ID     = patientID;
+                    numeroWrittenForThisRow = true;
+                end
+                avail.Examen = [upper(condition(1)), lower(condition(2:end))]; % 'Pre'/'Post'
+                avail.Date   = PatientSelection{iP, 2 + iC};
+                if isempty(localAvail)
+                    localAvail = avail;
+                else
+                    localAvail(end+1) = avail; %#ok<AGROW>
+                end
+
+                disp('  -> OK');
+
+            catch ME
+                warning('  ERREUR %s %s : %s', patientName, condition, ME.message);
+                localErrors{end+1} = sprintf('%s | %s | %s', patientName, condition, ME.message); %#ok<AGROW>
+            end
+        end
+
+        BatchErrorLog{k}  = localErrors;
+        BatchDataAvail{k} = localAvail;
+        send(progressQueue, 1);
+    end
+
+    attemptedMask = reshape(~Done(batchIdx), 1, []);
+    PatientInfos(batchIdx(attemptedMask))        = BatchPatientInfos(attemptedMask);
+    ErrorLogPerPatient(batchIdx(attemptedMask))  = BatchErrorLog(attemptedMask);
+    DataAvailPerPatient(batchIdx(attemptedMask)) = BatchDataAvail(attemptedMask);
+
+    if SaveDatabase
+        hasNumero     = arrayfun(@(s) ~isempty(s.Numero), BatchDatabase);
+        successMask   = attemptedMask & hasNumero;
+        if any(successMask)
+            successIdx  = batchIdx(successMask);   % numeros globaux de patient
+            successData = BatchDatabase(successMask);
+            for p = 1:NumDatabaseParts
+                inPart = successIdx >= partBounds(p,1) & successIdx <= partBounds(p,2);
+                if any(inPart)
+                    localIdx = successIdx(inPart) - partBounds(p,1) + 1;
+                    writeContiguousRuns(dbFiles{p}, localIdx, successData(inPart));
                 end
             end
-
-            info = ComputePatientInfos(Patient, Session, Pathology, examDate);
-
-            % Indexé par iP (pas par ID) : voir commentaire à la
-            % déclaration de PatientInfos plus haut.
-            pi_idx = iP;
-            if isempty(PatientInfos(pi_idx).PatientID)
-                PatientInfos(pi_idx).PatientID  = patientID;
-                PatientInfos(pi_idx).ID         = info.ID;
-                PatientInfos(pi_idx).Gender     = info.Gender;
-                PatientInfos(pi_idx).Laterality = info.Laterality;
-                PatientInfos(pi_idx).ASA        = info.ASA;
-                PatientInfos(pi_idx).Diagnostic      = info.Diagnostic;
-                PatientInfos(pi_idx).PreviousSurgery = info.PreviousSurgery;
-                PatientInfos(pi_idx).Age_PRE    = NaN; PatientInfos(pi_idx).Age_POST    = NaN;
-                PatientInfos(pi_idx).Height_PRE = NaN; PatientInfos(pi_idx).Height_POST = NaN;
-                PatientInfos(pi_idx).Mass_PRE   = NaN; PatientInfos(pi_idx).Mass_POST   = NaN;
-                PatientInfos(pi_idx).BMI_PRE    = NaN; PatientInfos(pi_idx).BMI_POST    = NaN;
-                PatientInfos(pi_idx).EVA_PRE    = '';  PatientInfos(pi_idx).EVA_POST    = '';
-                PatientInfos(pi_idx).EVA_PRE_fallback  = false;
-                PatientInfos(pi_idx).EVA_POST_fallback = false;
-            end
-
-            PatientInfos(pi_idx).(['EVA_', condition])             = info.EVA_formula;
-            PatientInfos(pi_idx).(['EVA_', condition, '_fallback']) = info.EVA_fallback;
-            PatientInfos(pi_idx).(['Age_', condition])    = info.Age;
-            PatientInfos(pi_idx).(['Height_', condition]) = info.Height;
-            PatientInfos(pi_idx).(['Mass_', condition])   = info.Mass;
-            PatientInfos(pi_idx).(['BMI_', condition])    = info.BMI;
-
-            % Contributions cliniques HT/GH/ST/TX : plus calculées ici. Voir
-            % Multi/Core/ComputeClinicalContributionsFromDatabase.m (section
-            % dédiée en bas de ce script), qui refait le même calcul mais
-            % depuis PatientDatabase.mat - en quelques secondes sur toute la
-            % cohorte, sans repasser par les C3D.
-
-            % Rapport de disponibilité des données (une ligne par examen)
-            avail = ComputeDataAvailability(Trial, Patient, Session, Pathology, c3dFiles, sidesToReport);
-            di = length(DataAvail) + 1;
-            avail.Numero   = '';
-            avail.ID       = '';
-            avail.IDRedCap = '';
-            if ~numeroWrittenForThisRow
-                avail.Numero = iP;
-                avail.ID     = patientID;
-                numeroWrittenForThisRow = true;
-            end
-            avail.Examen = [upper(condition(1)), lower(condition(2:end))]; % 'Pre'/'Post'
-            avail.Date   = PatientSelection{iP, 2 + iC};
-            if di == 1
-                DataAvail = avail;
-            else
-                DataAvail(di) = avail;
-            end
-
-            disp('  -> OK');
-
-        catch ME
-            warning('  ERREUR %s %s : %s', patientName, condition, ME.message);
-            ErrorLog{end+1} = sprintf('%s | %s | %s', patientName, condition, ME.message); %#ok<AGROW>
+            Done(successIdx) = true;
         end
-    end
+        clear BatchDatabase
 
-    % Sauvegarde apres chaque patient
-    if SaveDatabase
-        save(DatabaseFile, 'Database', '-v7.3');
+        save(ProgressFile, 'Done', 'PatientInfos', 'DataAvailPerPatient');
     end
 end
+
+if isvalid(hWait)
+    close(hWait);
+end
+
+ErrorLog  = [ErrorLogPerPatient{:}];
+DataAvail = [DataAvailPerPatient{~cellfun(@isempty, DataAvailPerPatient)}];
 
 if ~isempty(ErrorLog)
     disp(' ');
@@ -242,6 +355,46 @@ end
 % =========================================================================
 %  UTILITAIRES
 % =========================================================================
+
+function writeContiguousRuns(dbFileObj, localIdx, data)
+n = numel(localIdx);
+i = 1;
+while i <= n
+    j = i;
+    while j < n && localIdx(j+1) == localIdx(j) + 1
+        j = j + 1;
+    end
+    dbFileObj.Database(1, localIdx(i):localIdx(j)) = data(i:j);
+    i = j + 1;
+end
+end
+
+function updateProgressWaitbar(hWait, total)
+if ~isvalid(hWait)
+    return;
+end
+n = hWait.UserData + 1;
+hWait.UserData = n;
+waitbar(min(n / max(total,1), 1), hWait, sprintf('%d/%d patients traités', n, total));
+end
+
+function s = newPatientInfosStruct(n)
+s = struct('PatientID', {}, 'ID', {}, 'Gender', {}, 'Laterality', {}, 'ASA', {}, ...
+    'Age_PRE', {}, 'Age_POST', {}, 'Height_PRE', {}, 'Height_POST', {}, ...
+    'Mass_PRE', {}, 'Mass_POST', {}, 'BMI_PRE', {}, 'BMI_POST', {}, ...
+    'EVA_PRE', {}, 'EVA_POST', {}, 'EVA_PRE_fallback', {}, 'EVA_POST_fallback', {}, ...
+    'Diagnostic', {}, 'PreviousSurgery', {});
+if n > 0
+    s(n).PatientID = [];
+end
+end
+
+function s = newDatabaseStruct(n)
+s = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'PRE', {}, 'POST', {});
+if n > 0
+    s(n).Numero = [];
+end
+end
 
 function sessionPath = findSessionFolder(patientFolder, dateOrYear)
 sessionPath = '';
