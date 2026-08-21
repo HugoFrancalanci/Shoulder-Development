@@ -86,17 +86,18 @@ conditions = {'PRE', 'POST'};
 totalPatients = 0;
 for iFile = 1:numel(fileList)
     disp(['Chargement : ', fileList{iFile}]);
-    % Lecture patient par patient via matfile, jamais un load() complet :
-    % même un seul fichier de partie peut peser plusieurs Go, largement
-    % plus que la RAM disponible d'un coup - même principe que le
-    % paquetage dans MAIN_MULTI_Protocol_01.m.
-    dbFile       = matfile(fileList{iFile});
-    databaseSize = size(dbFile, 'Database');
-    nInFile      = databaseSize(2);
+    % Chargement en bloc de la partie : bien plus rapide qu'un accès
+    % matfile indexé patient par patient (chaque accès partiel à un struct
+    % array imbriqué stocké en -v7.3/HDF5 a un coût fixe élevé, indépendant
+    % du volume réel lu - voir NumDatabaseParts dans userCommands_Multi.m).
+    % Chaque partie est justement dimensionnée pour tenir en RAM d'un coup,
+    % contrairement à l'ancien fichier unique (d'où matfile à l'origine).
+    S       = load(fileList{iFile}, 'Database');
+    nInFile = numel(S.Database);
     totalPatients = totalPatients + nInFile;
 
 for iP = 1:nInFile
-    d = dbFile.Database(1, iP);
+    d = S.Database(iP);
     if isempty(d.Numero)
         continue; % ligne pré-allouée jamais remplie (patient introuvable/erreur aux deux conditions)
     end
@@ -150,6 +151,7 @@ for iP = 1:nInFile
         end
     end
 end
+clear S
 end
 disp(['Patients dans la base : ', num2str(totalPatients)]);
 

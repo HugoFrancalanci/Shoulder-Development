@@ -228,16 +228,19 @@ PatientInfosFile = fullfile(ResultsFolder, 'PatientInfos_Summary.xlsx');
 % DataAvailabilityFile : fichier Excel de sortie (disponibilité des données)
 DataAvailabilityFile = fullfile(ResultsFolder, 'DataAvailability_Summary.xlsx');
 
+% ContralateralEligibilityFile : fichier Excel de sortie
+ContralateralEligibilityFile = fullfile(ResultsFolder, 'ContralateralEligibility_Summary.xlsx');
+
 % SaveDatabase : true pour sauvegarder .mat
 SaveDatabase = true;
 DatabaseFile = fullfile(ResultsFolder, 'Database_182_E02_01_Posture_rTSA.mat');
 
-% BatchSize : nombre de patients traités en parallele (parfor) avant
-% d'ecrire sur disque et de vider la RAM.
-BatchSize = 10;
-
 % NumDatabaseParts : nombre de fichiers .mat sur lesquels repartir la
 % cohorte
 NumDatabaseParts = 10;
+
+% BatchSize : nombre de patients traités en parallele (parfor) avant
+% d'ecrire sur disque et de vider la RAM.
+BatchSize = ceil(size(PatientSelection, 1) / NumDatabaseParts);
 
 

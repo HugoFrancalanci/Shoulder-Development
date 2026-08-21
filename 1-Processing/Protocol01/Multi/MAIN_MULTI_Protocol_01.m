@@ -2,7 +2,7 @@
 %                Biomechanics and Translational Research in Surgery Group
 %                University of Geneva
 %                https://www.unige.ch/medecine/chiru/en/research-groups/nicolas-holzer-et-florent-moissenet
-% License    :   Creative Commons Attribution-NonCommercial 4.0 International License 
+% License    :   Creative Commons Attribution-NonCommercial 4.0 International License
 %                https://creativecommons.org/licenses/by-nc/4.0/legalcode
 % Source code:   To be defined
 % Reference  :   To be defined
@@ -18,17 +18,29 @@
 %                aussi Trial (sans .btk) + Patient/Session/Pathology de
 %                chaque patient, réparti sur NumDatabaseParts fichiers .mat
 %                indépendants (voir userCommands_Multi.m - DatabaseFile sert
-%                de nom de base, ex: Database_182..._part1of4.mat), écrits
-%                sur disque paquet par paquet (matfile, écriture partielle)
-%                plutôt que tout accumulé en RAM sur les 182 patients : un
-%                patient (PRE+POST) pèse au moins ~40 Mo compressé (après
-%                filtrage, voir FilterTrialForDatabase.m), largement plus une
-%                fois décompressé en mémoire. Plusieurs fichiers plutôt qu'un
-%                seul limitent aussi les dégâts si l'un se corrompt. Reprise
-%                automatique : si le script a été interrompu (plantage,
-%                fermeture) lors d'un run précédent, les patients déjà écrits
-%                ne sont pas retraités au prochain lancement (statut suivi
-%                dans PatientDatabase_progress.mat).
+%                de nom de base, ex: Database_182..._part1of10.mat).
+%
+%                BatchSize est aligné sur NumDatabaseParts (voir
+%                userCommands_Multi.m : BatchSize = ceil(nPatients/NumDatabaseParts))
+%                de sorte qu'un PAQUET = une PARTIE exactement. Chaque
+%                partie est écrite en UNE SEULE FOIS (save() en bloc,
+%                -nocompression) une fois tous ses patients traités, plutôt
+%                qu'en écritures partielles indexées au fil des paquets
+%                (mesuré ~25x plus lent : les écritures partielles dans un
+%                struct array imbriqué stocké en -v7.3/HDF5 ont un coût fixe
+%                élevé par appel, indépendant du volume réel écrit - la
+%                compression n'est PAS en cause, désactiver la compression
+%                seule sur l'ancien schéma n'apporte quasiment rien).
+%
+%                Reprise automatique : granularité par PARTIE (pas par
+%                patient comme avant) - si le script est interrompu
+%                (plantage, fermeture) en cours de partie, toute la partie
+%                est retraitée au prochain lancement, pas seulement les
+%                patients manquants (statut suivi, léger, dans
+%                PatientDatabase_progress.mat). Contrepartie du gain de
+%                vitesse : une partie interrompue perd son avancement
+%                interne (~BatchSize patients à retraiter), mais les
+%                parties déjà terminées ne sont jamais retouchées.
 %
 %                Fonctions propres au pipeline multi (Compute*/Export*/Plot*)
 %                rangées dans Multi/Core, Multi/IO, Multi/Plot, séparées des
@@ -48,6 +60,7 @@
 
 clearvars; close all; warning off; clc;
 disp('Pipeline multi-patients');
+ticTotal = tic;
 
 % -------------------------------------------------------------------------
 % CONFIGURATION
@@ -87,51 +100,32 @@ PatientInfos = newPatientInfosStruct(nPatientRows);
 ErrorLogPerPatient  = cell(nPatientRows, 1);
 DataAvailPerPatient = cell(nPatientRows, 1);
 
-% Base de données patient complète : répartie sur NumDatabaseParts
-% fichiers .mat indépendants (voir userCommands_Multi.m)
+nBatches = ceil(nPatientRows / BatchSize);
 
-Done = false(nPatientRows, 1);
+% Base de données patient complète
+PartDone = false(nBatches, 1);
 if SaveDatabase
     if SkipKinematics
         warning(['SaveDatabase=true mais SkipKinematics=true : Trial.Segment/.Joint ', ...
             'seront vides dans PatientDatabase.mat (calcul cinematique saute).']);
     end
 
+    [dbFolder, dbName, dbExt] = fileparts(DatabaseFile);
     ProgressFile = strrep(DatabaseFile, '.mat', '_progress.mat');
     if isfile(ProgressFile)
-        prog    = load(ProgressFile, 'Done', 'PatientInfos', 'DataAvailPerPatient');
-        nCommon = min(nPatientRows, numel(prog.Done));
-        Done(1:nCommon)                = prog.Done(1:nCommon);
-        PatientInfos(1:nCommon)        = prog.PatientInfos(1:nCommon);
-        DataAvailPerPatient(1:nCommon) = prog.DataAvailPerPatient(1:nCommon);
-        disp(['Reprise : ', num2str(sum(Done)), '/', num2str(nPatientRows), ...
-              ' patients déjà traités (', ProgressFile, '), non retraités.']);
-        clear prog
-    end
-
-    [dbFolder, dbName, dbExt] = fileparts(DatabaseFile);
-    partSize   = ceil(nPatientRows / NumDatabaseParts);
-    partBounds = zeros(NumDatabaseParts, 2);
-    dbFiles    = cell(NumDatabaseParts, 1);
-    for p = 1:NumDatabaseParts
-        partBounds(p, 1) = (p-1)*partSize + 1;
-        partBounds(p, 2) = min(p*partSize, nPatientRows);
-        nInPart          = partBounds(p, 2) - partBounds(p, 1) + 1;
-        if nInPart <= 0
-            continue; % NumDatabaseParts > nPatientRows : cette partie est vide
-        end
-        partFile = fullfile(dbFolder, sprintf('%s_part%dof%d%s', dbName, p, NumDatabaseParts, dbExt));
-        if isfile(partFile)
-            dbFiles{p}   = matfile(partFile, 'Writable', true);
-            existingSize = size(dbFiles{p}, 'Database');
-            if existingSize(2) < nInPart
-                dbFiles{p}.Database(1, nInPart) = newDatabaseStruct(1);
-            end
-        else
-            Database = newDatabaseStruct(nInPart);
-            save(partFile, 'Database', '-v7.3');
-            clear Database
-            dbFiles{p} = matfile(partFile, 'Writable', true);
+        try
+            prog    = load(ProgressFile, 'PartDone', 'PatientInfos', 'DataAvailPerPatient');
+            nCommon = min(nPatientRows, numel(prog.PatientInfos));
+            nPCommon = min(nBatches, numel(prog.PartDone));
+            PartDone(1:nPCommon)            = prog.PartDone(1:nPCommon);
+            PatientInfos(1:nCommon)         = prog.PatientInfos(1:nCommon);
+            DataAvailPerPatient(1:nCommon)  = prog.DataAvailPerPatient(1:nCommon);
+            disp(['Reprise : ', num2str(sum(PartDone)), '/', num2str(nBatches), ...
+                  ' parties déjà traitées (', ProgressFile, '), non retraitées.']);
+            clear prog
+        catch
+            warning(['Fichier de progression incompatible (ancien format par patient) - ', ...
+                'ignoré, reprise depuis zéro : ', ProgressFile]);
         end
     end
 end
@@ -140,24 +134,30 @@ dataDirList = dir(DataFolder);
 dataDirList = dataDirList([dataDirList.isdir] & ~startsWith({dataDirList.name}, '.'));
 
 % Fenêtre de progression, mise à jour en direct pendant le run
-hWait = waitbar(sum(Done) / max(nPatientRows,1), ...
-    sprintf('%d/%d patients traités', sum(Done), nPatientRows), ...
+batchSizes = arrayfun(@(p) numel((p-1)*BatchSize+1 : min(p*BatchSize, nPatientRows)), (1:nBatches)');
+nDoneAlready = sum(batchSizes(PartDone));
+hWait = waitbar(nDoneAlready / max(nPatientRows,1), ...
+    sprintf('%d/%d patients traités', nDoneAlready, nPatientRows), ...
     'Name', 'Pipeline multi-patients');
-hWait.UserData = sum(Done);
+hWait.UserData = nDoneAlready;
 progressQueue = parallel.pool.DataQueue;
 afterEach(progressQueue, @(~) updateProgressWaitbar(hWait, nPatientRows));
 
-nBatches = ceil(nPatientRows / BatchSize);
 for iBatch = 1:nBatches
     batchIdx       = (iBatch-1)*BatchSize + 1 : min(iBatch*BatchSize, nPatientRows);
     nBatchPatients = numel(batchIdx);
+
+    if SaveDatabase && PartDone(iBatch)
+        disp(' ');
+        disp(['=== Paquet ', num2str(iBatch), '/', num2str(nBatches), ' : déjà traité (reprise), ignoré ===']);
+        continue;
+    end
 
     disp(' ');
     disp(['=== Paquet ', num2str(iBatch), '/', num2str(nBatches), ...
           ' (patients ', num2str(batchIdx(1)), '-', num2str(batchIdx(end)), ') ===']);
 
-    % Accumulateurs propres à ce paquet uniquement (vidés de la RAM après
-    % écriture sur disque, voir fin de boucle)
+    % Accumulateurs propres à ce paquet uniquement
     BatchPatientInfos  = newPatientInfosStruct(nBatchPatients);
     BatchErrorLog      = cell(nBatchPatients, 1);
     BatchDataAvail     = cell(nBatchPatients, 1);
@@ -165,11 +165,9 @@ for iBatch = 1:nBatches
         BatchDatabase = newDatabaseStruct(nBatchPatients);
     end
 
+    ticBatchProcessing = tic;
     parfor k = 1:nBatchPatients
         iP = batchIdx(k);
-        if Done(iP)
-            continue; % déjà traité lors d'un run précédent (reprise)
-        end
         warning off;
         localErrors = {};
         localAvail  = struct([]);
@@ -189,10 +187,6 @@ for iBatch = 1:nBatches
         patientName   = dataDirList(matchIdx(1)).name;
         patientFolder = fullfile(DataFolder, patientName);
 
-        % Sessions PRE/POST : dossier "YYYYMMDD". Construit en une seule
-        % assignation (pas en deux lignes sessions.PRE=.../sessions.POST=...) :
-        % parfor a besoin de voir "sessions" pleinement défini d'un coup pour
-        % le classer comme variable temporaire propre à chaque itération.
         sessions = struct( ...
             'PRE',  findSessionFolder(patientFolder, PatientSelection{iP, 3}), ...
             'POST', findSessionFolder(patientFolder, PatientSelection{iP, 4}));
@@ -212,8 +206,6 @@ for iBatch = 1:nBatches
             disp(['--- ', patientName, ' — ', condition, ' (', strjoin(sidesToReport, '/'), ') ---']);
 
             try
-                % Copie locale : Folder est une broadcast variable (lue par
-                % tous les workers)
                 FolderLocal      = Folder;
                 FolderLocal.data = sessionPath;
                 [Trial, Patient, Session, Pathology, c3dFiles] = runProtocol01(FolderLocal);
@@ -296,30 +288,24 @@ for iBatch = 1:nBatches
         BatchDataAvail{k} = localAvail;
         send(progressQueue, 1);
     end
+    tProcessing = toc(ticBatchProcessing);
+    disp(['  Temps traitement (paquet) : ', num2str(tProcessing, '%.1f'), ' s']);
 
-    attemptedMask = reshape(~Done(batchIdx), 1, []);
-    PatientInfos(batchIdx(attemptedMask))        = BatchPatientInfos(attemptedMask);
-    ErrorLogPerPatient(batchIdx(attemptedMask))  = BatchErrorLog(attemptedMask);
-    DataAvailPerPatient(batchIdx(attemptedMask)) = BatchDataAvail(attemptedMask);
+    PatientInfos(batchIdx)        = BatchPatientInfos;
+    ErrorLogPerPatient(batchIdx)  = BatchErrorLog;
+    DataAvailPerPatient(batchIdx) = BatchDataAvail;
 
     if SaveDatabase
-        hasNumero     = arrayfun(@(s) ~isempty(s.Numero), BatchDatabase);
-        successMask   = attemptedMask & hasNumero;
-        if any(successMask)
-            successIdx  = batchIdx(successMask);   % numeros globaux de patient
-            successData = BatchDatabase(successMask);
-            for p = 1:NumDatabaseParts
-                inPart = successIdx >= partBounds(p,1) & successIdx <= partBounds(p,2);
-                if any(inPart)
-                    localIdx = successIdx(inPart) - partBounds(p,1) + 1;
-                    writeContiguousRuns(dbFiles{p}, localIdx, successData(inPart));
-                end
-            end
-            Done(successIdx) = true;
-        end
-        clear BatchDatabase
+        ticBatchSave = tic;
+        Database = BatchDatabase; %#ok<NASGU>
+        partFile = fullfile(dbFolder, sprintf('%s_part%dof%d%s', dbName, iBatch, nBatches, dbExt));
+        save(partFile, 'Database', '-v7.3', '-nocompression');
+        clear Database BatchDatabase
 
-        save(ProgressFile, 'Done', 'PatientInfos', 'DataAvailPerPatient');
+        PartDone(iBatch) = true;
+        save(ProgressFile, 'PartDone', 'PatientInfos', 'DataAvailPerPatient');
+        tSave = toc(ticBatchSave);
+        disp(['  Temps sauvegarde (partie) : ', num2str(tSave, '%.1f'), ' s']);
     end
 end
 
@@ -344,6 +330,10 @@ end
 ExportPatientInfos(PatientInfos, PatientInfosFile);
 ExportDataAvailability(DataAvail, DataAvailabilityFile);
 
+tTotal = toc(ticTotal);
+disp(' ');
+disp(['Temps total du run : ', num2str(tTotal, '%.1f'), ' s (', num2str(tTotal/60, '%.1f'), ' min)']);
+
 if isfolder(ResultsFolder)
     cd(ResultsFolder);
 end
@@ -355,19 +345,6 @@ end
 % =========================================================================
 %  UTILITAIRES
 % =========================================================================
-
-function writeContiguousRuns(dbFileObj, localIdx, data)
-n = numel(localIdx);
-i = 1;
-while i <= n
-    j = i;
-    while j < n && localIdx(j+1) == localIdx(j) + 1
-        j = j + 1;
-    end
-    dbFileObj.Database(1, localIdx(i):localIdx(j)) = data(i:j);
-    i = j + 1;
-end
-end
 
 function updateProgressWaitbar(hWait, total)
 if ~isvalid(hWait)
@@ -414,7 +391,7 @@ end
 function sides = parseSides(sideCode)
 if isnumeric(sideCode)
     if sideCode == 1
-        sideCode = 'L'; 
+        sideCode = 'L';
     elseif sideCode == 0
         sideCode = 'R';
     else
@@ -441,3 +418,5 @@ addpath(fullfile(Folder.toolbox, 'Multi', 'IO'));
 run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DatabaseFile, OutputFile, ResultsFolder
 
 ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder);
+
+ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibilityFile, ResultsFolder);

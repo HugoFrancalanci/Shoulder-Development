@@ -12,16 +12,23 @@ sans jamais écrire dans les données patients (lecture seule).
   `runProtocol01()` par session (relit les C3D - c'est l'étape lente),
   exporte `PatientInfos`/`DataAvailability` en Excel. Si `SaveDatabase=true`,
   sauvegarde aussi `Trial` (sans `.btk`) + `Patient`/`Session`/`Pathology` de
-  chaque patient dans `Results/PatientDatabase.mat` — écrit sur disque paquet
-  par paquet (`matfile`, écriture partielle) et vidé de la RAM entre chaque,
-  plutôt que tout accumulé en mémoire (un patient PRE+POST pèse ~180 Mo
-  compressé, largement plus décompressé - 182 patients d'un coup dépasserait
-  la RAM d'une machine courante).
-  **Reprise automatique** : le statut (léger - pas les `Trial` complets) est
-  suivi dans `Results/PatientDatabase_progress.mat` ; si le script est
-  interrompu (plantage, fermeture), les patients déjà écrits dans
-  `PatientDatabase.mat` lors du run précédent ne sont pas retraités au
-  prochain lancement.
+  chaque patient, répartis sur `NumDatabaseParts` fichiers
+  `Results/..._partXofY.mat` (`BatchSize` est aligné sur `NumDatabaseParts`
+  dans `userCommands_Multi.m` - un paquet = une partie exactement).
+  Chaque partie est écrite en **un seul bloc** (`save(...,'-v7.3','-nocompression')`)
+  une fois tous ses patients traités, puis vidée de la RAM - pas en
+  écritures partielles indexées au fil des paquets comme avant : mesuré
+  ~25x plus lent, car le coût des écritures partielles dans un struct array
+  imbriqué stocké en `-v7.3`/HDF5 est un coût fixe par appel, indépendant du
+  volume réel écrit (la compression seule n'explique pas ce coût - testé).
+  **Reprise automatique** : granularité par **partie** (pas par patient) -
+  le statut (léger, `PartDone` + `PatientInfos`/`DataAvailPerPatient`, pas
+  les `Trial` complets) est suivi dans `Results/PatientDatabase_progress.mat` ;
+  si le script est interrompu (plantage, fermeture), les parties déjà
+  écrites ne sont pas retraitées au prochain lancement, mais une partie
+  interrompue en cours de traitement est retraitée entièrement (jusqu'à
+  `BatchSize` patients), pas seulement les patients manquants - contrepartie
+  acceptée du gain de vitesse.
 - **`userCommands_Multi.m`** — le seul fichier à modifier pour choisir les
   patients à traiter. Jamais touché par le script lui-même.
 - **`Core/`, `IO/`** — fonctions propres au pipeline multi, ajoutées au path
@@ -126,6 +133,31 @@ accumulées à part dans `Curves` et tracées par la fonction locale
 `PlotHTContributionsCurves` (aussi fusionnée dans `ComputeClinicalContributionsFromDatabase.m`)
 - PRE en rouge, POST en bleu, courbes individuelles transparentes + moyenne
 en gras.
+
+## Autre reporting : éligibilité de l'épaule controlatérale
+
+`Multi/Core/ComputeContralateralEligibilityFromDatabase.m` recharge
+`PatientDatabase.mat` et évalue, pour l'épaule **controlatérale** (opposée
+au côté analysé/opéré, `Database(i).Side`) de chaque patient, 3 critères
+d'éligibilité comme épaule de référence asymptomatique :
+
+1. ROM HT (Euler, DOF dépendant de la tâche : 3=Z flexion/extension pour
+   ANALYTIC1, 1=X élévation/abduction pour ANALYTIC2 - voir
+   Protocol01/Core/ComputeKinematics.m) > 150° sur ANALYTIC1 ou ANALYTIC2
+   (PRE puis POST si PRE indisponible).
+2. EVA moyen (4 tâches ANALYTIC) du côté controlatéral == 0 (PRE puis POST).
+3. Aucune mention du côté controlatéral dans `Diagnosis`/`PlanedSurgery`/
+   `PreviousSurgery` (recherche de mot-clé "droit"/"gauche" dans le texte
+   libre - confirmé sur des données réelles que le côté y est toujours
+   précisé), union PRE+POST.
+
+Callable à tout moment, même patron que
+`ComputeClinicalContributionsFromDatabase` :
+`ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibilityFile, ResultsFolder)`.
+Un critère vide (`''`) signale une donnée manquante (distinct de "Non") ;
+`Eligible_Overall` reste vide tant qu'un critère est vide, sinon `Oui`
+seulement si les 3 critères sont `Oui`. `Antecedents_Details` liste le(s)
+champ(s) ayant déclenché un `Non`, pour vérification manuelle facile.
 
 ## Autre reporting : infos démographiques/cliniques patient
 
