@@ -16,7 +16,7 @@
 %
 %                1) ROM_Criterion: humero-thoracic (HT) range of motion on
 %                   ANALYTIC1 (sagittal elevation/flexion) OR ANALYTIC2
-%                   (coronal elevation) > 150 deg. Euler-based (Joint(1)
+%                   (coronal elevation) > 120 deg. Euler-based (Joint(1)
 %                   right / Joint(6) left, same joints/convention as
 %                   ComputeClinicalContributionsFromDatabase.m's HT). The
 %                   Euler DOF that carries flexion/extension is
@@ -183,7 +183,7 @@ for iFile = 1:numel(fileList)
         romMax = max([rom1, rom2], [], 'omitnan');
         if isnan(romMax)
             Results(ri).ROM_Criterion = '';
-        elseif romMax > 150
+        elseif romMax > 120
             Results(ri).ROM_Criterion = 'Oui';
         else
             Results(ri).ROM_Criterion = 'Non';

@@ -65,9 +65,11 @@ ticTotal = tic;
 % -------------------------------------------------------------------------
 % CONFIGURATION
 % -------------------------------------------------------------------------
-MainFolder     = 'C:\Users\franc\Desktop\Programming\01_Projects\E02_Classification_rTSA';
-Folder.toolbox = [MainFolder, '\Shoulder_Dev\1-Processing\Protocol01'];
-Folder.deps    = [MainFolder, '\Shoulder_Dev\1-Processing\dependencies'];
+% Dérivé de l'emplacement du script lui-même (portable sur n'importe
+% quelle machine, pas de chemin à adapter) : ce fichier vit dans
+% Shoulder_Dev\1-Processing\Protocol01\Multi\.
+Folder.toolbox = fileparts(fileparts(mfilename('fullpath')));
+Folder.deps    = fullfile(fileparts(Folder.toolbox), 'dependencies');
 addpath(fullfile(Folder.toolbox, 'Multi'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'Core'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'IO'));
@@ -279,8 +281,17 @@ for iBatch = 1:nBatches
                 disp('  -> OK');
 
             catch ME
-                warning('  ERREUR %s %s : %s', patientName, condition, ME.message);
-                localErrors{end+1} = sprintf('%s | %s | %s', patientName, condition, ME.message); %#ok<AGROW>
+                % Trace (fonction + ligne d'origine) en plus du message :
+                % le seul ME.message ne dit pas d'où vient l'erreur (ex:
+                % "Unrecognized field name..." peut venir de n'importe quel
+                % appel dans le bloc try - readtable, BTK, ComputePatientInfos...).
+                if ~isempty(ME.stack)
+                    origin = sprintf('%s (ligne %d)', ME.stack(1).name, ME.stack(1).line);
+                else
+                    origin = 'origine inconnue';
+                end
+                warning('  ERREUR %s %s : %s [%s]', patientName, condition, ME.message, origin);
+                localErrors{end+1} = sprintf('%s | %s | %s [%s]', patientName, condition, ME.message, origin); %#ok<AGROW>
             end
         end
 
@@ -410,8 +421,7 @@ end
 
 %% ========================================================================
 %  Results extraction from.mat
-MainFolder     = 'C:\Users\franc\Desktop\Programming\01_Projects\E02_Classification_rTSA';
-Folder.toolbox = [MainFolder, '\Shoulder_Dev\1-Processing\Protocol01'];
+Folder.toolbox = fileparts(fileparts(mfilename('fullpath')));
 addpath(fullfile(Folder.toolbox, 'Multi'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'Core'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'IO'));
