@@ -17,8 +17,7 @@
 %                DataAvailability en Excel. Si SaveDatabase=true, sauvegarde
 %                aussi Trial (sans .btk) + Patient/Session/Pathology de
 %                chaque patient, réparti sur NumDatabaseParts fichiers .mat
-%                indépendants (voir userCommands_Multi.m - DatabaseFile sert
-%                de nom de base, ex: Database_182..._part1of10.mat).
+%                indépendants 
 %
 %                BatchSize est aligné sur NumDatabaseParts (voir
 %                userCommands_Multi.m : BatchSize = ceil(nPatients/NumDatabaseParts))
@@ -31,16 +30,6 @@
 %                élevé par appel, indépendant du volume réel écrit - la
 %                compression n'est PAS en cause, désactiver la compression
 %                seule sur l'ancien schéma n'apporte quasiment rien).
-%
-%                Reprise automatique : granularité par PARTIE (pas par
-%                patient comme avant) - si le script est interrompu
-%                (plantage, fermeture) en cours de partie, toute la partie
-%                est retraitée au prochain lancement, pas seulement les
-%                patients manquants (statut suivi, léger, dans
-%                PatientDatabase_progress.mat). Contrepartie du gain de
-%                vitesse : une partie interrompue perd son avancement
-%                interne (~BatchSize patients à retraiter), mais les
-%                parties déjà terminées ne sont jamais retouchées.
 %
 %                Fonctions propres au pipeline multi (Compute*/Export*/Plot*)
 %                rangées dans Multi/Core, Multi/IO, Multi/Plot, séparées des
@@ -65,9 +54,6 @@ ticTotal = tic;
 % -------------------------------------------------------------------------
 % CONFIGURATION
 % -------------------------------------------------------------------------
-% Dérivé de l'emplacement du script lui-même (portable sur n'importe
-% quelle machine, pas de chemin à adapter) : ce fichier vit dans
-% Shoulder_Dev\1-Processing\Protocol01\Multi\.
 Folder.toolbox = fileparts(fileparts(mfilename('fullpath')));
 Folder.deps    = fullfile(fileparts(Folder.toolbox), 'dependencies');
 addpath(fullfile(Folder.toolbox, 'Multi'));
@@ -145,6 +131,9 @@ hWait.UserData = nDoneAlready;
 progressQueue = parallel.pool.DataQueue;
 afterEach(progressQueue, @(~) updateProgressWaitbar(hWait, nPatientRows));
 
+% Redémarrage périodique du pool de workers parfor
+PoolRestartEveryNBatches = 2;
+
 for iBatch = 1:nBatches
     batchIdx       = (iBatch-1)*BatchSize + 1 : min(iBatch*BatchSize, nPatientRows);
     nBatchPatients = numel(batchIdx);
@@ -153,6 +142,13 @@ for iBatch = 1:nBatches
         disp(' ');
         disp(['=== Paquet ', num2str(iBatch), '/', num2str(nBatches), ' : déjà traité (reprise), ignoré ===']);
         continue;
+    end
+
+    if mod(iBatch - 1, PoolRestartEveryNBatches) == 0
+        disp('  (redémarrage du pool de workers)');
+        delete(gcp('nocreate'));
+        % Taille du pool forcée à BatchSize
+        parpool(BatchSize);
     end
 
     disp(' ');
@@ -281,10 +277,6 @@ for iBatch = 1:nBatches
                 disp('  -> OK');
 
             catch ME
-                % Trace (fonction + ligne d'origine) en plus du message :
-                % le seul ME.message ne dit pas d'où vient l'erreur (ex:
-                % "Unrecognized field name..." peut venir de n'importe quel
-                % appel dans le bloc try - readtable, BTK, ComputePatientInfos...).
                 if ~isempty(ME.stack)
                     origin = sprintf('%s (ligne %d)', ME.stack(1).name, ME.stack(1).line);
                 else
@@ -427,6 +419,8 @@ addpath(fullfile(Folder.toolbox, 'Multi', 'Core'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'IO'));
 run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DatabaseFile, OutputFile, ResultsFolder
 
+%%
 ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder);
 
+%%
 ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibilityFile, ResultsFolder);

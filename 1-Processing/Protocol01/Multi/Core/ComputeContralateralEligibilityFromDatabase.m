@@ -73,6 +73,22 @@
 %                Antecedents_Criterion='Non', so a manual double-check
 %                stays easy (free-text medical fields, keyword search only).
 %
+%                ROM_Max_deg = max(ROM_ANALYTIC1_deg, ROM_ANALYTIC2_deg) -
+%                the same value ROM_Criterion (>120) is based on. Also
+%                reported at higher thresholds (ROM_130/140/150/160) as
+%                Oui/Non/blank, same convention as ROM_Criterion, for
+%                stratifying how many contralateral shoulders clear each
+%                bar - these do NOT feed into Eligible_Overall, which
+%                stays tied to the 120° criterion only.
+%
+%                Two figures generated after the Excel export (see
+%                PlotContralateralROM, local function): (1) a bar chart of
+%                how many contralateral shoulders clear each threshold
+%                120/130/140/150/160°, (2) a histogram of ROM_Max_deg
+%                across ALL contralateral shoulders with a valid
+%                measurement (not just the eligible ones), to see the full
+%                distribution shape.
+%
 %                Callable at any time from the command window, once
 %                PatientDatabase.mat exists (SaveDatabase=true) - same usage
 %                as ComputeClinicalContributionsFromDatabase.m:
@@ -107,7 +123,8 @@ if isempty(fileList)
 end
 
 Results = struct('Numero', {}, 'PatientID', {}, 'AnalysedSide', {}, 'ContralateralSide', {}, ...
-    'ROM_ANALYTIC1_deg', {}, 'ROM_ANALYTIC2_deg', {}, 'ROM_Condition', {}, 'ROM_Criterion', {}, ...
+    'ROM_ANALYTIC1_deg', {}, 'ROM_ANALYTIC2_deg', {}, 'ROM_Max_deg', {}, 'ROM_Condition', {}, 'ROM_Criterion', {}, ...
+    'ROM_130', {}, 'ROM_140', {}, 'ROM_150', {}, 'ROM_160', {}, ...
     'EVA_Contralateral', {}, 'EVA_Condition', {}, 'EVA_Criterion', {}, ...
     'Antecedents_Details', {}, 'Antecedents_Criterion', {}, ...
     'Eligible_Overall', {});
@@ -143,8 +160,13 @@ for iFile = 1:numel(fileList)
             Results(ri).ContralateralSide     = 'N/A (deux côtés analysés)';
             Results(ri).ROM_ANALYTIC1_deg      = NaN;
             Results(ri).ROM_ANALYTIC2_deg      = NaN;
+            Results(ri).ROM_Max_deg            = NaN;
             Results(ri).ROM_Condition          = '';
             Results(ri).ROM_Criterion          = '';
+            Results(ri).ROM_130                = '';
+            Results(ri).ROM_140                = '';
+            Results(ri).ROM_150                = '';
+            Results(ri).ROM_160                = '';
             Results(ri).EVA_Contralateral      = NaN;
             Results(ri).EVA_Condition          = '';
             Results(ri).EVA_Criterion          = '';
@@ -181,13 +203,15 @@ for iFile = 1:numel(fileList)
         Results(ri).ROM_ANALYTIC2_deg = rom2;
         Results(ri).ROM_Condition     = romCond;
         romMax = max([rom1, rom2], [], 'omitnan');
-        if isnan(romMax)
-            Results(ri).ROM_Criterion = '';
-        elseif romMax > 120
-            Results(ri).ROM_Criterion = 'Oui';
-        else
-            Results(ri).ROM_Criterion = 'Non';
-        end
+        Results(ri).ROM_Max_deg = romMax;
+        Results(ri).ROM_Criterion = romCriterionAtThreshold(romMax, 120);
+        % Colonnes supplémentaires, mêmes seuils que le graph stratifié
+        % (PlotContralateralROM ci-dessous) - n'entrent PAS dans
+        % Eligible_Overall, qui reste basé sur ROM_Criterion (120°) seul.
+        Results(ri).ROM_130 = romCriterionAtThreshold(romMax, 130);
+        Results(ri).ROM_140 = romCriterionAtThreshold(romMax, 140);
+        Results(ri).ROM_150 = romCriterionAtThreshold(romMax, 150);
+        Results(ri).ROM_160 = romCriterionAtThreshold(romMax, 160);
 
         % ---- 2) EVA = 0, côté controlatéral, PRE puis POST ----
         evaVal = NaN; evaCond = '';
@@ -255,6 +279,8 @@ else
     disp('Aucune donnée à exporter.');
 end
 
+PlotContralateralROM(Results);
+
 if ~isempty(ResultsFolder) && isfolder(ResultsFolder)
     cd(ResultsFolder);
 end
@@ -292,6 +318,59 @@ end
 % =========================================================================
 %  HELPERS
 % =========================================================================
+% Oui/Non/'' at an arbitrary ROM threshold - same convention as
+% ROM_Criterion (blank = missing data, distinct from Non).
+function crit = romCriterionAtThreshold(romMax, threshold)
+if isnan(romMax)
+    crit = '';
+elseif romMax > threshold
+    crit = 'Oui';
+else
+    crit = 'Non';
+end
+end
+
+% Two figures: (1) bar chart - how many contralateral shoulders clear
+% each ROM threshold 120/130/140/150/160deg (stratified count, decreasing
+% by construction as the bar rises), (2) histogram of ROM_Max_deg across
+% ALL contralateral shoulders with a valid measurement - not just the
+% eligible ones - to see the full distribution shape (RL patients and
+% missing-data rows excluded from both, via the NaN in ROM_Max_deg).
+function PlotContralateralROM(Results)
+if isempty(Results)
+    disp('PlotContralateralROM: no data to plot.');
+    return;
+end
+
+romMaxAll = [Results.ROM_Max_deg];
+romMaxAll = romMaxAll(~isnan(romMaxAll));
+if isempty(romMaxAll)
+    disp('PlotContralateralROM: no valid ROM_Max_deg to plot.');
+    return;
+end
+
+% ---- Figure 1 : nombre de patients au-dessus de chaque seuil ----
+thresholds = [120 130 140 150 160];
+counts = arrayfun(@(t) sum(romMaxAll > t), thresholds);
+
+figure('Name', 'ROM controlatérale - stratification par seuil', 'Color', 'w');
+b = bar(thresholds, counts, 'FaceColor', [0 0.4470 0.7410]);
+xlabel('Seuil ROM (°)');
+ylabel('Nombre d''épaules controlatérales > seuil');
+title('Épaules controlatérales éligibles par seuil de ROM');
+xticks(thresholds);
+xtips = b.XEndPoints; ytips = b.YEndPoints;
+text(xtips, ytips, string(counts), 'HorizontalAlignment', 'center', ...
+    'VerticalAlignment', 'bottom');
+
+% ---- Figure 2 : distribution complète, toutes épaules controlatérales ----
+figure('Name', 'ROM controlatérale - distribution complète', 'Color', 'w');
+histogram(romMaxAll, 'BinWidth', 10, 'FaceColor', [0.4660 0.6740 0.1880]);
+xlabel('ROM controlatérale max (°)');
+ylabel('Nombre d''épaules controlatérales');
+title(sprintf('Distribution du ROM controlatéral - toute la cohorte (n=%d)', numel(romMaxAll)));
+end
+
 function tf = hasField(d, condition, fieldName)
 tf = isfield(d, condition) && isstruct(d.(condition)) && isfield(d.(condition), fieldName) ...
     && ~isempty(d.(condition).(fieldName));
