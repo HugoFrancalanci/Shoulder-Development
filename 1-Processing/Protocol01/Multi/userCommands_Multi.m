@@ -18,8 +18,8 @@
 switch getenv('COMPUTERNAME')
     case 'FRANCALANCIPHD'
         DataFolder = 'C:\Users\franc\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\01_Etudes\E02_Classification_rTSA\Clinique\Données\KLAB-UPPERLIMB-PROTOCOL01\Data';
-    case 'A_COMPLETER' % Renseigner le nom du PC et le chemin
-        DataFolder = '';
+    case 'CD-8K18T74'
+        DataFolder = 'C:\Users\francala\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\01_Etudes\E02_Classification_rTSA\Clinique\Données\KLAB-UPPERLIMB-PROTOCOL01\Data';
     otherwise
         DataFolder = ''; % machine inconnue : demandé via fenêtre au lancement
 end
@@ -223,10 +223,10 @@ SkipKinematics = false;
 switch getenv('COMPUTERNAME')
     case 'FRANCALANCIPHD' 
         ResultsFolder = 'C:\Users\franc\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\01_Etudes\E02_01_Posture_rTSA';
-    case 'A_COMPLETER' % Renseigner le chemin
-        ResultsFolder = fullfile(fileparts(mfilename('fullpath')), 'Results');
+    case 'CD-8K18T74'
+        ResultsFolder = 'C:\Users\francala\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\01_Etudes\E02_01_Posture_rTSA';
     otherwise
-        ResultsFolder = fullfile(fileparts(mfilename('fullpath')), 'Results');
+        ResultsFolder = ''; % machine inconnue : demandé via fenêtre au lancement
 end
 
 % OutputFile : fichier Excel de sortie (contributions cliniques HT/GH/ST/TX)
