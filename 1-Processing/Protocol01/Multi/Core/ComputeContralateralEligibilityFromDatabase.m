@@ -12,9 +12,12 @@
 %                analysed/operated - Database(i).Side, from PatientSelection
 %                in userCommands_Multi.m) of every patient in
 %                PatientDatabase.mat against 3 eligibility criteria for use
-%                as an "asymptomatic" reference shoulder in the cohort:
+%                as an "asymptomatic" reference shoulder in the cohort, on
+%                TWO independent range-of-motion measures - humero-thoracic
+%                (HT) and humero-gravitational (HG) - each producing its
+%                own overall verdict (Eligible_Overall_HT/_HG):
 %
-%                1) ROM_Criterion: humero-thoracic (HT) range of motion on
+%                1a) HT_Criterion: humero-thoracic range of motion on
 %                   ANALYTIC1 (sagittal elevation/flexion) OR ANALYTIC2
 %                   (coronal elevation) > 120 deg. Euler-based (Joint(1)
 %                   right / Joint(6) left, same joints/convention as
@@ -28,12 +31,22 @@
 %                   (same indices for Joint 1 and Joint 6 - only the sign
 %                   is flipped on the left side for ISB symmetry, which
 %                   does not affect a max-min range).
+%                1b) HG_Criterion: humero-gravitational range of motion
+%                   (humerus relative to the fixed vertical/gravity frame,
+%                   not the - possibly leaning - trunk) on ANALYTIC1 OR
+%                   ANALYTIC2 > 120 deg. Euler-based (Joint(12) right /
+%                   Joint(13) left, sequence YXY, DOF1/X = Elevation - see
+%                   ComputeKinematics.m ~line 395-439). Unlike HT, the
+%                   elevation DOF is DOF1 for BOTH tasks (no task-dependent
+%                   switching) and is stored identically on both sides (no
+%                   sign flip on DOF1, confirmed in ComputeKinematics.m -
+%                   only DOF2/DOF3 get sign-flipped on the left).
 %                2) EVA_Criterion: mean pain score (Session.Pain) across
 %                   the 4 ANALYTIC tasks, taken directly for the
 %                   CONTRALATERAL side (unlike ComputePatientInfos.m's
 %                   EVA_PRE/POST, which targets the affected side with a
 %                   fallback - here the side is fixed to the contralateral
-%                   one, no fallback) == 0.
+%                   one, no fallback) == 0. Shared by both HT and HG verdicts.
 %                3) Antecedents_Criterion: none of Pathology.Diagnosis.d1-d5,
 %                   Pathology.PlanedSurgery.i1-i5, Pathology.PreviousSurgery.i1-i5
 %                   mention the contralateral side in their free text.
@@ -48,46 +61,61 @@
 %                   bilaterale" - real case, Gokay_Bora_97867893 - names no
 %                   side explicitly but clearly involves both). Pathology.
 %                   Diagnosis.side itself is also checked for a bilateral
-%                   marker ("D&G"/"bilat...").
+%                   marker ("D&G"/"bilat..."). Shared by both verdicts.
 %
-%                ROM/EVA use PRE session data by default (baseline, before
-%                the analysed side's surgery), falling back to POST only if
-%                PRE is unavailable for that patient - each flagged in
-%                ROM_Condition/EVA_Condition. Antecedents are checked across
-%                BOTH PRE and POST (POST text is a superset of PRE in
-%                practice - new lines are only appended at POST, see
-%                Antich_Jaime_617113/Abreu_Serafim_301190 in the raw data),
-%                so as not to miss anything.
+%                ONE ROW PER (patient, condition) available, not one row
+%                per patient: PRE and POST are two INDEPENDENT observations
+%                of the same contralateral shoulder (not fused/prioritised
+%                into a single value) - a patient with both PRE and POST
+%                usable contributes up to 2 rows, each scored on its own
+%                HT/HG/EVA (no cross-condition fallback), maximising the
+%                number of usable "asymptomatic reference" observations
+%                rather than collapsing to one per patient. The `Condition`
+%                column ('PRE'/'POST') identifies which session each row
+%                is. Antecedents are the one exception - a medical-history
+%                fact, not a session measurement - so they're computed ONCE
+%                per patient (union of BOTH PRE and POST text, POST being a
+%                superset of PRE in practice - new lines are only appended
+%                at POST, see Antich_Jaime_617113/Abreu_Serafim_301190 in
+%                the raw data) and shared identically across that patient's
+%                row(s), so as not to miss anything.
 %
 %                Patients whose PatientSelection side is "RL" (both sides
-%                analysed) have no contralateral side: all criteria and
-%                Eligible_Overall are left blank, ContralateralSide =
-%                'N/A (deux cotes analyses)'.
+%                analysed) have no contralateral side: a single row with
+%                Condition='', all criteria and both Eligible_Overall_HT/_HG
+%                left blank, ContralateralSide = 'N/A (deux cotes analyses)'.
+%                Same single-blank-row treatment for a patient with NEITHER
+%                PRE nor POST usable (Trial or Session present) - kept
+%                visible in the table rather than silently dropped, though
+%                this shouldn't normally happen (every patient is expected
+%                to have both PRE and POST).
 %
 %                A criterion left blank ('') means the underlying data is
-%                missing (not "non") - Eligible_Overall is then also left
-%                blank rather than defaulting to Non, so missing-data rows
-%                are distinguishable from genuine failures at a glance.
+%                missing (not "non") - the corresponding Eligible_Overall_*
+%                is then also left blank rather than defaulting to Non, so
+%                missing-data rows are distinguishable from genuine
+%                failures at a glance.
 %
 %                Antecedents_Details lists which field(s) triggered
 %                Antecedents_Criterion='Non', so a manual double-check
 %                stays easy (free-text medical fields, keyword search only).
 %
-%                ROM_Max_deg = max(ROM_ANALYTIC1_deg, ROM_ANALYTIC2_deg) -
-%                the same value ROM_Criterion (>120) is based on. Also
-%                reported at higher thresholds (ROM_130/140/150/160) as
-%                Oui/Non/blank, same convention as ROM_Criterion, for
-%                stratifying how many contralateral shoulders clear each
-%                bar - these do NOT feed into Eligible_Overall, which
-%                stays tied to the 120° criterion only.
+%                HT_Max_deg/HG_Max_deg = max(*_ANALYTIC1_deg, *_ANALYTIC2_deg) -
+%                the same value HT_Criterion/HG_Criterion (>120) is based
+%                on. Also reported at higher thresholds (HT_130/140/150/160,
+%                HG_130/140/150/160) as Oui/Non/blank, same convention as
+%                HT_Criterion/HG_Criterion, for stratifying how many
+%                contralateral shoulders clear each bar - these do NOT feed
+%                into Eligible_Overall_HT/_HG, which stay tied to the 120°
+%                criterion only.
 %
-%                Two figures generated after the Excel export (see
-%                PlotContralateralROM, local function): (1) a bar chart of
-%                how many contralateral shoulders clear each threshold
-%                120/130/140/150/160°, (2) a histogram of ROM_Max_deg
-%                across ALL contralateral shoulders with a valid
-%                measurement (not just the eligible ones), to see the full
-%                distribution shape.
+%                Four figures generated after the Excel export (see
+%                PlotContralateralROM, local function, called once per
+%                measure): for HT then for HG, (1) a bar chart of how many
+%                contralateral shoulders clear each threshold
+%                120/130/140/150/160°, (2) a histogram of *_Max_deg across
+%                ALL contralateral shoulders with a valid measurement (not
+%                just the eligible ones), to see the full distribution shape.
 %
 %                Callable at any time from the command window, once
 %                PatientDatabase.mat exists (SaveDatabase=true) - same usage
@@ -99,9 +127,10 @@
 %           OutputFile    (char) output Excel path
 %           ResultsFolder (char, optional) folder to cd() into once done;
 %                         omitted = no cd
-% Outputs : Results (struct array), one row per patient - also returned for
-%           direct use without going through the Excel. Excel file written
-%           to disk.
+% Outputs : Results (struct array), one row per (patient, condition) - up
+%           to 2 rows per patient (PRE/POST, see `Condition` column) - also
+%           returned for direct use without going through the Excel. Excel
+%           file written to disk.
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
@@ -122,12 +151,14 @@ if isempty(fileList)
         DatabaseFile);
 end
 
-Results = struct('Numero', {}, 'PatientID', {}, 'AnalysedSide', {}, 'ContralateralSide', {}, ...
-    'ROM_ANALYTIC1_deg', {}, 'ROM_ANALYTIC2_deg', {}, 'ROM_Max_deg', {}, 'ROM_Condition', {}, 'ROM_Criterion', {}, ...
-    'ROM_130', {}, 'ROM_140', {}, 'ROM_150', {}, 'ROM_160', {}, ...
-    'EVA_Contralateral', {}, 'EVA_Condition', {}, 'EVA_Criterion', {}, ...
+Results = struct('Numero', {}, 'PatientID', {}, 'Condition', {}, 'AnalysedSide', {}, 'ContralateralSide', {}, ...
+    'HT_ANALYTIC1_deg', {}, 'HT_ANALYTIC2_deg', {}, 'HT_Max_deg', {}, 'HT_Criterion', {}, ...
+    'HT_130', {}, 'HT_140', {}, 'HT_150', {}, 'HT_160', {}, ...
+    'HG_ANALYTIC1_deg', {}, 'HG_ANALYTIC2_deg', {}, 'HG_Max_deg', {}, 'HG_Criterion', {}, ...
+    'HG_130', {}, 'HG_140', {}, 'HG_150', {}, 'HG_160', {}, ...
+    'EVA_Contralateral', {}, 'EVA_Criterion', {}, ...
     'Antecedents_Details', {}, 'Antecedents_Criterion', {}, ...
-    'Eligible_Overall', {});
+    'Eligible_Overall_HT', {}, 'Eligible_Overall_HG', {});
 
 conditions = {'PRE', 'POST'};
 analyticPainMap = {'Elevation_sagittal', 'Elevation_coronal', 'Rotation_external', 'Rotation_internal'};
@@ -150,93 +181,51 @@ for iFile = 1:numel(fileList)
             continue; % ligne pré-allouée jamais remplie
         end
 
-        ri = length(Results) + 1;
-        Results(ri).Numero       = d.Numero;
-        Results(ri).PatientID    = d.PatientID;
-        Results(ri).AnalysedSide = strjoin(d.Side, '/');
-
         if numel(d.Side) ~= 1
-            % 'RL' : les deux côtés sont analysés, pas de côté controlatéral
+            % 'RL' : les deux côtés sont analysés, pas de côté controlatéral -
+            % une seule ligne (pas de distinction PRE/POST utile ici)
+            ri = length(Results) + 1;
+            Results(ri).Numero       = d.Numero;
+            Results(ri).PatientID    = d.PatientID;
+            Results(ri).Condition    = '';
+            Results(ri).AnalysedSide = strjoin(d.Side, '/');
             Results(ri).ContralateralSide     = 'N/A (deux côtés analysés)';
-            Results(ri).ROM_ANALYTIC1_deg      = NaN;
-            Results(ri).ROM_ANALYTIC2_deg      = NaN;
-            Results(ri).ROM_Max_deg            = NaN;
-            Results(ri).ROM_Condition          = '';
-            Results(ri).ROM_Criterion          = '';
-            Results(ri).ROM_130                = '';
-            Results(ri).ROM_140                = '';
-            Results(ri).ROM_150                = '';
-            Results(ri).ROM_160                = '';
+            Results(ri).HT_ANALYTIC1_deg       = NaN;
+            Results(ri).HT_ANALYTIC2_deg       = NaN;
+            Results(ri).HT_Max_deg             = NaN;
+            Results(ri).HT_Criterion           = '';
+            Results(ri).HT_130                 = '';
+            Results(ri).HT_140                 = '';
+            Results(ri).HT_150                 = '';
+            Results(ri).HT_160                 = '';
+            Results(ri).HG_ANALYTIC1_deg       = NaN;
+            Results(ri).HG_ANALYTIC2_deg       = NaN;
+            Results(ri).HG_Max_deg             = NaN;
+            Results(ri).HG_Criterion           = '';
+            Results(ri).HG_130                 = '';
+            Results(ri).HG_140                 = '';
+            Results(ri).HG_150                 = '';
+            Results(ri).HG_160                 = '';
             Results(ri).EVA_Contralateral      = NaN;
-            Results(ri).EVA_Condition          = '';
             Results(ri).EVA_Criterion          = '';
             Results(ri).Antecedents_Details    = '';
             Results(ri).Antecedents_Criterion  = '';
-            Results(ri).Eligible_Overall       = '';
+            Results(ri).Eligible_Overall_HT    = '';
+            Results(ri).Eligible_Overall_HG    = '';
             continue;
         end
 
         if strcmp(d.Side{1}, 'R'), contraSide = 'L'; else, contraSide = 'R'; end
-        Results(ri).ContralateralSide = contraSide;
 
         if strcmp(contraSide, 'R')
-            ji = 1; cycField = 'rcycle';
+            jiHT = 1; jiHG = 12; cycField = 'rcycle';
         else
-            ji = 6; cycField = 'lcycle';
+            jiHT = 6; jiHG = 13; cycField = 'lcycle';
         end
 
-        % ---- 1) ROM HT (Euler), ANALYTIC1 (dof 3, flexion/extension) et
-        % ANALYTIC2 (dof 1, elevation/abduction), PRE puis POST ----
-        rom1 = NaN; rom2 = NaN; romCond = '';
-        for iC = 1:numel(conditions)
-            condition = conditions{iC};
-            if ~hasField(d, condition, 'Trial'), continue; end
-            Trial = d.(condition).Trial;
-            r1 = getEulerRangeCycleTask(Trial, 'ANALYTIC1', ji, 3, cycField);
-            r2 = getEulerRangeCycleTask(Trial, 'ANALYTIC2', ji, 1, cycField);
-            if ~isnan(r1) || ~isnan(r2)
-                rom1 = r1; rom2 = r2; romCond = condition;
-                break; % PRE prioritaire, POST seulement si PRE indisponible
-            end
-        end
-        Results(ri).ROM_ANALYTIC1_deg = rom1;
-        Results(ri).ROM_ANALYTIC2_deg = rom2;
-        Results(ri).ROM_Condition     = romCond;
-        romMax = max([rom1, rom2], [], 'omitnan');
-        Results(ri).ROM_Max_deg = romMax;
-        Results(ri).ROM_Criterion = romCriterionAtThreshold(romMax, 120);
-        % Colonnes supplémentaires, mêmes seuils que le graph stratifié
-        % (PlotContralateralROM ci-dessous) - n'entrent PAS dans
-        % Eligible_Overall, qui reste basé sur ROM_Criterion (120°) seul.
-        Results(ri).ROM_130 = romCriterionAtThreshold(romMax, 130);
-        Results(ri).ROM_140 = romCriterionAtThreshold(romMax, 140);
-        Results(ri).ROM_150 = romCriterionAtThreshold(romMax, 150);
-        Results(ri).ROM_160 = romCriterionAtThreshold(romMax, 160);
-
-        % ---- 2) EVA = 0, côté controlatéral, PRE puis POST ----
-        evaVal = NaN; evaCond = '';
-        for iC = 1:numel(conditions)
-            condition = conditions{iC};
-            if ~hasField(d, condition, 'Session'), continue; end
-            Session = d.(condition).Session;
-            vals = collectPainValsSide(Session, analyticPainMap, contraSide);
-            if ~isempty(vals)
-                evaVal  = mean(vals);
-                evaCond = condition;
-                break;
-            end
-        end
-        Results(ri).EVA_Contralateral = evaVal;
-        Results(ri).EVA_Condition     = evaCond;
-        if isnan(evaVal)
-            Results(ri).EVA_Criterion = '';
-        elseif evaVal == 0
-            Results(ri).EVA_Criterion = 'Oui';
-        else
-            Results(ri).EVA_Criterion = 'Non';
-        end
-
-        % ---- 3) Pas d'antécédents, côté controlatéral (union PRE+POST) ----
+        % ---- Antécédents : fait médical partagé par les deux lignes
+        % (PRE/POST) de ce patient, pas une mesure de session - union
+        % PRE+POST comme avant, calculé une seule fois ----
         details = {};
         for iC = 1:numel(conditions)
             condition = conditions{iC};
@@ -244,21 +233,116 @@ for iFile = 1:numel(fileList)
             details = [details, findSideMentions(d.(condition).Pathology, contraSide)]; %#ok<AGROW>
         end
         details = unique(details, 'stable');
-        Results(ri).Antecedents_Details = strjoin(details, ' / ');
+        antecedentsDetails = strjoin(details, ' / ');
         if isempty(details)
-            Results(ri).Antecedents_Criterion = 'Oui';
+            antecedentsCriterion = 'Oui';
         else
-            Results(ri).Antecedents_Criterion = 'Non';
+            antecedentsCriterion = 'Non';
         end
 
-        % ---- Overall : Oui seulement si les 3 critères sont Oui ----
-        crit = {Results(ri).ROM_Criterion, Results(ri).EVA_Criterion, Results(ri).Antecedents_Criterion};
-        if any(cellfun(@isempty, crit))
-            Results(ri).Eligible_Overall = ''; % au moins un critère non calculable (données manquantes)
-        elseif all(strcmp(crit, 'Oui'))
-            Results(ri).Eligible_Overall = 'Oui';
-        else
-            Results(ri).Eligible_Overall = 'Non';
+        % ---- Une ligne par condition disponible (PRE et/ou POST) : chaque
+        % session est une observation indépendante de la même épaule
+        % controlatérale, plus de fusion PRE-prioritaire/repli-POST en une
+        % seule valeur par patient - ça augmente le nombre d'observations
+        % exploitables (jusqu'à 2 par patient) au lieu de le réduire.
+        % Antécédents partagés (ci-dessus) ; HT/HG/EVA propres à CHAQUE
+        % ligne, sans repli croisé PRE<->POST.
+        anyRow = false;
+        for iC = 1:numel(conditions)
+            condition = conditions{iC};
+            if ~hasField(d, condition, 'Trial') && ~hasField(d, condition, 'Session')
+                continue; % rien d'exploitable pour cette condition
+            end
+            anyRow = true;
+
+            ri = length(Results) + 1;
+            Results(ri).Numero            = d.Numero;
+            Results(ri).PatientID         = d.PatientID;
+            Results(ri).Condition         = condition;
+            Results(ri).AnalysedSide      = strjoin(d.Side, '/');
+            Results(ri).ContralateralSide = contraSide;
+
+            % ---- HT (Euler), ANALYTIC1 (dof 3, flexion/extension) et
+            % ANALYTIC2 (dof 1, elevation/abduction) ----
+            [ht1, ht2] = romForCondition(d, condition, 'ANALYTIC1', 3, 'ANALYTIC2', 1, jiHT, cycField);
+            Results(ri).HT_ANALYTIC1_deg = ht1;
+            Results(ri).HT_ANALYTIC2_deg = ht2;
+            htMax = max([ht1, ht2], [], 'omitnan');
+            Results(ri).HT_Max_deg   = htMax;
+            Results(ri).HT_Criterion = romCriterionAtThreshold(htMax, 120);
+            % Colonnes supplémentaires, mêmes seuils que le graph stratifié
+            % (PlotContralateralROM ci-dessous) - n'entrent PAS dans
+            % Eligible_Overall_HT, qui reste basé sur HT_Criterion (120°) seul.
+            Results(ri).HT_130 = romCriterionAtThreshold(htMax, 130);
+            Results(ri).HT_140 = romCriterionAtThreshold(htMax, 140);
+            Results(ri).HT_150 = romCriterionAtThreshold(htMax, 150);
+            Results(ri).HT_160 = romCriterionAtThreshold(htMax, 160);
+
+            % ---- HG (Euler YXY, dof 1 = Elevation, MEME dof pour les deux
+            % taches - pas de switch task-dependant contrairement a HT) ----
+            [hg1, hg2] = romForCondition(d, condition, 'ANALYTIC1', 1, 'ANALYTIC2', 1, jiHG, cycField);
+            Results(ri).HG_ANALYTIC1_deg = hg1;
+            Results(ri).HG_ANALYTIC2_deg = hg2;
+            hgMax = max([hg1, hg2], [], 'omitnan');
+            Results(ri).HG_Max_deg   = hgMax;
+            Results(ri).HG_Criterion = romCriterionAtThreshold(hgMax, 120);
+            Results(ri).HG_130 = romCriterionAtThreshold(hgMax, 130);
+            Results(ri).HG_140 = romCriterionAtThreshold(hgMax, 140);
+            Results(ri).HG_150 = romCriterionAtThreshold(hgMax, 150);
+            Results(ri).HG_160 = romCriterionAtThreshold(hgMax, 160);
+
+            % ---- EVA = 0, côté controlatéral, cette condition uniquement ----
+            evaVal = evaForCondition(d, condition, analyticPainMap, contraSide);
+            Results(ri).EVA_Contralateral = evaVal;
+            if isnan(evaVal)
+                Results(ri).EVA_Criterion = '';
+            elseif evaVal == 0
+                Results(ri).EVA_Criterion = 'Oui';
+            else
+                Results(ri).EVA_Criterion = 'Non';
+            end
+
+            Results(ri).Antecedents_Details    = antecedentsDetails;
+            Results(ri).Antecedents_Criterion  = antecedentsCriterion;
+
+            % ---- Overall (x2) : Oui seulement si les 3 critères sont Oui,
+            % EVA/Antécédents partagés, ROM propre à HT et à HG ----
+            Results(ri).Eligible_Overall_HT = overallVerdict(Results(ri).HT_Criterion, Results(ri).EVA_Criterion, antecedentsCriterion);
+            Results(ri).Eligible_Overall_HG = overallVerdict(Results(ri).HG_Criterion, Results(ri).EVA_Criterion, antecedentsCriterion);
+        end
+
+        if ~anyRow
+            % Aucune condition exploitable pour ce patient (ni PRE ni POST) -
+            % garde une ligne vide plutôt que de le faire disparaître du
+            % tableau (visibilité que le patient existe dans la base).
+            ri = length(Results) + 1;
+            Results(ri).Numero            = d.Numero;
+            Results(ri).PatientID         = d.PatientID;
+            Results(ri).Condition         = '';
+            Results(ri).AnalysedSide      = strjoin(d.Side, '/');
+            Results(ri).ContralateralSide = contraSide;
+            Results(ri).HT_ANALYTIC1_deg  = NaN;
+            Results(ri).HT_ANALYTIC2_deg  = NaN;
+            Results(ri).HT_Max_deg        = NaN;
+            Results(ri).HT_Criterion      = '';
+            Results(ri).HT_130            = '';
+            Results(ri).HT_140            = '';
+            Results(ri).HT_150            = '';
+            Results(ri).HT_160            = '';
+            Results(ri).HG_ANALYTIC1_deg  = NaN;
+            Results(ri).HG_ANALYTIC2_deg  = NaN;
+            Results(ri).HG_Max_deg        = NaN;
+            Results(ri).HG_Criterion      = '';
+            Results(ri).HG_130            = '';
+            Results(ri).HG_140            = '';
+            Results(ri).HG_150            = '';
+            Results(ri).HG_160            = '';
+            Results(ri).EVA_Contralateral = NaN;
+            Results(ri).EVA_Criterion     = '';
+            Results(ri).Antecedents_Details   = antecedentsDetails;
+            Results(ri).Antecedents_Criterion = antecedentsCriterion;
+            Results(ri).Eligible_Overall_HT   = '';
+            Results(ri).Eligible_Overall_HG   = '';
         end
     end
     clear S
@@ -279,7 +363,10 @@ else
     disp('Aucune donnée à exporter.');
 end
 
-PlotContralateralROM(Results);
+PlotContralateralROM([Results.HT_Max_deg], 'HT (huméro-thoracique)');
+PlotContralateralROM([Results.HG_Max_deg], 'HG (huméro-gravitaire)');
+
+ReportOverlap(Results);
 
 if ~isempty(ResultsFolder) && isfolder(ResultsFolder)
     cd(ResultsFolder);
@@ -319,7 +406,7 @@ end
 %  HELPERS
 % =========================================================================
 % Oui/Non/'' at an arbitrary ROM threshold - same convention as
-% ROM_Criterion (blank = missing data, distinct from Non).
+% HT_Criterion/HG_Criterion (blank = missing data, distinct from Non).
 function crit = romCriterionAtThreshold(romMax, threshold)
 if isnan(romMax)
     crit = '';
@@ -330,22 +417,104 @@ else
 end
 end
 
-% Two figures: (1) bar chart - how many contralateral shoulders clear
-% each ROM threshold 120/130/140/150/160deg (stratified count, decreasing
-% by construction as the bar rises), (2) histogram of ROM_Max_deg across
+% Range-of-motion lookup for ONE specific condition (no PRE/POST fallback -
+% each condition is now its own independent row, see call site). dof1/dof2
+% let HT (task-dependent: 3 then 1) and HG (fixed: 1 then 1) share this.
+function [v1, v2] = romForCondition(d, condition, task1, dof1, task2, dof2, ji, cycField)
+v1 = NaN; v2 = NaN;
+if ~hasField(d, condition, 'Trial'), return; end
+Trial = d.(condition).Trial;
+v1 = getEulerRangeCycleTask(Trial, task1, ji, dof1, cycField);
+v2 = getEulerRangeCycleTask(Trial, task2, ji, dof2, cycField);
+end
+
+% Mean contralateral pain score for ONE specific condition (no PRE/POST
+% fallback - see romForCondition).
+function evaVal = evaForCondition(d, condition, analyticPainMap, side)
+evaVal = NaN;
+if ~hasField(d, condition, 'Session'), return; end
+vals = collectPainValsSide(d.(condition).Session, analyticPainMap, side);
+if ~isempty(vals)
+    evaVal = mean(vals);
+end
+end
+
+% Oui seulement si les 3 critères (ROM propre à la mesure + EVA +
+% Antécédents, ces deux derniers partagés entre HT et HG) sont Oui ; blanc
+% si au moins un est non calculable (données manquantes), jamais défaulté
+% à Non.
+function verdict = overallVerdict(romCriterion, evaCriterion, antecedentsCriterion)
+crit = {romCriterion, evaCriterion, antecedentsCriterion};
+if any(cellfun(@isempty, crit))
+    verdict = '';
+elseif all(strcmp(crit, 'Oui'))
+    verdict = 'Oui';
+else
+    verdict = 'Non';
+end
+end
+
+% Two figures for ONE ROM measure (called once for HT, once for HG - see
+% call site): (1) bar chart - how many contralateral shoulders clear each
+% ROM threshold 120/130/140/150/160deg (stratified count, decreasing by
+% construction as the bar rises), (2) histogram of the same values across
 % ALL contralateral shoulders with a valid measurement - not just the
 % eligible ones - to see the full distribution shape (RL patients and
-% missing-data rows excluded from both, via the NaN in ROM_Max_deg).
-function PlotContralateralROM(Results)
+% missing-data rows excluded from both, via NaN).
+% Reports, in the command window, patients whose contralateral shoulder is
+% eligible at BOTH timepoints (PRE row AND POST row both Eligible_Overall_*
+% = 'Oui') - a stronger signal than either timepoint alone, now that PRE
+% and POST are independent rows (see file header) rather than one fused
+% value per patient. Reported separately for HT and HG since they're
+% independent verdicts. Only meaningful for patients with BOTH a PRE and a
+% POST row (single-condition/blank-row patients are excluded by construction).
+function ReportOverlap(Results)
+disp(' ');
+disp('=== Épaules controlatérales éligibles aux DEUX temps (PRE et POST) ===');
 if isempty(Results)
-    disp('PlotContralateralROM: no data to plot.');
+    disp('Aucune donnée.');
     return;
 end
 
-romMaxAll = [Results.ROM_Max_deg];
+ids = unique({Results.PatientID}, 'stable');
+overlapHT = {};
+overlapHG = {};
+nBoth = 0;
+for i = 1:numel(ids)
+    id = ids{i};
+    rows  = Results(strcmp({Results.PatientID}, id));
+    conds = {rows.Condition};
+    iPre  = find(strcmp(conds, 'PRE'),  1);
+    iPost = find(strcmp(conds, 'POST'), 1);
+    if isempty(iPre) || isempty(iPost)
+        continue; % ce patient n'a pas les deux conditions - pas d'overlap possible
+    end
+    nBoth = nBoth + 1;
+    if strcmp(rows(iPre).Eligible_Overall_HT, 'Oui') && strcmp(rows(iPost).Eligible_Overall_HT, 'Oui')
+        overlapHT{end+1} = id; %#ok<AGROW>
+    end
+    if strcmp(rows(iPre).Eligible_Overall_HG, 'Oui') && strcmp(rows(iPost).Eligible_Overall_HG, 'Oui')
+        overlapHG{end+1} = id; %#ok<AGROW>
+    end
+end
+
+disp(['Patients avec PRE et POST tous les deux disponibles : ', num2str(nBoth)]);
+disp(['  Overlap HT (éligible aux deux temps) : ', num2str(numel(overlapHT)), ' patient(s)', formatIdList(overlapHT)]);
+disp(['  Overlap HG (éligible aux deux temps) : ', num2str(numel(overlapHG)), ' patient(s)', formatIdList(overlapHG)]);
+end
+
+function s = formatIdList(ids)
+if isempty(ids)
+    s = '';
+else
+    s = [' : ', strjoin(ids, ', ')];
+end
+end
+
+function PlotContralateralROM(romMaxAll, label)
 romMaxAll = romMaxAll(~isnan(romMaxAll));
 if isempty(romMaxAll)
-    disp('PlotContralateralROM: no valid ROM_Max_deg to plot.');
+    disp(['PlotContralateralROM (', label, '): no valid data to plot.']);
     return;
 end
 
@@ -353,22 +522,22 @@ end
 thresholds = [120 130 140 150 160];
 counts = arrayfun(@(t) sum(romMaxAll > t), thresholds);
 
-figure('Name', 'ROM controlatérale - stratification par seuil', 'Color', 'w');
+figure('Name', [label, ' - stratification par seuil'], 'Color', 'w');
 b = bar(thresholds, counts, 'FaceColor', [0 0.4470 0.7410]);
 xlabel('Seuil ROM (°)');
 ylabel('Nombre d''épaules controlatérales > seuil');
-title('Épaules controlatérales éligibles par seuil de ROM');
+title(['Épaules controlatérales éligibles par seuil - ', label]);
 xticks(thresholds);
 xtips = b.XEndPoints; ytips = b.YEndPoints;
 text(xtips, ytips, string(counts), 'HorizontalAlignment', 'center', ...
     'VerticalAlignment', 'bottom');
 
 % ---- Figure 2 : distribution complète, toutes épaules controlatérales ----
-figure('Name', 'ROM controlatérale - distribution complète', 'Color', 'w');
+figure('Name', [label, ' - distribution complète'], 'Color', 'w');
 histogram(romMaxAll, 'BinWidth', 10, 'FaceColor', [0.4660 0.6740 0.1880]);
-xlabel('ROM controlatérale max (°)');
+xlabel([label, ' controlatérale max (°)']);
 ylabel('Nombre d''épaules controlatérales');
-title(sprintf('Distribution du ROM controlatéral - toute la cohorte (n=%d)', numel(romMaxAll)));
+title(sprintf('Distribution %s controlatérale - toute la cohorte (n=%d)', label, numel(romMaxAll)));
 end
 
 function tf = hasField(d, condition, fieldName)

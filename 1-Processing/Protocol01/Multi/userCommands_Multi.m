@@ -14,9 +14,9 @@
 % -------------------------------------------------------------------------
 
 % DataFolder : dossier racine contenant un sous-dossier par patient.
-% Choisi automatiquement selon l'ordinateur (getenv('COMPUTERNAME'))
+% Choisi automatiquement selon l'ordinateur
 switch getenv('COMPUTERNAME')
-    case 'FRANCALANCIPHD' % PC de bureau
+    case 'FRANCALANCIPHD'
         DataFolder = 'C:\Users\franc\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\01_Etudes\E02_Classification_rTSA\Clinique\Données\KLAB-UPPERLIMB-PROTOCOL01\Data';
     case 'A_COMPLETER' % Renseigner le nom du PC et le chemin
         DataFolder = '';
@@ -28,14 +28,9 @@ end
 %   ID patient : identifiant retrouvé comme sous-chaîne du nom du dossier
 %                patient 
 %   Côté       : 1 = Gauche (L), 0 = Droit (R)
-%                (accepte aussi 'R', 'L' ou 'RL' pour les deux côtés)
 %   Date PRE/POST : date complète 'YYYYMMDD' (ex: '20231003') ou juste
 %                l'année 'YYYY' (ex: '2023'). Le script prend le dossier 
-%                de session dont le nom commence par cette valeur. Toujours 
-%                renseigner les deux, même si le patient a plus de 2 sessions 
-%                sur le disque : seules les dates indiquées ici sont traitées.
-%                Attention : une année seule doit correspondre à une seule
-%                session sur le disque, sinon c'est ambigu.
+%                de session dont le nom commence par cette valeur.
 PatientSelection = { ...
     '18792', 'L', '2022', '2023'; ... % 1
     '23370', 'L', '20220523', '20221213'; ... % 2
@@ -224,8 +219,15 @@ PatientSelection = { ...
 % SkipKinematics : true pour sauter le calcul cinématique
 SkipKinematics = false;
 
-% ResultsFolder : dossier où sont écrits les Excels de sortie. 
-ResultsFolder = fullfile(fileparts(mfilename('fullpath')), 'Results');
+% ResultsFolder : dossier où sont écrits les Excels de sortie et le PatientDatabase.mat.
+switch getenv('COMPUTERNAME')
+    case 'FRANCALANCIPHD' 
+        ResultsFolder = 'C:\Users\franc\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\01_Etudes\E02_01_Posture_rTSA';
+    case 'A_COMPLETER' % Renseigner le chemin
+        ResultsFolder = fullfile(fileparts(mfilename('fullpath')), 'Results');
+    otherwise
+        ResultsFolder = fullfile(fileparts(mfilename('fullpath')), 'Results');
+end
 
 % OutputFile : fichier Excel de sortie (contributions cliniques HT/GH/ST/TX)
 OutputFile = fullfile(ResultsFolder, 'ClinicalContributions_Summary.xlsx');

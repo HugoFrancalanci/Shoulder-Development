@@ -54,7 +54,7 @@ ticTotal = tic;
 % -------------------------------------------------------------------------
 % CONFIGURATION
 % -------------------------------------------------------------------------
-Folder.toolbox = fileparts(fileparts(mfilename('fullpath')));
+Folder.toolbox = resolveToolboxFolder();
 Folder.deps    = fullfile(fileparts(Folder.toolbox), 'dependencies');
 addpath(fullfile(Folder.toolbox, 'Multi'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'Core'));
@@ -349,6 +349,29 @@ end
 %  UTILITAIRES
 % =========================================================================
 
+function toolboxFolder = resolveToolboxFolder()
+% Chemin de Protocol01/ (2 niveaux au-dessus de ce script, dans Multi/).
+% mfilename('fullpath') ne renvoie le vrai chemin de ce fichier que quand
+% le script tourne dans son intégralité
+candidate = fileparts(fileparts(mfilename('fullpath')));
+if isfolder(fullfile(candidate, 'Multi', 'Core'))
+    toolboxFolder = candidate;
+    return;
+end
+try
+    candidate = fileparts(fileparts(matlab.desktop.editor.getActiveFilename()));
+    if isfolder(fullfile(candidate, 'Multi', 'Core'))
+        toolboxFolder = candidate;
+        return;
+    end
+catch
+end
+error('MAIN_MULTI_Protocol_01:toolboxNotFound', ...
+    ['Impossible de localiser Protocol01/ automatiquement (exécution par ', ...
+     'section/sélection ?). Ouvre MAIN_MULTI_Protocol_01.m dans l''éditeur ', ...
+     '(onglet actif) avant de relancer une section, ou lance le script en entier (F5).']);
+end
+
 function updateProgressWaitbar(hWait, total)
 if ~isvalid(hWait)
     return;
@@ -413,7 +436,9 @@ end
 
 %% ========================================================================
 %  Results extraction from.mat
-Folder.toolbox = fileparts(fileparts(mfilename('fullpath')));
+% MAIN_MULTI_Protocol_01.m doit être l'onglet actif dans l'éditeur MATLAB
+% au moment où la section est lancée.
+Folder.toolbox = resolveToolboxFolder();
 addpath(fullfile(Folder.toolbox, 'Multi'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'Core'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'IO'));
