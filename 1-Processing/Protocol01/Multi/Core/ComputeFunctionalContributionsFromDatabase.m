@@ -1,52 +1,58 @@
 % Author     :   H. Francalanci
 %                Biomechanics and Translational Research in Surgery Group
 %                University of Geneva
-% Date       :   August 2026
+% Date       :   September 2026
 % -------------------------------------------------------------------------
-% Description:   Rapport de contributions cliniques humérothoraciques
-%                (HT/GH/ST/TX), calculé depuis PatientDatabase.mat plutôt
-%                qu'en repassant par les C3D. Remplace le calcul qui vivait
-%                auparavant dans MAIN_MULTI_Protocol_01.m (retiré de là -
-%                voir son en-tête).
-%                Fonction centralisée : la décomposition HT/GH/ST/TX
-%                (anciennement Multi/Core/ComputeHTContributions.m,
-%                renommée ComputeClinicalContributions) et le
-%                tracé des courbes PRE/POST (anciennement
-%                Multi/Plot/PlotHTContributionsCurves.m) sont fusionnés ici
-%                comme fonctions locales, en bas du fichier - inchangées,
-%                pas de fichiers séparés.
+% Description:   Rapport de contributions fonctionnelles huméro-
+%                gravitationnelles (HG/GH/ST/TX), calculé depuis
+%                PatientDatabase.mat plutôt qu'en repassant par les C3D.
+%                Même patron que Multi/Core/ComputeClinicalContributionsFromDatabase.m
+%                (voir ce fichier comme référence) : décomposition Euler.
+%                Seule différence : utilise HG (huméro-
+%                gravitationnel, Joint 12/13 - orientation absolue de
+%                l'humérus dans le référentiel patient-ICS/gravitationnel)
+%                comme référence d'amplitude globale au lieu de HT (huméro-
+%                thoracique, Joint 1/6).
+%
+%                DOF HG (Joint 12/13, séquence YXY) : contrairement à HT,
+%                la séquence n'est PAS conditionnée par la sous-tâche (le
+%                bloc ComputeKinematics.m ne teste que "contains(...,
+%                'ANALYTIC')", pas ANALYTIC1 vs ANALYTIC2) - DOF1 X
+%                (position 1) = élévation, pour ANALYTIC1 ET ANALYTIC2.
+%                Donc pas de mapping DOF par tâche pour HG (contrairement à
+%                HT). GH/ST/TX restent exactement les mêmes joints et les
+%                mêmes DOF (task-dépendant pour GH, fixes pour ST/TX) que
+%                dans ComputeClinicalContributionsFromDatabase.m - voir les
+%                commentaires de la fonction locale ComputeFunctionalContributions
+%                en bas de ce fichier pour le détail.
+%
+%                Fonction centralisée : la décomposition HG/GH/ST/TX
+%                (ComputeFunctionalContributions) et le tracé des courbes
+%                PRE/POST (PlotHGContributionsCurves) sont des fonctions
+%                locales, en bas du fichier - même organisation que le
+%                pendant HT.
 %
 %                Callable à tout moment depuis la fenêtre de commande
 %                (ou un script), sans rien relancer sur les C3D :
-%                  ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder)
+%                  ComputeFunctionalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder)
 %
 %                Prérequis : avoir lancé MAIN_MULTI_Protocol_01.m au moins
 %                une fois avec SaveDatabase=true (voir userCommands_Multi.m)
 %                pour générer PatientDatabase.mat.
-%
-%                Comme Trial est déjà entièrement calculé (Segment/Joint/
-%                Euler/cycles), cette fonction tourne en quelques secondes
-%                sur toute la cohorte, même à 182 patients - contrairement
-%                à MAIN_MULTI_Protocol_01.m qui doit relire chaque C3D.
-%
-%                Pour ajouter une AUTRE analyse depuis le .mat (posture,
-%                Moroder...) : même patron - un fichier .m séparé dans
-%                Multi/Core/, avec sa propre fonction ComputeXxx(Trial)
-%                (locale ou non), appelée pour Database(i).PRE.Trial et
-%                Database(i).POST.Trial.
 % -------------------------------------------------------------------------
 % Inputs  : DatabaseFile  (char) chemin vers PatientDatabase.mat
 %           OutputFile    (char) chemin de l'Excel de sortie (contributions
-%                         cliniques)
+%                         fonctionnelles)
 %           ResultsFolder (char, optionnel) dossier où se terminer (cd) une
 %                         fois l'export fait ; omis = pas de cd
 %           Opts          (struct, optionnel) ApplyInvCorr (true : corrige les
 %                         courbes ST et TX inversées, voir
 %                         ApplyInversionCorrectionSTTX.m ; false : valeurs
 %                         non corrigées), CorrThresh (0)
-% Outputs : Results (struct array) une ligne par patient/côté - aussi
+% Outputs : Results (struct array) une ligne par patient/côté/tâche - aussi
 %           retourné pour exploitation directe sans repasser par l'Excel
-%           Fichier Excel écrit sur disque + figure des courbes PRE/POST
+%           Fichier Excel écrit sur disque + une figure par tâche (courbes
+%           PRE/POST)
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
@@ -56,7 +62,7 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function Results = ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
+function Results = ComputeFunctionalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
 
 if nargin < 3, ResultsFolder = ''; end
 if nargin < 4, Opts = struct(); end
@@ -69,7 +75,7 @@ if ~isfield(Opts, 'CorrThresh')   || isempty(Opts.CorrThresh),   Opts.CorrThresh
 % trouvée (compatibilité avec un run à un seul fichier).
 fileList = discoverDatabaseFiles(DatabaseFile);
 if isempty(fileList)
-    error('ComputeClinicalContributionsFromDatabase:noDatabase', ...
+    error('ComputeFunctionalContributionsFromDatabase:noDatabase', ...
         'PatientDatabase.mat introuvable (%s, ni fichiers _partXofY correspondants) - lancer MAIN_MULTI_Protocol_01.m avec SaveDatabase=true d''abord.', ...
         DatabaseFile);
 end
@@ -78,16 +84,16 @@ end
 % BOUCLE PATIENTS (depuis Database, pas depuis PatientSelection/C3D)
 % -------------------------------------------------------------------------
 Results = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
-    'HT_PRE_deg', {}, 'GH_PRE_deg', {}, 'GH_PRE_pct', {}, ...
+    'HG_PRE_deg', {}, 'GH_PRE_deg', {}, 'GH_PRE_pct', {}, ...
     'ST_PRE_deg', {}, 'ST_PRE_pct', {}, 'TX_PRE_deg', {}, 'TX_PRE_pct', {}, ...
-    'HT_POST_deg', {}, 'GH_POST_deg', {}, 'GH_POST_pct', {}, ...
+    'HG_POST_deg', {}, 'GH_POST_deg', {}, 'GH_POST_pct', {}, ...
     'ST_POST_deg', {}, 'ST_POST_pct', {}, 'TX_POST_deg', {}, 'TX_POST_pct', {}, ...
-    'HT_PRE_max_deg', {}, 'GH_PRE_max_deg', {}, 'ST_PRE_max_deg', {}, 'TX_PRE_max_deg', {}, ...
-    'HT_POST_max_deg', {}, 'GH_POST_max_deg', {}, 'ST_POST_max_deg', {}, 'TX_POST_max_deg', {});
+    'HG_PRE_max_deg', {}, 'GH_PRE_max_deg', {}, 'ST_PRE_max_deg', {}, 'TX_PRE_max_deg', {}, ...
+    'HG_POST_max_deg', {}, 'GH_POST_max_deg', {}, 'ST_POST_max_deg', {}, 'TX_POST_max_deg', {});
 
 % Courbes angle vs % cycle
 Curves = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
-    'HT_PRE', {}, 'HT_POST', {}, 'GH_PRE', {}, 'GH_POST', {}, 'ST_PRE', {}, 'ST_POST', {}, ...
+    'HG_PRE', {}, 'HG_POST', {}, 'GH_PRE', {}, 'GH_POST', {}, 'ST_PRE', {}, 'ST_POST', {}, ...
     'TX_PRE', {}, 'TX_POST', {});
 
 conditions = {'PRE', 'POST'};
@@ -118,14 +124,14 @@ for iP = 1:nInFile
         end
         Trial = d.(condition).Trial;
 
-        Contrib = ComputeClinicalContributions(Trial);
+        Contrib = ComputeFunctionalContributions(Trial);
 
         for iS = 1:length(Contrib)
             c = Contrib(iS);
             if ~ismember(c.side, d.Side), continue; end
 
-            % Cle Numero+Side+Task (Task en plus depuis l'ajout d'ANALYTIC1 :
-            % sinon ANALYTIC1 et ANALYTIC2 fusionneraient dans la meme ligne).
+            % Cle Numero+Side+Task : ANALYTIC1 et ANALYTIC2 sur des lignes
+            % separees (meme convention que ComputeClinicalContributionsFromDatabase.m).
             ri = find([Results.Numero] == d.Numero & strcmp({Results.Side}, c.side) & strcmp({Results.Task}, c.task), 1);
             if isempty(ri)
                 ri = length(Results) + 1;
@@ -133,20 +139,20 @@ for iP = 1:nInFile
                 Results(ri).PatientID    = d.PatientID;
                 Results(ri).Side         = c.side;
                 Results(ri).Task         = c.task;
-                Results(ri).HT_PRE_deg   = NaN; Results(ri).HT_POST_deg  = NaN;
+                Results(ri).HG_PRE_deg   = NaN; Results(ri).HG_POST_deg  = NaN;
                 Results(ri).GH_PRE_deg   = NaN; Results(ri).GH_POST_deg  = NaN;
                 Results(ri).GH_PRE_pct   = NaN; Results(ri).GH_POST_pct  = NaN;
                 Results(ri).ST_PRE_deg   = NaN; Results(ri).ST_POST_deg  = NaN;
                 Results(ri).ST_PRE_pct   = NaN; Results(ri).ST_POST_pct  = NaN;
                 Results(ri).TX_PRE_deg   = NaN; Results(ri).TX_POST_deg  = NaN;
                 Results(ri).TX_PRE_pct   = NaN; Results(ri).TX_POST_pct  = NaN;
-                Results(ri).HT_PRE_max_deg = NaN; Results(ri).HT_POST_max_deg = NaN;
+                Results(ri).HG_PRE_max_deg = NaN; Results(ri).HG_POST_max_deg = NaN;
                 Results(ri).GH_PRE_max_deg = NaN; Results(ri).GH_POST_max_deg = NaN;
                 Results(ri).ST_PRE_max_deg = NaN; Results(ri).ST_POST_max_deg = NaN;
                 Results(ri).TX_PRE_max_deg = NaN; Results(ri).TX_POST_max_deg = NaN;
             end
 
-            Results(ri).(['HT_', condition, '_deg']) = c.HT_range;
+            Results(ri).(['HG_', condition, '_deg']) = c.HG_range;
             Results(ri).(['GH_', condition, '_deg']) = c.GH_range;
             Results(ri).(['GH_', condition, '_pct']) = c.GH_pct;
             Results(ri).(['ST_', condition, '_deg']) = c.ST_range;
@@ -154,7 +160,7 @@ for iP = 1:nInFile
             Results(ri).(['TX_', condition, '_deg']) = c.TX_range;
             Results(ri).(['TX_', condition, '_pct']) = c.TX_pct;
 
-            Results(ri).(['HT_', condition, '_max_deg']) = c.HT_max;
+            Results(ri).(['HG_', condition, '_max_deg']) = c.HG_max;
             Results(ri).(['GH_', condition, '_max_deg']) = c.GH_max;
             Results(ri).(['ST_', condition, '_max_deg']) = c.ST_max;
             Results(ri).(['TX_', condition, '_max_deg']) = c.TX_max;
@@ -165,7 +171,7 @@ for iP = 1:nInFile
                 Curves(ri).Side      = c.side;
                 Curves(ri).Task      = c.task;
             end
-            Curves(ri).(['HT_', condition]) = c.HT_curve;
+            Curves(ri).(['HG_', condition]) = c.HG_curve;
             Curves(ri).(['GH_', condition]) = c.GH_curve;
             Curves(ri).(['ST_', condition]) = c.ST_curve;
             Curves(ri).(['TX_', condition]) = c.TX_curve;
@@ -191,7 +197,7 @@ disp(['Patients dans la base : ', num2str(totalPatients)]);
 % que abs() ne rend pas cohérent) - voir ApplyInversionCorrectionSTTX.m.
 % Opts.ApplyInvCorr = false pour retrouver les valeurs non corrigées.
 if Opts.ApplyInvCorr
-    [Results, Curves] = ApplyInversionCorrectionSTTX(Results, Curves, 'HT', Opts.CorrThresh);
+    [Results, Curves] = ApplyInversionCorrectionSTTX(Results, Curves, 'HG', Opts.CorrThresh);
 end
 
 % -------------------------------------------------------------------------
@@ -200,7 +206,7 @@ end
 if ~isempty(Results)
     T = struct2table(Results);
     if isfile(OutputFile), delete(OutputFile); end
-    writetable(T, OutputFile, 'Sheet', 'Clinical_Contributions');
+    writetable(T, OutputFile, 'Sheet', 'Functional_Contributions');
     disp(' ');
     disp(['Excel exporté : ', OutputFile]);
 else
@@ -208,7 +214,7 @@ else
     disp('Aucune donnée à exporter.');
 end
 
-PlotHTContributionsCurves(Curves);
+PlotHGContributionsCurves(Curves);
 
 if ~isempty(ResultsFolder) && isfolder(ResultsFolder)
     cd(ResultsFolder);
@@ -244,81 +250,76 @@ fileList = fullfile({parts.folder}, {parts.name});
 end
 
 % =========================================================================
-%  DECOMPOSITION HT/GH/ST/TX (ex-Multi/Core/ComputeHTContributions.m,
-%  renommée ComputeClinicalContributions, fusionnée ici - pour centraliser
-%  en une seule fonction)
+%  DECOMPOSITION HG/GH/ST/TX (pendant "fonctionnel" de ComputeClinicalContributions -
+%  meme decomposition Euler, HG au lieu de HT comme reference d'amplitude)
 % =========================================================================
 %
-% Decompose the humerothoracic (HT) range of motion into glenohumeral (GH),
-% scapulothoracic (ST) and thoracic (TX) sub-contributions, in degrees and
-% in % of HT range. Same DOF/joint convention as the "Clinical analysis
-% (euler)" table in Protocol01/IO/ExportKinematicsSummary.m (Tableau 2) -
-% checked to match exactly, on purpose (same clinical-literature reference).
+% Decompose the humero-gravitational (HG) range of motion into glenohumeral
+% (GH), scapulothoracic (ST) and thoracic (TX) sub-contributions, in
+% degrees and in % of HG range.
 %
-% ANALYTIC1 (sagittal elevation) and ANALYTIC2 (coronal elevation) are both
-% uniplanar movements, which ensures a coherent GH/ST/TX decomposition of
-% the HT angle. HT and GH use a TASK-DEPENDENT DOF index: the Euler
-% sequence changes per task to avoid gimbal lock (ZXY for ANALYTIC1, XZY
-% for ANALYTIC2 - see Protocol01/Core/ComputeKinematics.m, ISB comment
-% blocks), and the primary elevation motion lands on a different stored
-% array position depending on which one is primary for that plane :
-%   ANALYTIC1 (sagittal) : the dominant motion is flexion/extension, Z,
-%     stored at position 3 - elevation (X, position 1) is the secondary/
-%     coupled DOF here, not the one to report.
-%   ANALYTIC2 (coronal)  : the dominant motion is elevation/abduction, X,
-%     stored at position 1.
-% Same convention as ComputeContralateralEligibilityFromDatabase.m's HT
-% criterion (dofHT=3 for ANALYTIC1, dofHT=1 for ANALYTIC2 - checked to
-% match, on purpose). ST/TX sequences aren't task-dependent at all, so
-% their DOF stays the same for both tasks.
+% HG (Joint 12/13) quantifies the absolute orientation of the humerus in
+% the patient-referenced gravitational frame (YXY sequence - Wu et al.
+% 2005), as opposed to HT (Joint 1/6) which is humerus-relative-to-thorax.
+%
+% Unlike HT, the HG Euler sequence is NOT conditioned on the ANALYTIC sub-
+% task in Protocol01/Core/ComputeKinematics.m (only "contains(...,
+% 'ANALYTIC')" is tested, not ANALYTIC1 vs ANALYTIC2) - DOF1 X (position 1)
+% = elevation for both ANALYTIC1 and ANALYTIC2, so dofHG is fixed at 1,
+% no per-task mapping needed for HG itself.
+%
+% GH and ST/TX are the exact same joints/DOF as in ComputeClinicalContributions
+% (HT version) - GH DOES remain task-dependent (its own Euler sequence
+% changes with the task, same reasoning as HT - see Protocol01/Core/
+% ComputeKinematics.m and ComputeClinicalContributionsFromDatabase.m) :
 %
 % DOF mapping :
-%   HT Joint(1/6)  ANALYTIC1: DOF3 Z — flexion/extension | ANALYTIC2: DOF1 X — abduction
-%   GH Joint(2/7)  ANALYTIC1: DOF3 Z — flexion/extension | ANALYTIC2: DOF1 X — abduction
-%   ST Joint(3/8)  DOF1 X — upward rot.   (YXZ, task-independent)
-%   TX Joint(11)   DOF3 Z — flexion       (ZXY, task-independent)
+%   HG Joint(12/13) DOF1 X — elevation (YXY, task-independent)
+%   GH Joint(2/7)   ANALYTIC1: DOF3 Z — flexion/extension | ANALYTIC2: DOF1 X — abduction
+%   ST Joint(3/8)   DOF1 X — upward rot.   (YXZ, task-independent)
+%   TX Joint(11)    DOF3 Z — flexion       (ZXY, task-independent)
 %
-% HT_max/GH_max/ST_max/TX_max : peak angle reached (mean of each cycle's
-% max |angle|, same cycle-averaging convention as HT_range etc., but max
+% HG_max/GH_max/ST_max/TX_max : peak angle reached (mean of each cycle's
+% max |angle|, same cycle-averaging convention as HG_range etc., but max
 % instead of max-min) - NOT the same as *_range, which is an amplitude
 % (max-min).
 %
-% HT_curve/GH_curve/ST_curve/TX_curve : mean curve (across cycles) of the
+% HG_curve/GH_curve/ST_curve/TX_curve : mean curve (across cycles) of the
 % angle vs % cycle (0-100%), same number of points as the cycle
 % normalisation done by CutCycles.m. Used for the PRE/POST plot in
-% PlotHTContributionsCurves.m. TX uses getCurveCycleTH (not getCurveCycle)
+% PlotHGContributionsCurves. TX uses getCurveCycleTH (not getCurveCycle)
 % for the same reason TX_range uses getRangeCycleTH : joint 11 (thorax) is
-% a single shared joint, not duplicated per side like HT/GH/ST, so it can
+% a single shared joint, not duplicated per side like HG/GH/ST, so it can
 % need the R/L cycField fallback.
 %
 % Inputs  : Trial (struct array) all trials from runProtocol01/MAIN_Protocol_01
 % Outputs : Contrib (struct array, one row per task found x side 'R'/'L')
-%           with fields task ('ANALYTIC1'/'ANALYTIC2'), side, HT_range,
-%           GH_range, GH_pct, ST_range, ST_pct, TX_range, TX_pct, HT_max,
-%           GH_max, ST_max, TX_max, HT_curve, GH_curve, ST_curve, TX_curve
+%           with fields task ('ANALYTIC1'/'ANALYTIC2'), side, HG_range,
+%           GH_range, GH_pct, ST_range, ST_pct, TX_range, TX_pct, HG_max,
+%           GH_max, ST_max, TX_max, HG_curve, GH_curve, ST_curve, TX_curve
 %           Empty (0x0) struct array if neither task is found in Trial.
-function Contrib = ComputeClinicalContributions(Trial)
+function Contrib = ComputeFunctionalContributions(Trial)
 
-Contrib = struct('task', {}, 'side', {}, 'HT_range', {}, ...
+Contrib = struct('task', {}, 'side', {}, 'HG_range', {}, ...
                   'GH_range', {}, 'GH_pct', {}, 'ST_range', {}, 'ST_pct', {}, ...
                   'TX_range', {}, 'TX_pct', {}, ...
-                  'HT_max', {}, 'GH_max', {}, 'ST_max', {}, 'TX_max', {}, ...
-                  'HT_curve', {}, 'GH_curve', {}, 'ST_curve', {}, 'TX_curve', {}, ...
+                  'HG_max', {}, 'GH_max', {}, 'ST_max', {}, 'TX_max', {}, ...
+                  'HG_curve', {}, 'GH_curve', {}, 'ST_curve', {}, 'TX_curve', {}, ...
                   'ST_raw', {}, 'ST_rangeRaw', {}, 'ST_peakExc', {}, 'ST_excSign', {}, ...
                   'TX_raw', {}, 'TX_rangeRaw', {}, 'TX_peakExc', {}, 'TX_excSign', {});
 
-% DOF task-dependant pour HT/GH (voir commentaire ci-dessus) ; ST et TX
-% restent identiques quelle que soit la tache (sequences non conditionnees
-% par la tache dans ComputeKinematics.m).
+% DOF task-dependant pour GH uniquement (HG et ST/TX sont fixes quelle que
+% soit la tache - sequences non conditionnees par la sous-tache dans
+% ComputeKinematics.m).
 taskDOF = struct('name', {'ANALYTIC1', 'ANALYTIC2'}, ...
-                  'dofHT', {3, 1}, 'dofGH', {3, 1}, 'dofST', {1, 1}, 'dofTX', {3, 3});
+                  'dofHG', {1, 1}, 'dofGH', {3, 1}, 'dofST', {1, 1}, 'dofTX', {3, 3});
 
-sideDef = struct('side', {'R','L'}, 'jiHT', {1,6}, 'jiGH', {2,7}, 'jiST', {3,8}, ...
+sideDef = struct('side', {'R','L'}, 'jiHG', {12,13}, 'jiGH', {2,7}, 'jiST', {3,8}, ...
                   'cycField', {'rcycle','lcycle'});
 
 for iT = 1:numel(taskDOF)
     task  = taskDOF(iT).name;
-    dofHT = taskDOF(iT).dofHT;
+    dofHG = taskDOF(iT).dofHG;
     dofGH = taskDOF(iT).dofGH;
     dofST = taskDOF(iT).dofST;
     dofTX = taskDOF(iT).dofTX;
@@ -334,31 +335,28 @@ for iT = 1:numel(taskDOF)
 
     for iS = 1:length(sideDef)
         s  = sideDef(iS);
-        ht = getRangeCycle(t, s.jiHT, dofHT, s.cycField);
+        hg = getRangeCycle(t, s.jiHG, dofHG, s.cycField);
         gh = getRangeCycle(t, s.jiGH, dofGH, s.cycField);
         st = getRangeCycle(t, s.jiST, dofST, s.cycField);
         tx = getRangeCycleTH(t, 11, dofTX, s.cycField);
 
         i = length(Contrib) + 1;
-        % task = nom canonique de la boucle (pas t.task, qui contient le
-        % nom d'essai brut - potentiellement different entre PRE et POST -
-        % ce qui casserait la fusion PRE/POST par cle Numero+Side+Task).
         Contrib(i).task     = task;
         Contrib(i).side     = s.side;
-        Contrib(i).HT_range = ht;
+        Contrib(i).HG_range = hg;
         Contrib(i).GH_range = gh;
-        Contrib(i).GH_pct   = safePct(gh, ht);
+        Contrib(i).GH_pct   = safePct(gh, hg);
         Contrib(i).ST_range = st;
-        Contrib(i).ST_pct   = safePct(st, ht);
+        Contrib(i).ST_pct   = safePct(st, hg);
         Contrib(i).TX_range = tx;
-        Contrib(i).TX_pct   = safePct(tx, ht);
+        Contrib(i).TX_pct   = safePct(tx, hg);
 
-        Contrib(i).HT_max = getPeakCycle(t, s.jiHT, dofHT, s.cycField);
+        Contrib(i).HG_max = getPeakCycle(t, s.jiHG, dofHG, s.cycField);
         Contrib(i).GH_max = getPeakCycle(t, s.jiGH, dofGH, s.cycField);
         Contrib(i).ST_max = getPeakCycle(t, s.jiST, dofST, s.cycField);
         Contrib(i).TX_max = getPeakCycleTH(t, 11, dofTX, s.cycField);
 
-        Contrib(i).HT_curve = getCurveCycle(t, s.jiHT, dofHT, s.cycField);
+        Contrib(i).HG_curve = getCurveCycle(t, s.jiHG, dofHG, s.cycField);
         Contrib(i).GH_curve = getCurveCycle(t, s.jiGH, dofGH, s.cycField);
         Contrib(i).ST_curve = getCurveCycle(t, s.jiST, dofST, s.cycField);
         Contrib(i).TX_curve = getCurveCycleTH(t, 11, dofTX, s.cycField);
@@ -465,7 +463,7 @@ end
 function c = getCurveCycleTH(t, ji, dof, cycField)
 % Same as getCurveCycle, with the R/L cycField fallback also used by
 % getRangeCycleTH (joint 11 = thorax, single shared joint, not duplicated
-% per side like HT/GH/ST).
+% per side like HG/GH/ST).
 c = [];
 if length(t.Joint) < ji, return; end
 cf = cycField;
@@ -487,28 +485,27 @@ end
 end
 
 % =========================================================================
-%  TRACE DES COURBES PRE/POST (ex-Multi/Plot/PlotHTContributionsCurves.m,
-%  fusionnée ici - inchangée - pour centraliser en une seule fonction)
+%  TRACE DES COURBES PRE/POST (pendant "fonctionnel" de PlotHTContributionsCurves)
 % =========================================================================
 %
-% Plots the angle vs % cycle (0-100%) HT/GH/ST/TX curves, PRE vs POST.
+% Plots the angle vs % cycle (0-100%) HG/GH/ST/TX curves, PRE vs POST.
 %
-% Layout: 1 row x 4 columns (HT, GH, ST, TX)
+% Layout: 1 figure per task found (ANALYTIC1 and ANALYTIC2 are never
+% averaged together, since they are different movements), 1 row x 4
+% columns (HG, GH, ST, TX) each :
 %   Individual curve per patient/side, transparent (red = PRE, blue = POST)
 %   Bold mean curve (red = PRE, blue = POST)
 %   Each curve is resampled to 101 points (0-100%) before averaging, in
 %   case the number of cycle points differs from one patient to another.
 %
 % Inputs  : Curves (struct array) with fields Task ('ANALYTIC1'/'ANALYTIC2'),
-%           HT_PRE/HT_POST, GH_PRE/GH_POST, ST_PRE/ST_POST, TX_PRE/TX_POST
+%           HG_PRE/HG_POST, GH_PRE/GH_POST, ST_PRE/ST_POST, TX_PRE/TX_POST
 %           (vectors, or [] if absent)
-% Outputs : 1 figure per task found (4 subplots each) - ANALYTIC1 (sagittal)
-%           and ANALYTIC2 (coronal) curves are never averaged together,
-%           since they are different movements.
-function PlotHTContributionsCurves(Curves)
+% Outputs : 1 figure per task found (4 subplots each)
+function PlotHGContributionsCurves(Curves)
 
 if isempty(Curves)
-    disp('PlotHTContributionsCurves: no data to plot.');
+    disp('PlotHGContributionsCurves: no data to plot.');
     return;
 end
 
@@ -522,13 +519,13 @@ end
 
 function plotTaskCurves(Curves, task)
 
-metrics = {'HT', 'GH', 'ST', 'TX'};
-titles  = {'HT (humérothoracique)', 'GH (glénohuméral)', 'ST (scapulothoracique)', 'TX (thoracique)'};
+metrics = {'HG', 'GH', 'ST', 'TX'};
+titles  = {'HG (huméro-gravitationnel)', 'GH (glénohuméral)', 'ST (scapulothoracique)', 'TX (thoracique)'};
 xgrid   = linspace(0, 100, 101);
 colPre  = [0.8500 0.3250 0.0980]; % red
 colPost = [0 0.4470 0.7410];   % blue
 
-figure('Name', ['Courbes HT/GH/ST/TX — ', task, ' — PRE vs POST'], 'Color', 'w');
+figure('Name', ['Courbes HG/GH/ST/TX — ', task, ' — PRE vs POST'], 'Color', 'w');
 
 for m = 1:length(metrics)
     preField  = [metrics{m}, '_PRE'];

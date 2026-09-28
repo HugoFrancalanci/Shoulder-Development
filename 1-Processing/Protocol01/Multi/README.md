@@ -63,7 +63,8 @@ sans jamais écrire dans les données patients (lecture seule).
   dépôt git (voir mémoire de session pour le chemin).
 - **`Results/`** — tous les fichiers de sortie y sont écrits (chemins
   définis dans `userCommands_Multi.m`) : `ClinicalContributions_Summary.xlsx`,
-  `PatientInfos_Summary.xlsx`, `DataAvailability_Summary.xlsx`,
+  `FunctionalContributions_Summary.xlsx`, `CoRQuality_Summary.xlsx`,
+  `CurveQuality_Summary.xlsx`, `PatientInfos_Summary.xlsx`, `DataAvailability_Summary.xlsx`,
   `PatientDatabase.mat` et son compagnon `PatientDatabase_progress.mat`
   (si `SaveDatabase=true` - voir reprise automatique ci-dessus ; ne pas
   supprimer l'un sans l'autre, sinon la reprise redémarre de zéro ou, pire,
@@ -117,22 +118,167 @@ elles, vivent dans `Multi/Core/`, `Multi/IO/`.
 `Multi/Core/ComputeClinicalContributionsFromDatabase.m` recharge `PatientDatabase.mat` et
 décompose, pour chaque patient/côté, le range humérothoracique (HT) en
 contributions gléno-humérale (GH), scapulo-thoracique (ST) et thoracique
-(TX), pour ANALYTIC2 (seule tâche uniplanaire, donc seule décomposition
-jugée fiable — voir les commentaires de la fonction locale
-`ComputeClinicalContributions` en bas du fichier pour le détail des DOF).
+(TX), pour ANALYTIC1 et ANALYTIC2 (les deux tâches uniplanaires, donc les
+seules dont la décomposition est jugée fiable). Le DOF Euler retenu pour
+HT/GH dépend de la tâche (le mouvement dominant n'est pas stocké au même
+DOF selon le plan : Z/DOF3 = flexion/extension pour ANALYTIC1 sagittal,
+X/DOF1 = élévation/abduction pour ANALYTIC2 coronal — voir Protocol01/Core/
+ComputeKinematics.m et les commentaires de la fonction locale
+`ComputeClinicalContributions` en bas du fichier ; ST/TX ne dépendent pas
+de la tâche). Même convention que `ComputeContralateralEligibilityFromDatabase.m`.
 Callable à tout moment depuis la fenêtre de commande, sans repasser par les
 C3D ni par `MAIN_MULTI_Protocol_01.m`.
 
 Le résultat est accumulé dans le struct `Results` (une ligne par
-patient/côté), avec les colonnes PRE et POST côte à côte :
+patient/côté/tâche — ANALYTIC1 et ANALYTIC2 sur des lignes séparées), avec
+les colonnes PRE et POST côte à côte, plus le pic d'angle atteint
+(`*_max_deg`, distinct du range) pour chaque DOF :
 `PatientID, Side, Task, HT_PRE_deg, GH_PRE_deg, GH_PRE_pct, ST_PRE_deg,
-ST_PRE_pct, TX_PRE_deg, TX_PRE_pct, HT_POST_deg, GH_POST_deg, ...`
+ST_PRE_pct, TX_PRE_deg, TX_PRE_pct, HT_POST_deg, GH_POST_deg, ...,
+HT_PRE_max_deg, GH_PRE_max_deg, ST_PRE_max_deg, TX_PRE_max_deg,
+HT_POST_max_deg, ...`
 
 Elle extrait aussi `HT_curve`/`GH_curve`/`ST_curve`/`TX_curve` (angle vs % cycle),
-accumulées à part dans `Curves` et tracées par la fonction locale
-`PlotHTContributionsCurves` (aussi fusionnée dans `ComputeClinicalContributionsFromDatabase.m`)
-- PRE en rouge, POST en bleu, courbes individuelles transparentes + moyenne
-en gras.
+accumulées à part dans `Curves` (avec le `Task` d'origine) et tracées par la
+fonction locale `PlotHTContributionsCurves` (aussi fusionnée dans
+`ComputeClinicalContributionsFromDatabase.m`) — une figure séparée par
+tâche (ANALYTIC1 et ANALYTIC2 ne sont jamais moyennées ensemble, ce sont
+des mouvements différents), PRE en rouge, POST en bleu, courbes
+individuelles transparentes + moyenne en gras.
+
+## Autre reporting : contributions fonctionnelles huméro-gravitationnelles (GH/ST/TX)
+
+`Multi/Core/ComputeFunctionalContributionsFromDatabase.m` — même patron que
+`ComputeClinicalContributionsFromDatabase.m` ci-dessus, même décomposition
+**Euler** (pas quaternion), même struct `Results`/`Curves`, même export
+Excel, une figure PRE/POST par tâche. Seule différence : utilise **HG**
+(huméro-gravitationnel, Joint 12/13 — orientation absolue de l'humérus
+dans le référentiel patient-ICS/gravitationnel, séquence YXY, Wu et al.
+2005) comme référence d'amplitude globale au lieu de **HT** (huméro-
+thoracique, Joint 1/6).
+
+Différence de mapping DOF : contrairement à HT, la séquence Euler de HG
+n'est PAS conditionnée par la sous-tâche dans `Protocol01/Core/
+ComputeKinematics.m` (seul `contains(..., 'ANALYTIC')` est testé, pas
+ANALYTIC1 vs ANALYTIC2) — DOF1 X (position 1) = élévation pour les deux
+tâches, donc `dofHG` reste fixe à 1. GH reste en revanche task-dépendant
+exactement comme dans la version HT (même joint 2/7, même bascule DOF3↔DOF1
+entre ANALYTIC1/ANALYTIC2) ; ST/TX inchangés (fixes, joints 3/8 et 11).
+
+Colonnes : `PatientID, Side, Task, HG_PRE_deg, GH_PRE_deg, GH_PRE_pct,
+ST_PRE_deg, ST_PRE_pct, TX_PRE_deg, TX_PRE_pct, HG_POST_deg, ..., HG_PRE_max_deg,
+GH_PRE_max_deg, ST_PRE_max_deg, TX_PRE_max_deg, HG_POST_max_deg, ...`
+(export Excel, feuille `Functional_Contributions`).
+
+## Correction des courbes ST et TX « inversées » (clinical + functional)
+
+`Multi/Core/ApplyInversionCorrectionSTTX.m`, appelée par
+`ComputeClinicalContributionsFromDatabase` (dénominateur HT) et
+`ComputeFunctionalContributionsFromDatabase` (dénominateur HG) avant l'export
+Excel.
+
+**Problème.** L'angle de repos de ST (et de TX) diffère fortement selon les
+patients : par exemple environ -10° pour la majorité des ST, +20° à +50° pour
+d'autres, avec un mouvement de même sens et d'amplitude proche. `abs()` retourne
+les courbes négatives en cloche mais pas les positives, qui restent en U et vont
+à l'opposé de la moyenne. Le range (max-min) n'est pas touché quand le brut ne
+traverse pas zéro ; la courbe et le max le sont. Cause du décalage de repos ST
+non identifiée (hypothèse : construction du repère scapulaire à partir des
+repères IA/RS/AA, `DefineSegments.m`/`AddACMLandmarks.m`) ; non vérifiée.
+
+**Détection.** Par tâche et par métrique (ST, TX ; PRE/POST/côtés confondus), la
+courbe `abs` (moyenne des cycles, 101 points) est corrélée (Pearson signé) à la
+courbe moyenne du groupe, recalculée sans les courbes inversées (2 passes).
+Corrélation < `CorrThresh` (0) = inversée. Même règle que
+`ComputeCurveQualityFromDatabase.m` (la rugosité n'entre pas ici dans le choix
+de la référence).
+
+**Correction** (courbes inversées uniquement), `repos` = moyenne du début et de
+la fin du cycle du patient, `sp` = sens de l'excursion brute du patient (+1/-1),
+`repos_cohorte` = repos de la courbe moyenne du groupe :
+
+* courbe : `sp * (brut - repos) + repos_cohorte`
+* `_deg` (range) : moyenne des cycles de (max - min) du brut (indépendant du
+  signe et de l'offset)
+* `_max_deg` : moyenne des cycles de `max(sp * (brut - repos))` + `repos_cohorte`
+* `_pct` : range corrigé / range HT (clinical) ou HG (functional)
+
+Colonnes `ST_PRE_corrected`, `ST_POST_corrected`, `TX_PRE_corrected`,
+`TX_POST_corrected` (0/1) dans l'Excel : valeurs corrigées. Compte par tâche
+affiché en console. Quatrième argument optionnel des deux fonctions :
+`struct('ApplyInvCorr', false)` pour retrouver les valeurs non corrigées,
+`struct('CorrThresh', ...)` pour changer le seuil.
+
+**Réserve TX.** L'angle du thorax reflète en partie la posture réelle du
+patient ; remplacer son niveau de repos par celui de la cohorte efface cette
+information (le range est conservé). À interpréter avec précaution.
+
+## Autre reporting : qualité de la reconstruction du CoR (SCoRE)
+
+`Multi/Core/ComputeCoRQualityFromDatabase.m` recharge `PatientDatabase.mat` et
+lit, pour chaque patient/côté analysé, la qualité de la calibration du centre
+de rotation glénohuméral (SCoRE, Ehrig et al. 2006) déjà calculée pendant le run
+C3D (`Core/CoR/ComputeSCoRE.m`) :
+
+* `Database(i).PRE/POST.Session.SCoRE.R/.L.residual_mm` : `[1xN]`, agrément du
+  CoR estimé via la scapula (Ti) et via l'humérus (Tj), par frame de calibration
+* `Database(i).PRE/POST.Session.SCoRE.R/.L.clusterRMS.scapula_mm/.humerus_mm` :
+  scalaire, RMS du fit rigide des clusters
+
+**Une seule valeur par patient/côté/condition, pas par tâche** : la calibration
+SCoRE est faite une fois par session en poolant des essais fixes (`ANALYTIC2`,
+`ANALYTIC4`, `FUNCTIONAL1`, `FUNCTIONAL3` par défaut), puis réutilisée pour
+reconstruire tous les essais de la session (ANALYTIC1 inclus).
+
+`ComputeCoRQualityFromDatabase(DatabaseFile, CoRQualityOutputFile, ResultsFolder, ThresholdMM)` :
+Excel `CoRQuality_Summary.xlsx`, feuille `CoR_Quality`, une ligne par
+patient/côté, PRE et POST côte à côte :
+`SCoRE_Residual_PRE_mean_mm/_max_mm/_nFrames`, `ClusterRMS_Scapula_PRE_mm`,
+`ClusterRMS_Humerus_PRE_mm`, `Flag_PRE` (idem POST). `Flag` = `OK` /
+`A verifier` selon `ThresholdMM` (30 mm par défaut, appelé avec 30 depuis
+`MAIN_MULTI_Protocol_01.m`) appliqué au résidu moyen. **Ce seuil n'est pas
+validé** (aucune référence dans le code : les distances à un CT gold standard
+de `ComputeCTGoldStandardCoR.m`, ~20-28 mm, ne sont pas la même métrique) ; à
+ajuster d'après le graphe. Figure : bar chart trié par pire résidu, PRE en
+rouge/POST en bleu, ligne au seuil.
+
+## Autre reporting : validité des courbes HT/HG/GH/ST/TX
+
+`Multi/Core/ComputeCurveQualityFromDatabase.m` détecte les courbes angulaires
+cycle-normalisées anormales pour HT, HG, GH, ST et TX (ANALYTIC1/2, PRE/POST),
+avec les MÊMES courbes que les sorties clinical/functional (`abs()` par cycle
+puis moyenne des cycles) et les mêmes joints/DOF. Callable à tout moment :
+`ComputeCurveQualityFromDatabase(DatabaseFile, CurveQualityOutputFile, ResultsFolder, Opts)`.
+
+**Référence.** Par groupe (tâche + métrique, PRE/POST/côtés confondus), la
+courbe moyenne, recalculée sans les courbes flaguées (2 passes).
+
+**Critères d'exclusion** (colonne `Reason`, verdict `Forme aberrante`, sinon
+`OK`) :
+
+* `Rough` : forte discontinuité, z-score robuste (médiane/MAD) du log du maximum
+  de la dérivée seconde > `ZThresh` (3) : sauts, pics
+* `Inversee` : corrélation de Pearson signée avec la référence
+  (`Corr_vsMean`) < `CorrThresh` (0) : courbe à l'opposé de la moyenne
+
+Colonnes informatives (n'entrent pas dans le verdict) : `MaxResid_deg`,
+`RMSE_fit_deg`, `Fit_scale`, `Fit_offset_deg` (ajustement `c ~ a*t + b`,
+`a >= 0`) et, sur le brut signé, `Range_raw_deg`, `CrossesZero`, `Raw_ExcSign`.
+TX (joint unique partagé) : une seule ligne par patient, seule l'inversion est
+testée (pas la rugosité). Les seuils sont provisoires (aucune référence
+validée).
+
+**Sorties.** Excel `CurveQuality_Summary.xlsx` (feuilles `Curve_Quality`, une
+ligne par courbe, et `Summary`, comptages par tâche/métrique). Figures, par
+tâche : courbes `abs` avec les outliers en rouge, courbes brutes signées, et
+courbes avec la « correction inversée » (ST et TX : courbes inversées
+corrigées en vert, moyenne tiretée recalculée avec elles). Une figure
+interactive ANALYTIC2 (un patient à la fois, `a` = suivant, `q` = précédent,
+cliquer d'abord sur la figure) et sa figure « Diagnostic patient » (brut, `abs`
+et 4 corrections candidates avec `r` et ROM, et sens de l'excursion brute par
+rapport à la cohorte). Ces corrections ne modifient que les figures ; la même
+correction est appliquée aux Excel clinical/functional par
+`ApplyInversionCorrectionSTTX.m` (voir section précédente).
 
 ## Autre reporting : éligibilité de l'épaule controlatérale
 

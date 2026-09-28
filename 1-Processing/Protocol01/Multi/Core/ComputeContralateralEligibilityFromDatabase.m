@@ -43,15 +43,10 @@
 %                   (humerus relative to the fixed vertical/gravity frame,
 %                   not the - possibly leaning - trunk), same age/sex-
 %                   normative comparison as HT (see 1a) - methodologically
-%                   this is actually the BETTER match: Gill et al.'s
+%                   this is actually the better match: Gill et al.'s
 %                   inclinometer is gravity-referenced (patient standing),
-%                   i.e. it measures the SAME thing HG does, whereas HT is
-%                   trunk-relative. Applied to HT too (1a) as a deliberate
-%                   approximation, by user decision (2026-08-26), since HT
-%                   is the more commonly reported clinical measure. Euler-
-%                   based (Joint(12) right / Joint(13) left, sequence YXY,
-%                   DOF1/X = Elevation - see ComputeKinematics.m ~line
-%                   395-439). Unlike HT, the elevation DOF is DOF1 for BOTH
+%                   i.e. it measures the same thing HG does, whereas HT is
+%                   trunk-relative. Unlike HT, the elevation DOF is DOF1 for BOTH
 %                   tasks (no task-dependent switching) and is stored
 %                   identically on both sides (no sign flip on DOF1,
 %                   confirmed in ComputeKinematics.m - only DOF2/DOF3 get

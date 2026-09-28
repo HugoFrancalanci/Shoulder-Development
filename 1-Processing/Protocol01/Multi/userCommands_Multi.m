@@ -232,6 +232,15 @@ end
 % OutputFile : fichier Excel de sortie (contributions cliniques HT/GH/ST/TX)
 OutputFile = fullfile(ResultsFolder, 'ClinicalContributions_Summary.xlsx');
 
+% FunctionalOutputFile : fichier Excel de sortie (contributions fonctionnelles HG/GH/ST/TX)
+FunctionalOutputFile = fullfile(ResultsFolder, 'FunctionalContributions_Summary.xlsx');
+
+% CoRQualityOutputFile : fichier Excel de sortie (qualité de reconstruction du CoR, SCoRE)
+CoRQualityOutputFile = fullfile(ResultsFolder, 'CoRQuality_Summary.xlsx');
+
+% CurveQualityOutputFile : fichier Excel de sortie (validité des courbes HT/HG/GH/ST/TX)
+CurveQualityOutputFile = fullfile(ResultsFolder, 'CurveQuality_Summary.xlsx');
+
 % PatientInfosFile : fichier Excel de sortie (infos démographiques patients)
 PatientInfosFile = fullfile(ResultsFolder, 'PatientInfos_Summary.xlsx');
 

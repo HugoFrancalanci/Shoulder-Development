@@ -442,10 +442,24 @@ Folder.toolbox = resolveToolboxFolder();
 addpath(fullfile(Folder.toolbox, 'Multi'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'Core'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'IO'));
-run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DatabaseFile, OutputFile, ResultsFolder
+run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DatabaseFile, OutputFile, FunctionalOutputFile, CoRQualityOutputFile, CurveQualityOutputFile, ResultsFolder
 
 %%
+% CoR residual validation
+ComputeCoRQualityFromDatabase(DatabaseFile, CoRQualityOutputFile, ResultsFolder, 30)
+
+%%
+% Curve validity diagnostic : HT, HG, GH, ST, TX
+ComputeCurveQualityFromDatabase(DatabaseFile, CurveQualityOutputFile, ResultsFolder);
+
+%%
+% Asymptomatic shoulder classification
+ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibilityFile, ResultsFolder);
+
+%%
+% Clinical movement decomposition : HT, GH, ST, TX
 ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder);
 
 %%
-ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibilityFile, ResultsFolder);
+% Functional decomposition : HG, GH, ST, TX
+ComputeFunctionalContributionsFromDatabase(DatabaseFile, FunctionalOutputFile, ResultsFolder);
