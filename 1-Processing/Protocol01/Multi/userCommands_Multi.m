@@ -216,6 +216,42 @@ PatientSelection = { ...
     '762166', 'R', '2025', '2026'; ... % 182
     };
 
+% AsymptomaticSelection : épaules asymptomatiques (côté controlatéral)
+% retenues parmi les 182 patients de PatientSelection.
+%   {ID patient, côté asymptomatique, condition retenue, date de session}
+%   Côté       : côté opposé à celui de PatientSelection
+%   Condition  : 'PRE' -> date PRE (col. 3) de PatientSelection,
+%                'POST' -> date POST (col. 4) de PatientSelection
+%   Le commentaire renvoie au numéro de ligne dans PatientSelection.
+AsymptomaticSelection = { ...
+    '18792', 'R', 'POST', '2023'; ... % 1
+    '399423', 'L', 'POST', '20231010'; ... % 8
+    '496545', 'L', 'POST', '2024'; ... % 11
+    '166206', 'L', 'POST', '2023'; ... % 17
+    '865139', 'L', 'POST', '2023'; ... % 19
+    '97438620', 'R', 'POST', '2023'; ... % 21
+    '937635', 'L', 'POST', '2023'; ... % 29
+    '973018', 'L', 'POST', '2024'; ... % 49
+    '977799', 'L', 'POST', '2024'; ... % 63
+    '211673', 'L', 'POST', '2024'; ... % 66
+    '98868156', 'R', 'PRE', '2023'; ... % 70
+    '98638206', 'R', 'POST', '2024'; ... % 75
+    '944315', 'L', 'POST', '2025'; ... % 77
+    '17081', 'L', 'PRE', '2023'; ... % 80
+    '977471', 'L', 'PRE', '2024'; ... % 94
+    '593818', 'L', 'PRE', '2024'; ... % 96
+    '161051', 'L', 'PRE', '2024'; ... % 101
+    '19922', 'L', 'PRE', '2024'; ... % 107
+    '84788', 'L', 'PRE', '2024'; ... % 130
+    '403855', 'L', 'PRE', '2024'; ... % 138
+    '869743', 'L', 'PRE', '2024'; ... % 150
+    '408670', 'L', 'POST', '2025'; ... % 151
+    '86669', 'R', 'POST', '2026'; ... % 153
+    '565328', 'L', 'PRE', '2025'; ... % 158
+    '558792', 'L', 'POST', '2026'; ... % 164
+    '66072', 'L', 'POST', '2026'; ... % 181
+    };
+
 % SkipKinematics : true pour sauter le calcul cinématique
 SkipKinematics = false;
 

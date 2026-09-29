@@ -52,6 +52,8 @@
 %           refPrefix (char) 'HT' (clinical) ou 'HG' (functional) :
 %                     dénominateur des pourcentages
 %           CorrThresh (double) seuil de corrélation (0)
+%           conds     (cell, optionnel) conditions à traiter ({'PRE','POST'}
+%                     par défaut ; {'ASYM'} pour les épaules asymptomatiques)
 % Outputs : Results, Curves mis à jour (courbes inversées corrigées) + champs
 %           <M>_<C>_corrected dans Results
 % -------------------------------------------------------------------------
@@ -63,13 +65,13 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function [Results, Curves] = ApplyInversionCorrectionSTTX(Results, Curves, refPrefix, CorrThresh)
+function [Results, Curves] = ApplyInversionCorrectionSTTX(Results, Curves, refPrefix, CorrThresh, conds)
 
 if isempty(Results), return; end
 if nargin < 4 || isempty(CorrThresh), CorrThresh = 0; end
+if nargin < 5 || isempty(conds), conds = {'PRE', 'POST'}; end
 
 metrics = {'ST', 'TX'};
-conds   = {'PRE', 'POST'};
 
 for m = 1:numel(metrics)
     for c = 1:numel(conds)
@@ -130,7 +132,7 @@ for it = 1:numel(tasks)
             nFix = nFix + 1;
         end
         disp(['  Correction inversée ', metric, ' - ', tasks{it}, ' : ', num2str(nFix), ' / ', ...
-              num2str(size(C, 1)), ' courbe(s) PRE+POST corrigée(s) (', ...
+              num2str(size(C, 1)), ' courbe(s) ', strjoin(conds, '+'), ' corrigée(s) (', ...
               num2str(100 * nFix / size(C, 1), '%.1f'), ' %)']);
     end
 end

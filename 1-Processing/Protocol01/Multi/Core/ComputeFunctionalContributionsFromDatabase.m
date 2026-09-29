@@ -48,7 +48,11 @@
 %           Opts          (struct, optionnel) ApplyInvCorr (true : corrige les
 %                         courbes ST et TX inversées, voir
 %                         ApplyInversionCorrectionSTTX.m ; false : valeurs
-%                         non corrigées), CorrThresh (0)
+%                         non corrigées), CorrThresh (0),
+%                         AsymptomaticSelection (cell, {} par défaut) :
+%                         épaules asymptomatiques {ID, côté, 'PRE'/'POST',
+%                         date} (voir userCommands_Multi.m), tracées en vert
+%                         sur la figure des courbes (pas exportées dans l'Excel)
 % Outputs : Results (struct array) une ligne par patient/côté/tâche - aussi
 %           retourné pour exploitation directe sans repasser par l'Excel
 %           Fichier Excel écrit sur disque + une figure par tâche (courbes
@@ -68,6 +72,7 @@ if nargin < 3, ResultsFolder = ''; end
 if nargin < 4, Opts = struct(); end
 if ~isfield(Opts, 'ApplyInvCorr') || isempty(Opts.ApplyInvCorr), Opts.ApplyInvCorr = true; end
 if ~isfield(Opts, 'CorrThresh')   || isempty(Opts.CorrThresh),   Opts.CorrThresh   = 0;    end
+if ~isfield(Opts, 'AsymptomaticSelection'), Opts.AsymptomaticSelection = {}; end
 
 % La base peut être répartie sur plusieurs fichiers .mat (voir
 % NumDatabaseParts dans userCommands_Multi.m, DatabaseFile_partXofY.mat) -
@@ -95,6 +100,13 @@ Results = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
 Curves = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
     'HG_PRE', {}, 'HG_POST', {}, 'GH_PRE', {}, 'GH_POST', {}, 'ST_PRE', {}, 'ST_POST', {}, ...
     'TX_PRE', {}, 'TX_POST', {});
+
+% Courbes des épaules asymptomatiques (côté controlatéral, une seule
+% session par épaule - voir AsymptomaticSelection dans userCommands_Multi.m).
+% Condition 'ASYM' : mêmes champs que Curves pour réutiliser
+% ApplyInversionCorrectionSTTX.
+AsymResults = struct('PatientID', {}, 'Side', {}, 'Task', {});
+AsymCurves  = struct('PatientID', {}, 'Side', {}, 'Task', {});
 
 conditions = {'PRE', 'POST'};
 
@@ -187,17 +199,57 @@ for iP = 1:nInFile
             Curves(ri).(['TX_', condition, '_peakExc'])  = c.TX_peakExc;
             Curves(ri).(['TX_', condition, '_excSign'])  = c.TX_excSign;
         end
+
+        % Épaule asymptomatique de ce patient à cette condition ?
+        asymSide = findAsymptomaticSide(Opts.AsymptomaticSelection, d, condition);
+        for iS = 1:length(Contrib)
+            c = Contrib(iS);
+            if ~strcmp(c.side, asymSide), continue; end
+            ai = length(AsymCurves) + 1;
+            AsymResults(ai).PatientID = d.PatientID;
+            AsymResults(ai).Side      = c.side;
+            AsymResults(ai).Task      = c.task;
+            AsymResults(ai).HG_ASYM_deg     = c.HG_range;
+            AsymResults(ai).ST_ASYM_deg     = c.ST_range;
+            AsymResults(ai).ST_ASYM_pct     = c.ST_pct;
+            AsymResults(ai).ST_ASYM_max_deg = c.ST_max;
+            AsymResults(ai).TX_ASYM_deg     = c.TX_range;
+            AsymResults(ai).TX_ASYM_pct     = c.TX_pct;
+            AsymResults(ai).TX_ASYM_max_deg = c.TX_max;
+            AsymCurves(ai).PatientID = d.PatientID;
+            AsymCurves(ai).Side      = c.side;
+            AsymCurves(ai).Task      = c.task;
+            AsymCurves(ai).HG_ASYM   = c.HG_curve;
+            AsymCurves(ai).GH_ASYM   = c.GH_curve;
+            AsymCurves(ai).ST_ASYM   = c.ST_curve;
+            AsymCurves(ai).TX_ASYM   = c.TX_curve;
+            AsymCurves(ai).ST_ASYM_raw      = c.ST_raw;
+            AsymCurves(ai).ST_ASYM_rangeRaw = c.ST_rangeRaw;
+            AsymCurves(ai).ST_ASYM_peakExc  = c.ST_peakExc;
+            AsymCurves(ai).ST_ASYM_excSign  = c.ST_excSign;
+            AsymCurves(ai).TX_ASYM_raw      = c.TX_raw;
+            AsymCurves(ai).TX_ASYM_rangeRaw = c.TX_rangeRaw;
+            AsymCurves(ai).TX_ASYM_peakExc  = c.TX_peakExc;
+            AsymCurves(ai).TX_ASYM_excSign  = c.TX_excSign;
+        end
     end
 end
 clear S
 end
 disp(['Patients dans la base : ', num2str(totalPatients)]);
+if ~isempty(Opts.AsymptomaticSelection)
+    disp(['Épaules asymptomatiques retrouvées : ', num2str(numel(unique(strcat({AsymCurves.PatientID}, {AsymCurves.Side})))), ...
+          ' / ', num2str(size(Opts.AsymptomaticSelection, 1))]);
+end
 
 % Correction des courbes ST et TX inversées (angle de repos de signe opposé
 % que abs() ne rend pas cohérent) - voir ApplyInversionCorrectionSTTX.m.
 % Opts.ApplyInvCorr = false pour retrouver les valeurs non corrigées.
+% Asymptomatiques corrigées à part (référence = moyenne des asymptomatiques),
+% pour ne pas modifier la référence ni les résultats des patients.
 if Opts.ApplyInvCorr
     [Results, Curves] = ApplyInversionCorrectionSTTX(Results, Curves, 'HG', Opts.CorrThresh);
+    [~, AsymCurves]   = ApplyInversionCorrectionSTTX(AsymResults, AsymCurves, 'HG', Opts.CorrThresh, {'ASYM'});
 end
 
 % -------------------------------------------------------------------------
@@ -214,12 +266,30 @@ else
     disp('Aucune donnée à exporter.');
 end
 
-PlotHGContributionsCurves(Curves);
+PlotHGContributionsCurves(Curves, AsymCurves);
 
 if ~isempty(ResultsFolder) && isfolder(ResultsFolder)
     cd(ResultsFolder);
 end
 
+end
+
+% =========================================================================
+%  EPAULE ASYMPTOMATIQUE (voir AsymptomaticSelection, userCommands_Multi.m)
+% =========================================================================
+% Côté asymptomatique ('R'/'L') du patient d pour cette condition, '' si
+% aucun. Même règle que dans ComputeClinicalContributionsFromDatabase.m.
+function asymSide = findAsymptomaticSide(AsymSel, d, condition)
+asymSide = '';
+for k = 1:size(AsymSel, 1)
+    if ~strcmp(num2str(AsymSel{k, 1}), num2str(d.PatientID)), continue; end
+    if ~strcmp(AsymSel{k, 3}, condition), continue; end
+    if ismember(AsymSel{k, 2}, d.Side), continue; end
+    [~, sessName] = fileparts(d.(condition).Date);
+    if ~startsWith(sessName, AsymSel{k, 4}), continue; end
+    asymSide = AsymSel{k, 2};
+    return;
+end
 end
 
 % =========================================================================
@@ -501,9 +571,13 @@ end
 % Inputs  : Curves (struct array) with fields Task ('ANALYTIC1'/'ANALYTIC2'),
 %           HG_PRE/HG_POST, GH_PRE/GH_POST, ST_PRE/ST_POST, TX_PRE/TX_POST
 %           (vectors, or [] if absent)
+%           AsymCurves (struct array, optional) asymptomatic shoulders,
+%           fields Task, HG_ASYM/GH_ASYM/ST_ASYM/TX_ASYM - plotted in green
+%           (individual + bold mean), same layout
 % Outputs : 1 figure per task found (4 subplots each)
-function PlotHGContributionsCurves(Curves)
+function PlotHGContributionsCurves(Curves, AsymCurves)
 
+if nargin < 2, AsymCurves = struct('Task', {}); end
 if isempty(Curves)
     disp('PlotHGContributionsCurves: no data to plot.');
     return;
@@ -512,18 +586,21 @@ end
 tasks = unique({Curves.Task});
 for iT = 1:numel(tasks)
     task = tasks{iT};
-    plotTaskCurves(Curves(strcmp({Curves.Task}, task)), task);
+    asym = AsymCurves([]);
+    if ~isempty(AsymCurves), asym = AsymCurves(strcmp({AsymCurves.Task}, task)); end
+    plotTaskCurves(Curves(strcmp({Curves.Task}, task)), asym, task);
 end
 
 end
 
-function plotTaskCurves(Curves, task)
+function plotTaskCurves(Curves, AsymCurves, task)
 
 metrics = {'HG', 'GH', 'ST', 'TX'};
 titles  = {'HG (huméro-gravitationnel)', 'GH (glénohuméral)', 'ST (scapulothoracique)', 'TX (thoracique)'};
 xgrid   = linspace(0, 100, 101);
 colPre  = [0.8500 0.3250 0.0980]; % red
 colPost = [0 0.4470 0.7410];   % blue
+colAsym = [0.4660 0.6740 0.1880]; % green
 
 figure('Name', ['Courbes HG/GH/ST/TX — ', task, ' — PRE vs POST'], 'Color', 'w');
 
@@ -553,11 +630,25 @@ for m = 1:length(metrics)
         end
     end
 
+    asymCurves = [];
+    for i = 1:length(AsymCurves)
+        asym = resample101(AsymCurves(i).([metrics{m}, '_ASYM']), xgrid);
+        if ~isempty(asym)
+            h = plot(xgrid, asym, 'Color', colAsym, 'LineWidth', 1, 'HandleVisibility', 'off');
+            h.Color(4) = 0.25;
+            asymCurves = [asymCurves, asym(:)]; %#ok<AGROW>
+        end
+    end
+
     if ~isempty(preCurves)
         plot(xgrid, mean(preCurves, 2, 'omitnan'), 'Color', colPre, 'LineWidth', 3, 'DisplayName', 'PRE (moyenne)');
     end
     if ~isempty(postCurves)
         plot(xgrid, mean(postCurves, 2, 'omitnan'), 'Color', colPost, 'LineWidth', 3, 'DisplayName', 'POST (moyenne)');
+    end
+    if ~isempty(asymCurves)
+        plot(xgrid, mean(asymCurves, 2, 'omitnan'), 'Color', colAsym, 'LineWidth', 3, ...
+            'DisplayName', ['Asymptomatique (moyenne, n=', num2str(size(asymCurves, 2)), ')']);
     end
 
     hold off;

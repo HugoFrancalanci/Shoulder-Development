@@ -30,7 +30,9 @@ sans jamais écrire dans les données patients (lecture seule).
   `BatchSize` patients), pas seulement les patients manquants - contrepartie
   acceptée du gain de vitesse.
 - **`userCommands_Multi.m`** — le seul fichier à modifier pour choisir les
-  patients à traiter. Jamais touché par le script lui-même.
+  patients à traiter (`PatientSelection`) et les épaules asymptomatiques
+  tracées en vert (`AsymptomaticSelection`, voir plus bas). Jamais touché
+  par le script lui-même.
 - **`Core/`, `IO/`** — fonctions propres au pipeline multi, ajoutées au path
   par `MAIN_MULTI_Protocol_01.m`. Séparées des dossiers `Core/`, `IO/`,
   `Plot/` de `Protocol01/` (ceux-là restent partagés avec le
@@ -212,6 +214,49 @@ affiché en console. Quatrième argument optionnel des deux fonctions :
 **Réserve TX.** L'angle du thorax reflète en partie la posture réelle du
 patient ; remplacer son niveau de repos par celui de la cohorte efface cette
 information (le range est conservé). À interpréter avec précaution.
+
+Cinquième argument optionnel de `ApplyInversionCorrectionSTTX` : les
+conditions à traiter (`{'PRE','POST'}` par défaut ; `{'ASYM'}` pour les
+épaules asymptomatiques, voir section suivante).
+
+## Épaules asymptomatiques (courbes vertes, clinical + functional)
+
+`AsymptomaticSelection` (dans `userCommands_Multi.m`) liste les épaules
+asymptomatiques retenues parmi les patients de `PatientSelection` :
+`{ID patient, côté asymptomatique, 'PRE'/'POST', date de session}`. Le côté
+est le côté **opposé** à celui de `PatientSelection` (l'épaule
+controlatérale) ; la date est celle de la colonne PRE (col. 3) ou POST
+(col. 4) de la ligne correspondante de `PatientSelection`, selon la condition
+retenue. Le commentaire `% N` renvoie au numéro de ligne dans
+`PatientSelection`.
+
+Pas de retraitement des C3D : `runProtocol01` calcule toujours les deux
+côtés et `PatientDatabase.mat` les garde, donc les courbes controlatérales
+sont déjà dans la base. `MAIN_MULTI_Protocol_01.m` passe la liste aux deux
+fonctions via le quatrième argument :
+`struct('AsymptomaticSelection', {AsymptomaticSelection})`. Si l'option est
+absente ou vide, le comportement est inchangé.
+
+**Correspondance** (fonction locale `findAsymptomaticSide`, dans les deux
+fichiers) : même `PatientID`, même condition, côté différent du côté analysé
+(`Database(i).Side` ; lève l'ambiguïté des patients présents sur deux lignes,
+un côté chacune) et nom du dossier de session commençant par la date donnée.
+La console affiche `Épaules asymptomatiques retrouvées : X / N` : si X < N,
+certaines épaules n'ont pas été retrouvées dans la base.
+
+**Tracé.** Sur les figures `PlotHTContributionsCurves` /
+`PlotHGContributionsCurves`, les courbes de chaque épaule asymptomatique sont
+en vert transparent et leur moyenne en vert gras (`n` en légende), à côté des
+courbes PRE (rouge) et POST (bleu) des patients, par tâche. Les courbes des
+patients (côté de `PatientSelection`, PRE/POST) ne changent pas.
+
+**Correction ST/TX.** Les courbes asymptomatiques passent par
+`ApplyInversionCorrectionSTTX` dans un appel **séparé** (condition `'ASYM'`,
+référence = moyenne des asymptomatiques seules), pour ne pas modifier la
+référence ni les résultats des patients.
+
+Les asymptomatiques ne sont **pas exportés** dans les Excel clinical/functional
+(figures uniquement).
 
 ## Autre reporting : qualité de la reconstruction du CoR (SCoRE)
 

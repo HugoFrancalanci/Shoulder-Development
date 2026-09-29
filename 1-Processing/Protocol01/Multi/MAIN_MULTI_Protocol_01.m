@@ -30,21 +30,6 @@
 %                élevé par appel, indépendant du volume réel écrit - la
 %                compression n'est PAS en cause, désactiver la compression
 %                seule sur l'ancien schéma n'apporte quasiment rien).
-%
-%                Fonctions propres au pipeline multi (Compute*/Export*/Plot*)
-%                rangées dans Multi/Core, Multi/IO, Multi/Plot, séparées des
-%                dossiers Core/IO/Plot partagés avec le protocole solo, que
-%                seul runProtocol01() ajoute encore au path (il en a besoin
-%                pour le calcul cinématique commun aux deux pipelines).
-%
-%                Pour ajouter un nouvel export calculé depuis Trial :
-%                  - Analyse à faire pendant le run C3D (dépend d'un état
-%                    live, ex: c3dFiles) : l'ajouter ici, comme
-%                    ComputeDataAvailability/ComputePatientInfos.
-%                  - Analyse sur des valeurs déjà calculées (Segment/Joint/
-%                    Euler...) : en faire une fonction Multi/Core/ComputeXxxFromDatabase.m
-%                    (voir ComputeClinicalContributionsFromDatabase.m comme
-%                    modèle), pour bénéficier du calcul instantané depuis le .mat.
 % -------------------------------------------------------------------------
 
 clearvars; close all; warning off; clc;
@@ -458,8 +443,10 @@ ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibili
 
 %%
 % Clinical movement decomposition : HT, GH, ST, TX
-ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder);
+ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, ...
+    struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 %%
 % Functional decomposition : HG, GH, ST, TX
-ComputeFunctionalContributionsFromDatabase(DatabaseFile, FunctionalOutputFile, ResultsFolder);
+ComputeFunctionalContributionsFromDatabase(DatabaseFile, FunctionalOutputFile, ResultsFolder, ...
+    struct('AsymptomaticSelection', {AsymptomaticSelection}));
