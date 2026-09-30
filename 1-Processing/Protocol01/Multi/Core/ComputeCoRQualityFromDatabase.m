@@ -56,8 +56,15 @@
 %           ThresholdMM   (double, optionnel) seuil de résidu moyen (mm) au-
 %                         delà duquel une ligne est flaguée 'A verifier'
 %                         dans Flag_PRE/Flag_POST. Défaut 15.
+%           Opts          (struct, optionnel) AsymptomaticSelection (cell,
+%                         {} par défaut) : épaules asymptomatiques {ID, côté,
+%                         'PRE'/'POST', date} (voir userCommands_Multi.m),
+%                         exportées dans la feuille 'CoR_Asymptomatic' (une
+%                         ligne par épaule, condition retenue seulement ; pas
+%                         sur la figure)
 % Outputs : Results (struct array) une ligne par patient/côté - aussi
 %           retourné pour exploitation directe sans repasser par l'Excel
+%           AsymResults (struct array) une ligne par épaule asymptomatique
 %           Fichier Excel écrit sur disque + 1 figure diagnostique (résidu
 %           SCoRE trié, PRE vs POST, patients au-dessus du seuil étiquetés)
 % -------------------------------------------------------------------------
@@ -69,10 +76,12 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function Results = ComputeCoRQualityFromDatabase(DatabaseFile, OutputFile, ResultsFolder, ThresholdMM)
+function [Results, AsymResults] = ComputeCoRQualityFromDatabase(DatabaseFile, OutputFile, ResultsFolder, ThresholdMM, Opts)
 
 if nargin < 3, ResultsFolder = ''; end
 if nargin < 4 || isempty(ThresholdMM), ThresholdMM = 30; end
+if nargin < 5, Opts = struct(); end
+if ~isfield(Opts, 'AsymptomaticSelection'), Opts.AsymptomaticSelection = {}; end
 
 % La base peut être répartie sur plusieurs fichiers .mat (voir
 % NumDatabaseParts dans userCommands_Multi.m, DatabaseFile_partXofY.mat) -
@@ -94,6 +103,12 @@ Results = struct('Numero', {}, 'PatientID', {}, 'Side', {}, ...
     'ClusterRMS_Scapula_PRE_mm', {}, 'ClusterRMS_Humerus_PRE_mm', {}, ...
     'ClusterRMS_Scapula_POST_mm', {}, 'ClusterRMS_Humerus_POST_mm', {}, ...
     'Flag_PRE', {}, 'Flag_POST', {});
+
+% Épaules asymptomatiques (côté controlatéral, une seule session) - même
+% correspondance que ComputeClinicalContributionsFromDatabase.m
+AsymResults = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Condition', {}, ...
+    'SCoRE_Residual_mean_mm', {}, 'SCoRE_Residual_max_mm', {}, 'SCoRE_Residual_nFrames', {}, ...
+    'ClusterRMS_Scapula_mm', {}, 'ClusterRMS_Humerus_mm', {}, 'Flag', {});
 
 conditions = {'PRE', 'POST'};
 sides      = {'R', 'L'};
@@ -142,41 +157,52 @@ for iP = 1:nInFile
             if ~isstruct(Session) || ~isfield(Session, 'SCoRE') || ~isstruct(Session.SCoRE) || ~isfield(Session.SCoRE, side)
                 continue;
             end
-            SC = Session.SCoRE.(side);
-
-            residual_mm = NaN; residual_max = NaN; nFrames = 0;
-            if isfield(SC, 'residual_mm') && ~isempty(SC.residual_mm)
-                residual_mm  = mean(SC.residual_mm, 'omitnan');
-                residual_max = max(SC.residual_mm, [], 'omitnan');
-                nFrames      = sum(~isnan(SC.residual_mm));
-            end
-
-            scapulaRMS = NaN; humerusRMS = NaN;
-            if isfield(SC, 'clusterRMS') && isstruct(SC.clusterRMS)
-                if isfield(SC.clusterRMS, 'scapula_mm'), scapulaRMS = SC.clusterRMS.scapula_mm; end
-                if isfield(SC.clusterRMS, 'humerus_mm'), humerusRMS = SC.clusterRMS.humerus_mm; end
-            end
+            [residual_mm, residual_max, nFrames, scapulaRMS, humerusRMS, flag] = ...
+                readSCoRE(Session.SCoRE.(side), ThresholdMM);
 
             Results(ri).(['SCoRE_Residual_', condition, '_mean_mm'])    = residual_mm;
             Results(ri).(['SCoRE_Residual_', condition, '_max_mm'])     = residual_max;
             Results(ri).(['SCoRE_Residual_', condition, '_nFrames'])    = nFrames;
             Results(ri).(['ClusterRMS_Scapula_', condition, '_mm'])     = scapulaRMS;
             Results(ri).(['ClusterRMS_Humerus_', condition, '_mm'])     = humerusRMS;
-
-            if isnan(residual_mm)
-                flag = '';
-            elseif residual_mm > ThresholdMM
-                flag = 'A verifier';
-            else
-                flag = 'OK';
-            end
             Results(ri).(['Flag_', condition]) = flag;
         end
+    end
+
+    % Épaule asymptomatique de ce patient (condition retenue seulement)
+    for iC = 1:numel(conditions)
+        condition = conditions{iC};
+        if ~isfield(d, condition) || ~isstruct(d.(condition)) || ~isfield(d.(condition), 'Session')
+            continue;
+        end
+        asymSide = findAsymptomaticSide(Opts.AsymptomaticSelection, d, condition);
+        if isempty(asymSide), continue; end
+        Session = d.(condition).Session;
+        ai = length(AsymResults) + 1;
+        AsymResults(ai).Numero    = d.Numero;
+        AsymResults(ai).PatientID = d.PatientID;
+        AsymResults(ai).Side      = asymSide;
+        AsymResults(ai).Condition = condition;
+        AsymResults(ai).SCoRE_Residual_mean_mm = NaN; AsymResults(ai).SCoRE_Residual_max_mm = NaN;
+        AsymResults(ai).SCoRE_Residual_nFrames = NaN;
+        AsymResults(ai).ClusterRMS_Scapula_mm  = NaN; AsymResults(ai).ClusterRMS_Humerus_mm = NaN;
+        AsymResults(ai).Flag = '';
+        if ~isstruct(Session) || ~isfield(Session, 'SCoRE') || ~isstruct(Session.SCoRE) || ~isfield(Session.SCoRE, asymSide)
+            continue;
+        end
+        [AsymResults(ai).SCoRE_Residual_mean_mm, AsymResults(ai).SCoRE_Residual_max_mm, ...
+         AsymResults(ai).SCoRE_Residual_nFrames, AsymResults(ai).ClusterRMS_Scapula_mm, ...
+         AsymResults(ai).ClusterRMS_Humerus_mm, AsymResults(ai).Flag] = ...
+            readSCoRE(Session.SCoRE.(asymSide), ThresholdMM);
     end
 end
 clear S
 end
 disp(['Patients dans la base : ', num2str(totalPatients)]);
+if ~isempty(Opts.AsymptomaticSelection)
+    disp(['Épaules asymptomatiques retrouvées : ', num2str(numel(AsymResults)), ...
+          ' / ', num2str(size(Opts.AsymptomaticSelection, 1))]);
+end
 
 % -------------------------------------------------------------------------
 % EXPORT EXCEL
@@ -185,10 +211,17 @@ if ~isempty(Results)
     T = struct2table(Results);
     if isfile(OutputFile), delete(OutputFile); end
     writetable(T, OutputFile, 'Sheet', 'CoR_Quality');
+    if ~isempty(AsymResults)
+        writetable(struct2table(AsymResults), OutputFile, 'Sheet', 'CoR_Asymptomatic');
+    end
     disp(' ');
     disp(['Excel exporté : ', OutputFile]);
     nFlagged = sum(strcmp({Results.Flag_PRE}, 'A verifier')) + sum(strcmp({Results.Flag_POST}, 'A verifier'));
     disp([num2str(nFlagged), ' ligne(s) PRE/POST flaguee(s) au-dessus de ', num2str(ThresholdMM), 'mm (residu moyen).']);
+    if ~isempty(AsymResults)
+        disp([num2str(sum(strcmp({AsymResults.Flag}, 'A verifier'))), ' épaule(s) asymptomatique(s) flaguée(s) au-dessus de ', ...
+              num2str(ThresholdMM), 'mm (residu moyen).']);
+    end
 else
     disp(' ');
     disp('Aucune donnée à exporter.');
@@ -200,6 +233,50 @@ if ~isempty(ResultsFolder) && isfolder(ResultsFolder)
     cd(ResultsFolder);
 end
 
+end
+
+% =========================================================================
+%  LECTURE SCoRE D'UN COTE (Session.SCoRE.R/.L)
+% =========================================================================
+function [residual_mm, residual_max, nFrames, scapulaRMS, humerusRMS, flag] = readSCoRE(SC, ThresholdMM)
+residual_mm = NaN; residual_max = NaN; nFrames = 0;
+if isfield(SC, 'residual_mm') && ~isempty(SC.residual_mm)
+    residual_mm  = mean(SC.residual_mm, 'omitnan');
+    residual_max = max(SC.residual_mm, [], 'omitnan');
+    nFrames      = sum(~isnan(SC.residual_mm));
+end
+
+scapulaRMS = NaN; humerusRMS = NaN;
+if isfield(SC, 'clusterRMS') && isstruct(SC.clusterRMS)
+    if isfield(SC.clusterRMS, 'scapula_mm'), scapulaRMS = SC.clusterRMS.scapula_mm; end
+    if isfield(SC.clusterRMS, 'humerus_mm'), humerusRMS = SC.clusterRMS.humerus_mm; end
+end
+
+if isnan(residual_mm)
+    flag = '';
+elseif residual_mm > ThresholdMM
+    flag = 'A verifier';
+else
+    flag = 'OK';
+end
+end
+
+% =========================================================================
+%  EPAULE ASYMPTOMATIQUE (voir AsymptomaticSelection, userCommands_Multi.m)
+% =========================================================================
+% Côté asymptomatique ('R'/'L') du patient d pour cette condition, '' si
+% aucun. Même règle que dans ComputeClinicalContributionsFromDatabase.m.
+function asymSide = findAsymptomaticSide(AsymSel, d, condition)
+asymSide = '';
+for k = 1:size(AsymSel, 1)
+    if ~strcmp(num2str(AsymSel{k, 1}), num2str(d.PatientID)), continue; end
+    if ~strcmp(AsymSel{k, 3}, condition), continue; end
+    if ismember(AsymSel{k, 2}, d.Side), continue; end
+    [~, sessName] = fileparts(d.(condition).Date);
+    if ~startsWith(sessName, AsymSel{k, 4}), continue; end
+    asymSide = AsymSel{k, 2};
+    return;
+end
 end
 
 % =========================================================================

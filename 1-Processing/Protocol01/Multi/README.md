@@ -65,7 +65,7 @@ sans jamais écrire dans les données patients (lecture seule).
   dépôt git (voir mémoire de session pour le chemin).
 - **`Results/`** — tous les fichiers de sortie y sont écrits (chemins
   définis dans `userCommands_Multi.m`) : `ClinicalContributions_Summary.xlsx`,
-  `FunctionalContributions_Summary.xlsx`, `CoRQuality_Summary.xlsx`,
+  `FunctionalContributions_Summary.xlsx`, `Posture_Summary.xlsx`, `CoRQuality_Summary.xlsx`,
   `CurveQuality_Summary.xlsx`, `PatientInfos_Summary.xlsx`, `DataAvailability_Summary.xlsx`,
   `PatientDatabase.mat` et son compagnon `PatientDatabase_progress.mat`
   (si `SaveDatabase=true` - voir reprise automatique ci-dessus ; ne pas
@@ -255,8 +255,95 @@ patients (côté de `PatientSelection`, PRE/POST) ne changent pas.
 référence = moyenne des asymptomatiques seules), pour ne pas modifier la
 référence ni les résultats des patients.
 
-Les asymptomatiques ne sont **pas exportés** dans les Excel clinical/functional
-(figures uniquement).
+**Export.** Feuille séparée dans chaque Excel (`Clinical_Asymptomatic`,
+`Functional_Asymptomatic`), une ligne par épaule/tâche pour la seule condition
+retenue : `Numero, PatientID, Side, Task, Condition, HT_ASYM_deg` (ou
+`HG_ASYM_deg`), `GH/ST/TX_ASYM_deg`, `GH/ST/TX_ASYM_pct`, `*_ASYM_max_deg`, et
+`ST/TX_ASYM_corrected` (0/1) si la correction est active. Les feuilles
+principales (`Clinical_Contributions`, `Functional_Contributions`) sont
+inchangées.
+
+**Contrôle qualité.** Même option passée à
+`ComputeCoRQualityFromDatabase` (5e argument) et
+`ComputeCurveQualityFromDatabase` (`Opts`) :
+
+* `CoR_Asymptomatic` (dans `CoRQuality_Summary.xlsx`) : une ligne par épaule,
+  condition retenue seulement — résidu SCoRE du côté asymptomatique
+  (`Session.SCoRE.R/.L`), RMS des clusters, `Flag` au même seuil. Pas sur la
+  figure.
+* `Curve_Quality_Asymptomatic` + `Summary_Asymptomatic` (dans
+  `CurveQuality_Summary.xlsx`) : mêmes colonnes et mêmes critères
+  (`Rough`, `Inversee`) que `Curve_Quality`, mais scorées **à part** (référence
+  = moyenne des asymptomatiques seules, comme la correction ST/TX ci-dessus) :
+  les verdicts des patients ne changent pas. Pas sur les figures. Avec ~26
+  épaules par groupe, les z-scores robustes sont moins stables que sur la
+  cohorte patients.
+
+## Autre reporting : posture (inclinaison thoracique + Moroder)
+
+`Multi/Core/ComputePostureFromDatabase.m` recharge `PatientDatabase.mat` et lit
+`Trial(k).Joint(11).PostureSummary`, déjà calculé pendant le run C3D par
+`Protocol01/Core/Thorax/ComputeThoraxPosture.m` (rien n'est recalculé) :
+
+* `Inclination_<C>_deg` : `thoracic_curvature_angle`, angle 3D TV8→CV7 vs
+  verticale, moyenne des 100 premières frames (0° = thorax vertical)
+* `PostureType_<C>` : `Erect` (< 32°) / `Slouched` (≥ 32°), Kebaetse et al. 1999
+* `SIR_<C>_deg` : `SIR_R`/`SIR_L` du côté de la ligne, |ST DOF2 Y| (Joint 3/8),
+  moyenne des 100 premières frames — approximation cinématique de la SIR de
+  Moroder (mesurée sur CT), **non validée**
+* `Moroder_<C>` : `A` (≤ 36°) / `B` (≤ 46°) / `C` (> 46°)
+
+(`<C>` = `PRE`/`POST`.) Une ligne par patient/côté analysé/tâche, pour
+`CALIBRATION3` (`STATIC3` sur les sessions plus anciennes, reporté sous
+`CALIBRATION3`), `ANALYTIC1` et `ANALYTIC2`. L'inclinaison est propre au thorax,
+donc identique pour les deux côtés d'un patient `RL`.
+
+`ComputePostureFromDatabase(DatabaseFile, PostureOutputFile, ResultsFolder, Opts)` :
+Excel `Posture_Summary.xlsx`, feuille `Posture`.
+
+**Figures** (`PlotPostureDistribution`, fonction locale) : une par tâche, 3x2,
+PRE (rouge) vs POST (bleu) vs asymptomatique (vert) :
+
+* inclinaison thoracique : points individuels + médiane/IQR, seuil 32°
+  (Erect/Slouched) ; une valeur par patient (dédoublonnée pour les `RL`)
+* SIR : idem, seuils 36° (A/B) et 46° (B/C) ; une valeur par côté
+* % Erect / Slouched par groupe
+* % Moroder A / B / C par groupe
+* inclinaison par strates de 5° (5-10 … 45-50), % de chaque groupe par
+  strate (barres groupées), ligne au seuil 32° ; valeurs < 5° ou > 50°
+  non tracées, comptées dans le titre
+
+**SIR > 100° = outlier** (valeurs aberrantes, à traiter plus tard) : exclu des
+distributions et des pourcentages Moroder, nombre d'exclus par groupe indiqué
+dans le titre. L'Excel, lui, garde toutes les valeurs telles quelles.
+
+**Corrélation inclinaison vs SIR** (`CorrelatePosture`, fonction locale) : par
+tâche et par groupe (PRE, POST, asymptomatique), paires (inclinaison, SIR) de
+la même session et du même côté, **uniquement dans la plage plausible :
+inclinaison ∈ [0, 50]° et SIR ∈ [10, 60]°** (hors plage exclus, comptés
+par groupe dans le titre et rappelés en bas de la figure ; axes fixés sur
+cette plage ; colonne `nExcluded_OutOfRange` dans l'Excel). Plage propre à
+cette analyse : les graphes de distribution gardent le seuil SIR > 100°.
+Pearson r (linéaire) et
+Spearman ρ (monotone, rangs avec ex-aequo au rang moyen), p bilatéral par la
+loi de Student (df = n-2, calculé sans Statistics Toolbox), pente/ordonnée de
+la régression SIR ~ inclinaison. Feuille `Correlation_Incl_SIR` (une ligne
+par tâche/groupe) + une figure par tâche (nuages 1x3, droite de régression,
+lignes aux seuils 32° et 36°/46°). Un patient `RL` donne deux paires
+partageant la même inclinaison (non indépendantes) ; pas de correction pour
+comparaisons multiples (3 tâches x 3 groupes).
+
+Épaules asymptomatiques : avec `Opts.AsymptomaticSelection` (passé par
+`MAIN_MULTI_Protocol_01.m`, voir section « Épaules asymptomatiques »), une
+feuille séparée `Posture_Asymptomatic`, une ligne par épaule/tâche pour la
+seule condition retenue : `Numero, PatientID, Side, Task, Condition,
+Inclination_deg, PostureType, SIR_deg, Moroder` (SIR/Moroder du côté
+asymptomatique). Même correspondance que pour les courbes vertes ; la console
+affiche `Épaules asymptomatiques retrouvées : X / N`. La feuille `Posture`
+est inchangée. Les trajectoires
+marqueurs n'étant pas gardées dans la base (`FilterTrialForDatabase.m`), toute
+autre définition de l'inclinaison (fenêtre, projection, marqueurs) demande de
+relancer `MAIN_MULTI_Protocol_01.m`.
 
 ## Autre reporting : qualité de la reconstruction du CoR (SCoRE)
 

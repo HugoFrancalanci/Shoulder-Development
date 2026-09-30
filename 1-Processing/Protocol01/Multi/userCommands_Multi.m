@@ -277,6 +277,9 @@ CoRQualityOutputFile = fullfile(ResultsFolder, 'CoRQuality_Summary.xlsx');
 % CurveQualityOutputFile : fichier Excel de sortie (validité des courbes HT/HG/GH/ST/TX)
 CurveQualityOutputFile = fullfile(ResultsFolder, 'CurveQuality_Summary.xlsx');
 
+% PostureOutputFile : fichier Excel de sortie (inclinaison thoracique + Moroder)
+PostureOutputFile = fullfile(ResultsFolder, 'Posture_Summary.xlsx');
+
 % PatientInfosFile : fichier Excel de sortie (infos démographiques patients)
 PatientInfosFile = fullfile(ResultsFolder, 'PatientInfos_Summary.xlsx');
 

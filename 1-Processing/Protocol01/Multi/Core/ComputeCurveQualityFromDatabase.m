@@ -63,7 +63,13 @@
 %                         Curve_Quality et Summary)
 %           ResultsFolder (char, optionnel) dossier où se terminer (cd)
 %           Opts          (struct, optionnel) champs : ZThresh (3),
-%                         CorrThresh (0)
+%                         CorrThresh (0), AsymptomaticSelection ({} par
+%                         défaut ; épaules asymptomatiques {ID, côté,
+%                         'PRE'/'POST', date}, voir userCommands_Multi.m) :
+%                         scorées À PART (référence = moyenne des
+%                         asymptomatiques seules, patients inchangés),
+%                         feuilles 'Curve_Quality_Asymptomatic' et
+%                         'Summary_Asymptomatic' ; pas sur les figures
 % Outputs : Results (struct array) une ligne par courbe
 %           Excel + 1 figure de courbes superposées par tâche (OK gris,
 %           aberrante rouge, moyenne noire) + la même en courbes BRUTES
@@ -84,12 +90,13 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function Results = ComputeCurveQualityFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
+function [Results, AsymResults] = ComputeCurveQualityFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
 
 if nargin < 3, ResultsFolder = ''; end
 if nargin < 4, Opts = struct(); end
 if ~isfield(Opts, 'ZThresh') || isempty(Opts.ZThresh), Opts.ZThresh = 3; end
 if ~isfield(Opts, 'CorrThresh') || isempty(Opts.CorrThresh), Opts.CorrThresh = 0; end
+if ~isfield(Opts, 'AsymptomaticSelection'), Opts.AsymptomaticSelection = {}; end
 
 fileList = discoverDatabaseFiles(DatabaseFile);
 if isempty(fileList)
@@ -117,6 +124,8 @@ conditions = {'PRE', 'POST'};
 Results = [];
 Curves  = {};   % abs, moyenne des cycles, 101 points (= sorties clinical/functional)
 RawCurves = {}; % brut signé, moyenne des cycles, 101 points (diagnostic)
+AsymResults = []; % épaules asymptomatiques (côté controlatéral), scorées à part
+AsymCurves  = {};
 
 totalPatients = 0;
 for iFile = 1:numel(fileList)
@@ -148,13 +157,16 @@ for iP = 1:nInFile
             if isempty(tidx), continue; end
             t = Trial(tidx);
 
+            asymSide = findAsymptomaticSide(Opts.AsymptomaticSelection, d, condition);
+
             for iS = 1:numel(sides)
                 side = sides{iS};
-                if ~ismember(side, d.Side), continue; end
+                isAsym = strcmp(side, asymSide);
+                if ~ismember(side, d.Side) && ~isAsym, continue; end
 
                 for iM = 1:numel(MetricDef)
                     md  = MetricDef(iM);
-                    if md.shared && iS == 2 && ismember('R', d.Side), continue; end
+                    if ~isAsym && md.shared && iS == 2 && ismember('R', d.Side), continue; end
                     ji  = md.ji(iS);
                     dof = md.dof(iT);
                     cyc = getCycles(t, ji, dof, cycFields{iS}, md.shared);
@@ -187,6 +199,11 @@ for iP = 1:nInFile
                         'RobustZ_MaxResid', NaN, 'RobustZ_Rough', NaN, 'RobustZ', NaN, ...
                         'Reason', '', 'Verdict', '');
 
+                    if isAsym
+                        if isempty(AsymResults), AsymResults = row; else, AsymResults(end+1) = row; end %#ok<AGROW>
+                        AsymCurves{end+1} = curve; %#ok<AGROW>
+                        continue;
+                    end
                     if isempty(Results)
                         Results = row;
                     else
@@ -211,6 +228,67 @@ end
 % -------------------------------------------------------------------------
 % PASSE 2 : ajustement sur la moyenne du groupe + scores locaux + z robuste
 % -------------------------------------------------------------------------
+[Results, TemplateKeys, TemplateCurves, TemplateSign] = scoreGroups(Results, Curves, Opts);
+
+% Épaules asymptomatiques : scorées à part (référence = moyenne des
+% asymptomatiques seules, comme la correction ST/TX des sorties
+% clinical/functional), pour ne pas modifier la référence ni les verdicts
+% des patients.
+if ~isempty(AsymResults)
+    AsymResults = scoreGroups(AsymResults, AsymCurves, Opts);
+end
+if ~isempty(Opts.AsymptomaticSelection)
+    nAsym = 0;
+    if ~isempty(AsymResults)
+        nAsym = numel(unique(strcat({AsymResults.PatientID}, {AsymResults.Side})));
+    end
+    disp(['Épaules asymptomatiques retrouvées : ', num2str(nAsym), ...
+          ' / ', num2str(size(Opts.AsymptomaticSelection, 1))]);
+end
+
+% -------------------------------------------------------------------------
+% EXPORT EXCEL
+% -------------------------------------------------------------------------
+if isfile(OutputFile), delete(OutputFile); end
+writetable(struct2table(Results), OutputFile, 'Sheet', 'Curve_Quality');
+Summary = buildSummary(Results);
+writetable(struct2table(Summary), OutputFile, 'Sheet', 'Summary');
+if ~isempty(AsymResults)
+    writetable(struct2table(AsymResults), OutputFile, 'Sheet', 'Curve_Quality_Asymptomatic');
+    writetable(struct2table(buildSummary(AsymResults)), OutputFile, 'Sheet', 'Summary_Asymptomatic');
+end
+disp(' ');
+disp(['Excel exporté : ', OutputFile]);
+disp(['Courbes analysées : ', num2str(numel(Results)), ...
+      ' | Forme aberrante : ', num2str(sum(strcmp({Results.Verdict}, 'Forme aberrante')))]);
+if ~isempty(AsymResults)
+    disp(['Courbes asymptomatiques analysées : ', num2str(numel(AsymResults)), ...
+          ' | Forme aberrante : ', num2str(sum(strcmp({AsymResults.Verdict}, 'Forme aberrante')))]);
+end
+% Courbes affectées par la correction inversée (Inversee), par tâche : ST et TX
+for tk = unique({Results.Task})
+    for mk = {'ST', 'TX'}
+        selM = strcmp({Results.Task}, tk{1}) & strcmp({Results.Metric}, mk{1});
+        nInv = sum(contains({Results(selM).Reason}, 'Inversee'));
+        disp(['  Correction inversée ', mk{1}, ' - ', tk{1}, ' : ', num2str(nInv), ' / ', num2str(sum(selM)), ...
+              ' courbe(s) inversée(s) (', num2str(100 * nInv / max(sum(selM), 1), '%.1f'), ' %)']);
+    end
+end
+
+PlotCurveQuality(Results, Curves, RawCurves, TemplateKeys, TemplateCurves);
+BrowsePatients(Results, Curves, RawCurves, TemplateKeys, TemplateCurves, TemplateSign, 'ANALYTIC2');
+
+if ~isempty(ResultsFolder) && isfolder(ResultsFolder)
+    cd(ResultsFolder);
+end
+
+end
+
+% =========================================================================
+%  SCORING PAR GROUPE (tâche + métrique) : ajustement sur la moyenne du
+%  groupe, rugosité, corrélation, z robustes, verdict
+% =========================================================================
+function [Results, TemplateKeys, TemplateCurves, TemplateSign] = scoreGroups(Results, Curves, Opts)
 keys = strcat({Results.Task}, '|', {Results.Metric});
 [ukeys, ~, gi] = unique(keys);
 TemplateKeys   = ukeys;
@@ -278,34 +356,24 @@ for g = 1:numel(ukeys)
     end
 end
 
-% -------------------------------------------------------------------------
-% EXPORT EXCEL
-% -------------------------------------------------------------------------
-if isfile(OutputFile), delete(OutputFile); end
-writetable(struct2table(Results), OutputFile, 'Sheet', 'Curve_Quality');
-Summary = buildSummary(Results);
-writetable(struct2table(Summary), OutputFile, 'Sheet', 'Summary');
-disp(' ');
-disp(['Excel exporté : ', OutputFile]);
-disp(['Courbes analysées : ', num2str(numel(Results)), ...
-      ' | Forme aberrante : ', num2str(sum(strcmp({Results.Verdict}, 'Forme aberrante')))]);
-% Courbes affectées par la correction inversée (Inversee), par tâche : ST et TX
-for tk = unique({Results.Task})
-    for mk = {'ST', 'TX'}
-        selM = strcmp({Results.Task}, tk{1}) & strcmp({Results.Metric}, mk{1});
-        nInv = sum(contains({Results(selM).Reason}, 'Inversee'));
-        disp(['  Correction inversée ', mk{1}, ' - ', tk{1}, ' : ', num2str(nInv), ' / ', num2str(sum(selM)), ...
-              ' courbe(s) inversée(s) (', num2str(100 * nInv / max(sum(selM), 1), '%.1f'), ' %)']);
-    end
 end
 
-PlotCurveQuality(Results, Curves, RawCurves, TemplateKeys, TemplateCurves);
-BrowsePatients(Results, Curves, RawCurves, TemplateKeys, TemplateCurves, TemplateSign, 'ANALYTIC2');
-
-if ~isempty(ResultsFolder) && isfolder(ResultsFolder)
-    cd(ResultsFolder);
+% =========================================================================
+%  EPAULE ASYMPTOMATIQUE (voir AsymptomaticSelection, userCommands_Multi.m)
+% =========================================================================
+% Côté asymptomatique ('R'/'L') du patient d pour cette condition, '' si
+% aucun. Même règle que dans ComputeClinicalContributionsFromDatabase.m.
+function asymSide = findAsymptomaticSide(AsymSel, d, condition)
+asymSide = '';
+for k = 1:size(AsymSel, 1)
+    if ~strcmp(num2str(AsymSel{k, 1}), num2str(d.PatientID)), continue; end
+    if ~strcmp(AsymSel{k, 3}, condition), continue; end
+    if ismember(AsymSel{k, 2}, d.Side), continue; end
+    [~, sessName] = fileparts(d.(condition).Date);
+    if ~startsWith(sessName, AsymSel{k, 4}), continue; end
+    asymSide = AsymSel{k, 2};
+    return;
 end
-
 end
 
 % =========================================================================

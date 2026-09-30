@@ -431,11 +431,13 @@ run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DatabaseFile, 
 
 %%
 % CoR residual validation
-ComputeCoRQualityFromDatabase(DatabaseFile, CoRQualityOutputFile, ResultsFolder, 30)
+ComputeCoRQualityFromDatabase(DatabaseFile, CoRQualityOutputFile, ResultsFolder, 30, ...
+    struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 %%
-% Curve validity diagnostic : HT, HG, GH, ST, TX
-ComputeCurveQualityFromDatabase(DatabaseFile, CurveQualityOutputFile, ResultsFolder);
+% Curve validity diagnostic 
+ComputeCurveQualityFromDatabase(DatabaseFile, CurveQualityOutputFile, ResultsFolder, ...
+    struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 %%
 % Asymptomatic shoulder classification
@@ -449,4 +451,9 @@ ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder
 %%
 % Functional decomposition : HG, GH, ST, TX
 ComputeFunctionalContributionsFromDatabase(DatabaseFile, FunctionalOutputFile, ResultsFolder, ...
+    struct('AsymptomaticSelection', {AsymptomaticSelection}));
+
+%%
+% Posture : inclinaison thoracique et classification de Moroder
+ComputePostureFromDatabase(DatabaseFile, PostureOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));

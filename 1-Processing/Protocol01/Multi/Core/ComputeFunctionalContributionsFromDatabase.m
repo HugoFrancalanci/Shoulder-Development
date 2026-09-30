@@ -52,7 +52,9 @@
 %                         AsymptomaticSelection (cell, {} par défaut) :
 %                         épaules asymptomatiques {ID, côté, 'PRE'/'POST',
 %                         date} (voir userCommands_Multi.m), tracées en vert
-%                         sur la figure des courbes (pas exportées dans l'Excel)
+%                         sur la figure des courbes et exportées dans la
+%                         feuille 'Functional_Asymptomatic' (une ligne par
+%                         épaule/tâche, colonnes <M>_ASYM_deg/_pct/_max_deg)
 % Outputs : Results (struct array) une ligne par patient/côté/tâche - aussi
 %           retourné pour exploitation directe sans repasser par l'Excel
 %           Fichier Excel écrit sur disque + une figure par tâche (courbes
@@ -105,7 +107,7 @@ Curves = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
 % session par épaule - voir AsymptomaticSelection dans userCommands_Multi.m).
 % Condition 'ASYM' : mêmes champs que Curves pour réutiliser
 % ApplyInversionCorrectionSTTX.
-AsymResults = struct('PatientID', {}, 'Side', {}, 'Task', {});
+AsymResults = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, 'Condition', {});
 AsymCurves  = struct('PatientID', {}, 'Side', {}, 'Task', {});
 
 conditions = {'PRE', 'POST'};
@@ -206,15 +208,21 @@ for iP = 1:nInFile
             c = Contrib(iS);
             if ~strcmp(c.side, asymSide), continue; end
             ai = length(AsymCurves) + 1;
+            AsymResults(ai).Numero    = d.Numero;
             AsymResults(ai).PatientID = d.PatientID;
             AsymResults(ai).Side      = c.side;
             AsymResults(ai).Task      = c.task;
+            AsymResults(ai).Condition = condition;
             AsymResults(ai).HG_ASYM_deg     = c.HG_range;
+            AsymResults(ai).GH_ASYM_deg     = c.GH_range;
+            AsymResults(ai).GH_ASYM_pct     = c.GH_pct;
             AsymResults(ai).ST_ASYM_deg     = c.ST_range;
             AsymResults(ai).ST_ASYM_pct     = c.ST_pct;
-            AsymResults(ai).ST_ASYM_max_deg = c.ST_max;
             AsymResults(ai).TX_ASYM_deg     = c.TX_range;
             AsymResults(ai).TX_ASYM_pct     = c.TX_pct;
+            AsymResults(ai).HG_ASYM_max_deg = c.HG_max;
+            AsymResults(ai).GH_ASYM_max_deg = c.GH_max;
+            AsymResults(ai).ST_ASYM_max_deg = c.ST_max;
             AsymResults(ai).TX_ASYM_max_deg = c.TX_max;
             AsymCurves(ai).PatientID = d.PatientID;
             AsymCurves(ai).Side      = c.side;
@@ -249,7 +257,7 @@ end
 % pour ne pas modifier la référence ni les résultats des patients.
 if Opts.ApplyInvCorr
     [Results, Curves] = ApplyInversionCorrectionSTTX(Results, Curves, 'HG', Opts.CorrThresh);
-    [~, AsymCurves]   = ApplyInversionCorrectionSTTX(AsymResults, AsymCurves, 'HG', Opts.CorrThresh, {'ASYM'});
+    [AsymResults, AsymCurves] = ApplyInversionCorrectionSTTX(AsymResults, AsymCurves, 'HG', Opts.CorrThresh, {'ASYM'});
 end
 
 % -------------------------------------------------------------------------
@@ -259,6 +267,9 @@ if ~isempty(Results)
     T = struct2table(Results);
     if isfile(OutputFile), delete(OutputFile); end
     writetable(T, OutputFile, 'Sheet', 'Functional_Contributions');
+    if ~isempty(AsymResults)
+        writetable(struct2table(AsymResults), OutputFile, 'Sheet', 'Functional_Asymptomatic');
+    end
     disp(' ');
     disp(['Excel exporté : ', OutputFile]);
 else
