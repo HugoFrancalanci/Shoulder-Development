@@ -10,7 +10,8 @@
 % -------------------------------------------------------------------------
 % Description:   Import Session.xlsx file data.
 %                Base K-LAB version extended with:
-%                  - Multi-format date parsing (dd.MM.yyyy, dd-MMM-yyyy, etc.)
+%                  - Multi-format, machine-independent date parsing
+%                    (text, Excel serial, datenum, with/without time)
 %                  - Clinical struct (age, BMI, EVA per ANALYTIC task)
 %                  - Session.patientHeight_cm and Session.patientHeight_m
 %                  - Automatic console summar
@@ -188,7 +189,13 @@ end
 % -------------------------------------------------------------------------
 disp(' ');
 disp(['  Patient   : ', Patient.ID]);
-disp(['  Session   : ', datestr(Session.date, 'dd.mm.yyyy')]);
+% Pas de datestr sur une date NaT/aberrante : plantait toute la session
+% ("Date number out of range") pour un simple affichage console.
+if isdatetime(Session.date) && ~isnat(Session.date)
+    disp(['  Session   : ', char(Session.date, 'dd.MM.yyyy')]);
+else
+    disp('  Session   : date inconnue (non lisible dans Session.xlsx)');
+end
 disp(['  Age       : ',    sprintf('%.2f', Clinical.age),        ' yrs', ...
       '  Gender : ', Patient.gender, ...
       '  Height : ', sprintf('%.2f', Session.patientHeight_cm),  ' cm', ...
@@ -227,27 +234,82 @@ end
 %  MULTI-FORMAT DATE PARSING
 % -------------------------------------------------------------------------
 function d = parseDate(raw)
-% Accepts dd.MM.yyyy, dd-MMM-yyyy, dd/MM/yyyy, MM/dd/yyyy, yyyy-MM-dd
-% and numeric Excel serial dates
+% Machine-independent date parsing. Session.xlsx stores dates either as
+% text 'dd.MM.yyyy' or as real Excel dates (~1/3 of sessions); how
+% readtable hands the latter back (datetime, Excel serial, datenum, text
+% with or without time) depends on the MATLAB release / system locale -
+% it broke on CD-8K18T74 while working on the desktop PC. Accepts:
+%   datetime ; numeric Excel serial or MATLAB datenum ; text serial ;
+%   dd.MM.yyyy, dd/MM/yyyy, MM/dd/yyyy, yyyy-MM-dd, dd-MM-yyyy (+ optional
+%   HH:mm[:ss]) ; dd-MMM-yyyy with French or English month names.
+% Anything outside 1900-2100 -> NaT (never an absurd date).
 d = NaT;
 if isempty(raw), return; end
 try
-    if isdatetime(raw),                    d = raw; return; end
-    if isnumeric(raw) && ~isnan(raw)
-        d = datetime(raw, 'ConvertFrom', 'excel'); return;
-    end
-    if ischar(raw) || isstring(raw)
+    if iscell(raw), raw = raw{1}; end
+    if isdatetime(raw)
+        d = raw;
+    elseif isnumeric(raw)
+        d = numToDate(double(raw(1)));
+    elseif ischar(raw) || isstring(raw)
         s = strtrim(char(raw));
-        fmts = {'dd.MM.yyyy','dd-MMM-yyyy','dd/MM/yyyy', ...
-                'MM/dd/yyyy','yyyy-MM-dd','dd-MM-yyyy'};
-        for f = 1:length(fmts)
-            try
-                d = datetime(s, 'InputFormat', fmts{f});
-                return;
-            catch
-            end
+        if isempty(s), return; end
+        num = str2double(s);
+        if ~isnan(num)
+            d = numToDate(num);
+        else
+            d = textToDate(s);
         end
     end
 catch
+    d = NaT;
+end
+if ~isdatetime(d) || isnat(d) || year(d) < 1900 || year(d) > 2100
+    d = NaT;
+else
+    d.Format = 'dd.MM.yyyy';
+end
+end
+
+function d = numToDate(num)
+% Excel serial (1900-2100 ~ 1..73050) or MATLAB datenum (~693962..767011)
+d = NaT;
+if isnan(num), return; end
+if num >= 693962 && num <= 767011
+    d = datetime(num, 'ConvertFrom', 'datenum');
+elseif num >= 1 && num <= 73050
+    d = datetime(num, 'ConvertFrom', 'excel');
+end
+end
+
+function d = textToDate(s)
+d = NaT;
+dateFmts = {'dd.MM.yyyy','dd/MM/yyyy','MM/dd/yyyy','yyyy-MM-dd','dd-MM-yyyy','d.M.yyyy','d/M/yyyy'};
+timeSuffixes = {'', ' HH:mm:ss', ' HH:mm'};
+for t = 1:numel(timeSuffixes)
+    for f = 1:numel(dateFmts)
+        try
+            d = datetime(s, 'InputFormat', [dateFmts{f}, timeSuffixes{t}]);
+            return;
+        catch
+        end
+    end
+end
+% Month names : explicit locales (default locale differs between machines)
+locales = {'fr_FR', 'en_US'};
+for l = 1:numel(locales)
+    for fmt = {'dd-MMM-yyyy', 'dd MMM yyyy', 'dd-MMM-yyyy HH:mm:ss'}
+        try
+            d = datetime(s, 'InputFormat', fmt{1}, 'Locale', locales{l});
+            return;
+        catch
+        end
+    end
+end
+% Last resort : MATLAB auto-detection
+try
+    d = datetime(s);
+catch
+    d = NaT;
 end
 end

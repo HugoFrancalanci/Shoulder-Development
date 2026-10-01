@@ -290,8 +290,15 @@ SaveDatabase = true;
 DatabaseFile = fullfile(ResultsFolder, 'Database_182_E02_01_Posture_rTSA.mat');
 
 % NumDatabaseParts : nombre de fichiers .mat sur lesquels repartir la
-% cohorte. 37 -> BatchSize=5.
-NumDatabaseParts = 37;
+% cohorte. 37 -> BatchSize=5 (PC fixe, validé). Tour CD-8K18T74 : 16 ->
+% BatchSize=12 (test de rapidité). Ne pas changer en cours de run (casse
+% la reprise : vider _progress.mat et _part*.mat avant).
+switch getenv('COMPUTERNAME')
+    case 'CD-8K18T74'
+        NumDatabaseParts = 16;
+    otherwise
+        NumDatabaseParts = 37;
+end
 
 % BatchSize : nombre de patients traités en parallele (parfor) avant
 % d'ecrire sur disque et de vider la RAM.
