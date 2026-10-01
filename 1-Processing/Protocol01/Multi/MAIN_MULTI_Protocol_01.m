@@ -56,7 +56,19 @@ end
 
 % Raccourcit DataFolder via un lecteur virtuel (subst)
 shortDrive = 'S:';
+isCD8 = strcmp(getenv('COMPUTERNAME'), 'CD-8K18T74');
+if isCD8
+    % S: déjà pris sur ce PC (subst échouait -> chemins > 260 car.) :
+    % première lettre libre à partir de Z:
+    shortDrive = findFreeDriveLetter();
+end
+longDataFolder = DataFolder;
 DataFolder = EnsureShortDataPath(DataFolder, shortDrive);
+if isCD8 && strcmp(DataFolder, longDataFolder)
+    error('MAIN_MULTI_Protocol_01:substFailed', ...
+        'subst %s a échoué (voir warning ci-dessus) - arrêt avant traitement, les C3D ne seraient pas lisibles (chemins > 260 caractères).', ...
+        shortDrive);
+end
 
 % Transmis à runProtocol01 via Folder
 Folder.skipKinematics = SkipKinematics;
@@ -355,6 +367,19 @@ error('MAIN_MULTI_Protocol_01:toolboxNotFound', ...
     ['Impossible de localiser Protocol01/ automatiquement (exécution par ', ...
      'section/sélection ?). Ouvre MAIN_MULTI_Protocol_01.m dans l''éditeur ', ...
      '(onglet actif) avant de relancer une section, ou lance le script en entier (F5).']);
+end
+
+function drive = findFreeDriveLetter()
+% Première lettre de lecteur libre, de Z: vers D: - ni disque/subst
+% existant (isfolder), ni lecteur réseau mappé même déconnecté (net use).
+[~, netOut] = system('net use');
+for c = 'ZYXWVUTRQPONMLKJIHGFED'
+    drive = [c, ':'];
+    if ~isfolder([drive, '\']) && ~contains(netOut, drive, 'IgnoreCase', true)
+        return;
+    end
+end
+error('MAIN_MULTI_Protocol_01:noFreeDrive', 'Aucune lettre de lecteur libre pour subst.');
 end
 
 function updateProgressWaitbar(hWait, total)
