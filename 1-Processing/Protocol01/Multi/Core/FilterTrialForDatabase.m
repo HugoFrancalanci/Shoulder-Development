@@ -6,8 +6,10 @@ function Trial = FilterTrialForDatabase(Trial)
 % ANALYTIC1-5, FUNCTIONAL1-4...).
 % CALIBRATION3 peut s'appeler STATIC3 sur les sessions plus anciennes (voir
 % trialOrder dans Multi/Core/runProtocol01.m) - filtré sur les deux noms.
+% ANALYTIC3 (rotation externe) et ANALYTIC4 (rotation interne) gardés
+% depuis l'ajout des contributions en rotation (Clinical/Functional).
 % Pour ajouter une tâche à garder : l'ajouter à keepTasks.
-keepTasks = {'CALIBRATION3', 'STATIC3', 'ANALYTIC1', 'ANALYTIC2'};
+keepTasks = {'CALIBRATION3', 'STATIC3', 'ANALYTIC1', 'ANALYTIC2', 'ANALYTIC3', 'ANALYTIC4'};
 Trial = Trial(ismember({Trial.task}, keepTasks));
 
 % Champs lourds jamais relus depuis la base par

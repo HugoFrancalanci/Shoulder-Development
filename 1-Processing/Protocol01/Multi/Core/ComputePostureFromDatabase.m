@@ -26,7 +26,8 @@
 %
 %                Tâches : CALIBRATION3 (alias STATIC3 sur les sessions plus
 %                anciennes, reporté sous 'CALIBRATION3'), ANALYTIC1,
-%                ANALYTIC2 - les seules gardées dans la base.
+%                ANALYTIC2 (la base garde aussi ANALYTIC3/4, non utilisées
+%                ici).
 %
 %                Callable à tout moment depuis la fenêtre de commande :
 %                  ComputePostureFromDatabase(DatabaseFile, OutputFile, ResultsFolder)

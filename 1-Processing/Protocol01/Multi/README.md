@@ -120,19 +120,22 @@ elles, vivent dans `Multi/Core/`, `Multi/IO/`.
 `Multi/Core/ComputeClinicalContributionsFromDatabase.m` recharge `PatientDatabase.mat` et
 décompose, pour chaque patient/côté, le range humérothoracique (HT) en
 contributions gléno-humérale (GH), scapulo-thoracique (ST) et thoracique
-(TX), pour ANALYTIC1 et ANALYTIC2 (les deux tâches uniplanaires, donc les
-seules dont la décomposition est jugée fiable). Le DOF Euler retenu pour
-HT/GH dépend de la tâche (le mouvement dominant n'est pas stocké au même
+(TX), pour ANALYTIC1, ANALYTIC2 (élévations uniplanaires), ANALYTIC3
+(rotation externe) et ANALYTIC4 (rotation interne). Le DOF Euler retenu
+dépend de la tâche (le mouvement dominant n'est pas stocké au même
 DOF selon le plan : Z/DOF3 = flexion/extension pour ANALYTIC1 sagittal,
-X/DOF1 = élévation/abduction pour ANALYTIC2 coronal — voir Protocol01/Core/
-ComputeKinematics.m et les commentaires de la fonction locale
-`ComputeClinicalContributions` en bas du fichier ; ST/TX ne dépendent pas
-de la tâche). Même convention que `ComputeContralateralEligibilityFromDatabase.m`.
+X/DOF1 = élévation/abduction pour ANALYTIC2 coronal, Y/DOF2 = rotation
+axiale pour ANALYTIC3/4 — voir Protocol01/Core/ComputeKinematics.m et les
+commentaires de la fonction locale `ComputeClinicalContributions` en bas
+du fichier). ST/TX : DOF fixes pour ANALYTIC1/2 (ST upward rotation X, TX
+flexion Z), DOF2 Y pour ANALYTIC3/4 (ST protraction/rétraction, TX rotation
+axiale). Même convention que `ComputeContralateralEligibilityFromDatabase.m`
+pour ANALYTIC1/2.
 Callable à tout moment depuis la fenêtre de commande, sans repasser par les
 C3D ni par `MAIN_MULTI_Protocol_01.m`.
 
 Le résultat est accumulé dans le struct `Results` (une ligne par
-patient/côté/tâche — ANALYTIC1 et ANALYTIC2 sur des lignes séparées), avec
+patient/côté/tâche — ANALYTIC1 à ANALYTIC4 sur des lignes séparées), avec
 les colonnes PRE et POST côte à côte, plus le pic d'angle atteint
 (`*_max_deg`, distinct du range) pour chaque DOF :
 `PatientID, Side, Task, HT_PRE_deg, GH_PRE_deg, GH_PRE_pct, ST_PRE_deg,
@@ -144,7 +147,7 @@ Elle extrait aussi `HT_curve`/`GH_curve`/`ST_curve`/`TX_curve` (angle vs % cycle
 accumulées à part dans `Curves` (avec le `Task` d'origine) et tracées par la
 fonction locale `PlotHTContributionsCurves` (aussi fusionnée dans
 `ComputeClinicalContributionsFromDatabase.m`) — une figure séparée par
-tâche (ANALYTIC1 et ANALYTIC2 ne sont jamais moyennées ensemble, ce sont
+tâche (les tâches ne sont jamais moyennées ensemble, ce sont
 des mouvements différents), PRE en rouge, POST en bleu, courbes
 individuelles transparentes + moyenne en gras.
 
@@ -162,10 +165,12 @@ thoracique, Joint 1/6).
 Différence de mapping DOF : contrairement à HT, la séquence Euler de HG
 n'est PAS conditionnée par la sous-tâche dans `Protocol01/Core/
 ComputeKinematics.m` (seul `contains(..., 'ANALYTIC')` est testé, pas
-ANALYTIC1 vs ANALYTIC2) — DOF1 X (position 1) = élévation pour les deux
-tâches, donc `dofHG` reste fixe à 1. GH reste en revanche task-dépendant
-exactement comme dans la version HT (même joint 2/7, même bascule DOF3↔DOF1
-entre ANALYTIC1/ANALYTIC2) ; ST/TX inchangés (fixes, joints 3/8 et 11).
+ANALYTIC1 vs ANALYTIC2) — DOF1 X (position 1) = élévation pour ANALYTIC1/2,
+DOF3 Y2 (position 3) = rotation axiale pour ANALYTIC3/4. GH/ST/TX : mêmes
+joints et DOF que dans la version HT (y compris DOF2 Y pour ANALYTIC3/4).
+**Attention ANALYTIC3/4** : bras le long du corps (élévation HG X ≈ 0), la
+séquence YXY est proche du gimbal lock, Y1 et Y2 sont mal séparés —
+vérifier `HG_*_deg` contre `HT_*_deg` avant de s'y fier.
 
 Colonnes : `PatientID, Side, Task, HG_PRE_deg, GH_PRE_deg, GH_PRE_pct,
 ST_PRE_deg, ST_PRE_pct, TX_PRE_deg, TX_PRE_pct, HG_POST_deg, ..., HG_PRE_max_deg,
@@ -332,6 +337,23 @@ par tâche/groupe) + une figure par tâche (nuages 1x3, droite de régression,
 lignes aux seuils 32° et 36°/46°). Un patient `RL` donne deux paires
 partageant la même inclinaison (non indépendantes) ; pas de correction pour
 comparaisons multiples (3 tâches x 3 groupes).
+
+**Corrélation posture x ROM** (`Multi/Core/CorrelatePostureROM.m`) :
+1) inclinaison x pic HT et inclinaison x pic HG ; 2) SIR (Moroder) x pic HT et
+SIR x pic HG. ANALYTIC1 et ANALYTIC2, PRE / POST / asymptomatique. Rien n'est
+recalculé : prend les `Results` (et `AsymResults`, 2e sortie) de
+`ComputeClinicalContributionsFromDatabase` (`HT_<C>_max_deg`),
+`ComputeFunctionalContributionsFromDatabase` (`HG_<C>_max_deg`) et
+`ComputePostureFromDatabase`, appariés par `Numero`+`Side`+`Task`
+(+`Condition` pour les asymptomatiques). **ROM = pic d'élévation**
+(`*_max_deg`), pas l'amplitude ; **posture = même essai** que le ROM (100
+premières frames d'ANALYTIC1/2, avant le mouvement), pas CALIBRATION3. Mêmes
+plages que ci-dessus (inclinaison [0, 50]°, SIR [10, 60]°), mêmes statistiques
+(Pearson, Spearman, p, régression). Feuille `Correlation_ROM` ajoutée à
+`Posture_Summary.xlsx` + 4 figures (2 tâches x {inclinaison, SIR}), 2x3 (ROM
+HT / HG x PRE / POST / asympto.). 24 tests, pas de correction pour
+comparaisons multiples. Lancée depuis `MAIN_MULTI_Protocol_01.m` après les
+sections clinical/functional/posture (leurs sorties doivent être en mémoire).
 
 Épaules asymptomatiques : avec `Opts.AsymptomaticSelection` (passé par
 `MAIN_MULTI_Protocol_01.m`, voir section « Épaules asymptomatiques »), une

@@ -68,7 +68,7 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function Results = ComputeFunctionalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
+function [Results, AsymResults] = ComputeFunctionalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
 
 if nargin < 3, ResultsFolder = ''; end
 if nargin < 4, Opts = struct(); end
@@ -354,11 +354,17 @@ end
 % changes with the task, same reasoning as HT - see Protocol01/Core/
 % ComputeKinematics.m and ComputeClinicalContributionsFromDatabase.m) :
 %
+% ANALYTIC3/4 (external/internal rotation) : HG reports DOF3 Y2 (axial
+% rotation, YXY). Caution - with the arm along the body (HG elevation X
+% close to 0) the YXY sequence is near gimbal lock and Y1/Y2 are poorly
+% separated, so HG_range for these tasks must be checked against HT before
+% being trusted. GH/ST/TX : same DOF as ComputeClinicalContributions.
+%
 % DOF mapping :
-%   HG Joint(12/13) DOF1 X — elevation (YXY, task-independent)
-%   GH Joint(2/7)   ANALYTIC1: DOF3 Z — flexion/extension | ANALYTIC2: DOF1 X — abduction
-%   ST Joint(3/8)   DOF1 X — upward rot.   (YXZ, task-independent)
-%   TX Joint(11)    DOF3 Z — flexion       (ZXY, task-independent)
+%   HG Joint(12/13) ANALYTIC1/2: DOF1 X — elevation | ANALYTIC3/4: DOF3 Y2 — axial rotation (YXY)
+%   GH Joint(2/7)   ANALYTIC1: DOF3 Z — flexion/extension | ANALYTIC2: DOF1 X — abduction | ANALYTIC3/4: DOF2 Y — axial rotation
+%   ST Joint(3/8)   ANALYTIC1/2: DOF1 X — upward rot. | ANALYTIC3/4: DOF2 Y — protraction/retraction (YXZ)
+%   TX Joint(11)    ANALYTIC1/2: DOF3 Z — flexion     | ANALYTIC3/4: DOF2 Y — axial rotation (ZXY)
 %
 % HG_max/GH_max/ST_max/TX_max : peak angle reached (mean of each cycle's
 % max |angle|, same cycle-averaging convention as HG_range etc., but max
@@ -375,7 +381,7 @@ end
 %
 % Inputs  : Trial (struct array) all trials from runProtocol01/MAIN_Protocol_01
 % Outputs : Contrib (struct array, one row per task found x side 'R'/'L')
-%           with fields task ('ANALYTIC1'/'ANALYTIC2'), side, HG_range,
+%           with fields task ('ANALYTIC1'-'ANALYTIC4'), side, HG_range,
 %           GH_range, GH_pct, ST_range, ST_pct, TX_range, TX_pct, HG_max,
 %           GH_max, ST_max, TX_max, HG_curve, GH_curve, ST_curve, TX_curve
 %           Empty (0x0) struct array if neither task is found in Trial.
@@ -392,8 +398,10 @@ Contrib = struct('task', {}, 'side', {}, 'HG_range', {}, ...
 % DOF task-dependant pour GH uniquement (HG et ST/TX sont fixes quelle que
 % soit la tache - sequences non conditionnees par la sous-tache dans
 % ComputeKinematics.m).
-taskDOF = struct('name', {'ANALYTIC1', 'ANALYTIC2'}, ...
-                  'dofHG', {1, 1}, 'dofGH', {3, 1}, 'dofST', {1, 1}, 'dofTX', {3, 3});
+% ANALYTIC3/4 (rotations) : HG DOF3 Y2 (axial), GH/ST/TX DOF2 Y (voir
+% ComputeClinicalContributionsFromDatabase.m).
+taskDOF = struct('name', {'ANALYTIC1', 'ANALYTIC2', 'ANALYTIC3', 'ANALYTIC4'}, ...
+                  'dofHG', {1, 1, 3, 3}, 'dofGH', {3, 1, 2, 2}, 'dofST', {1, 1, 2, 2}, 'dofTX', {3, 3, 2, 2});
 
 sideDef = struct('side', {'R','L'}, 'jiHG', {12,13}, 'jiGH', {2,7}, 'jiST', {3,8}, ...
                   'cycField', {'rcycle','lcycle'});

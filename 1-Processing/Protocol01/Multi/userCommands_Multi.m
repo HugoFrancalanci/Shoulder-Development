@@ -219,10 +219,6 @@ PatientSelection = { ...
 % AsymptomaticSelection : épaules asymptomatiques (côté controlatéral)
 % retenues parmi les 182 patients de PatientSelection.
 %   {ID patient, côté asymptomatique, condition retenue, date de session}
-%   Côté       : côté opposé à celui de PatientSelection
-%   Condition  : 'PRE' -> date PRE (col. 3) de PatientSelection,
-%                'POST' -> date POST (col. 4) de PatientSelection
-%   Le commentaire renvoie au numéro de ligne dans PatientSelection.
 AsymptomaticSelection = { ...
     '18792', 'R', 'POST', '2023'; ... % 1
     '399423', 'L', 'POST', '20231010'; ... % 8
@@ -260,7 +256,7 @@ switch getenv('COMPUTERNAME')
     case 'FRANCALANCIPHD' 
         ResultsFolder = 'C:\Users\franc\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\01_Etudes\E02_01_Posture_rTSA';
     case 'CD-8K18T74'
-        ResultsFolder = 'C:\Users\francala\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\01_Etudes\E02_01_Posture_rTSA';
+        ResultsFolder = 'C:\Users\francala\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\01_Etudes\E02_01_Posture_rTSA\Processing CD-8K18T74';
     otherwise
         ResultsFolder = ''; % machine inconnue : demandé via fenêtre au lancement
 end

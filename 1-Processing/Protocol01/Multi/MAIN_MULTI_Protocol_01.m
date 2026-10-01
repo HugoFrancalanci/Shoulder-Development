@@ -445,15 +445,20 @@ ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibili
 
 %%
 % Clinical movement decomposition : HT, GH, ST, TX
-ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, ...
+[ClinRes, ClinAsym] = ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 %%
 % Functional decomposition : HG, GH, ST, TX
-ComputeFunctionalContributionsFromDatabase(DatabaseFile, FunctionalOutputFile, ResultsFolder, ...
+[FuncRes, FuncAsym] = ComputeFunctionalContributionsFromDatabase(DatabaseFile, FunctionalOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 %%
 % Posture : inclinaison thoracique et classification de Moroder
-ComputePostureFromDatabase(DatabaseFile, PostureOutputFile, ResultsFolder, ...
+[PostRes, PostAsym] = ComputePostureFromDatabase(DatabaseFile, PostureOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
+
+%%
+% Posture x ROM : inclinaison / SIR vs pic d'élévation HT / HG (même essai)
+% Nécessite les 3 sections précédentes (ClinRes/FuncRes/PostRes en mémoire)
+CorrelatePostureROM(PostRes, PostAsym, ClinRes, ClinAsym, FuncRes, FuncAsym, PostureOutputFile);
