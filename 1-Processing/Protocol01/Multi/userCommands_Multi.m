@@ -276,6 +276,11 @@ CurveQualityOutputFile = fullfile(ResultsFolder, 'CurveQuality_Summary.xlsx');
 % PostureOutputFile : fichier Excel de sortie (inclinaison thoracique + Moroder)
 PostureOutputFile = fullfile(ResultsFolder, 'Posture_Summary.xlsx');
 
+% PostureDataFile : Excel trié à la main (feuilles Posture + Cinematique),
+% entrée de CorrelatePostureROM ; CorrelationROMOutputFile : sa sortie
+PostureDataFile          = fullfile(Folder.toolbox, 'Multi', 'Results', 'Data_posture.xlsx');
+CorrelationROMOutputFile = fullfile(Folder.toolbox, 'Multi', 'Results', 'Correlation_Posture_ROM.xlsx');
+
 % PatientInfosFile : fichier Excel de sortie (infos démographiques patients)
 PatientInfosFile = fullfile(ResultsFolder, 'PatientInfos_Summary.xlsx');
 
@@ -290,9 +295,8 @@ SaveDatabase = true;
 DatabaseFile = fullfile(ResultsFolder, 'Database_182_E02_01_Posture_rTSA.mat');
 
 % NumDatabaseParts : nombre de fichiers .mat sur lesquels repartir la
-% cohorte. 37 -> BatchSize=5 (PC fixe, validé). Tour CD-8K18T74 : 16 ->
-% BatchSize=12 (test de rapidité). Ne pas changer en cours de run (casse
-% la reprise : vider _progress.mat et _part*.mat avant).
+% cohorte. 37 -> BatchSize=5 (PC portable --> moins puissant (25 minutes)). Tour CD-8K18T74 : 16 ->
+% BatchSize=12 (Tour --> plus rapide (16 minutes)).
 switch getenv('COMPUTERNAME')
     case 'CD-8K18T74'
         NumDatabaseParts = 16;

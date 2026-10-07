@@ -525,10 +525,10 @@ for iT = 1:numel(tasks)
         subplot(2, 3, m); hold on;
         idx = find(strcmp({Results.Task}, tasks{iT}) & strcmp({Results.Metric}, metrics{m}));
         drawGroup(Curves, idx, 'OK',              colOK, 0.15);
-        drawGroup(Curves, idx, 'Forme aberrante', colBad, 0.6);
+        drawBad(Curves, idx, metrics{m});
         ig = find(strcmp(TemplateKeys, [tasks{iT}, '|', metrics{m}]), 1);
         if ~isempty(ig) && ~isempty(TemplateCurves{ig})
-            plot(xgrid, TemplateCurves{ig}, 'k', 'LineWidth', 3);
+            plot(xgrid, TemplateCurves{ig}, 'k', 'LineWidth', 3, 'HandleVisibility', 'off');
         end
         hold off;
         xlim([0 100]);
@@ -545,7 +545,7 @@ for iT = 1:numel(tasks)
         subplot(2, 3, m); hold on;
         idx = find(strcmp({Results.Task}, tasks{iT}) & strcmp({Results.Metric}, metrics{m}));
         drawGroup(RawCurves, idx, 'OK',              colOK, 0.15);
-        drawGroup(RawCurves, idx, 'Forme aberrante', colBad, 0.6);
+        drawBad(RawCurves, idx, metrics{m});
         yline(0, 'k:', 'HandleVisibility', 'off');
         hold off;
         xlim([0 100]);
@@ -575,7 +575,7 @@ for iT = 1:numel(tasks)
             isFix = contains({Results(idx).Reason}, 'Inversee');
         end
         drawGroup(Curves, idx(~isFix), 'OK',              colOK,  0.15);
-        drawGroup(Curves, idx(~isFix), 'Forme aberrante', colBad, 0.6);
+        drawBad(Curves, idx(~isFix), metrics{m});
         fixedCurves = [];
         if any(isFix) && ~isempty(ig) && ~isempty(TemplateCurves{ig})
             restS = mean(TemplateCurves{ig}([1 end]));
@@ -623,6 +623,34 @@ end
             h = plot(xgrid, curveSet{k}, 'Color', col, 'LineWidth', 1, 'HandleVisibility', 'off');
             h.Color(4) = alpha;
         end
+    end
+
+    % Courbes aberrantes. HG : une couleur par patient (Numero), PRE plein /
+    % POST tireté, légende "N°<Numero> <condition> <côté> (<raison>)".
+    % Autres métriques : rouge, sans légende (comme avant).
+    function drawBad(curveSet, idx, metric)
+        if ~strcmp(metric, 'HG')
+            drawGroup(curveSet, idx, 'Forme aberrante', colBad, 0.6);
+            return;
+        end
+        badIdx = idx(strcmp({Results(idx).Verdict}, 'Forme aberrante'));
+        if isempty(badIdx), return; end
+        badNums = unique([Results(badIdx).Numero]);
+        if numel(badNums) <= 7
+            cmap = lines(numel(badNums));
+        else
+            cmap = turbo(numel(badNums));
+        end
+        hs = gobjects(1, numel(badIdx));
+        for q = 1:numel(badIdx)
+            r = badIdx(q);
+            if strcmp(Results(r).Condition, 'PRE'), ls = '-'; else, ls = '--'; end
+            hs(q) = plot(xgrid, curveSet{r}, 'Color', cmap(badNums == Results(r).Numero, :), ...
+                'LineStyle', ls, 'LineWidth', 1.5, 'DisplayName', ...
+                sprintf('N°%d %s %s (%s)', Results(r).Numero, Results(r).Condition, ...
+                        Results(r).Side, Results(r).Reason));
+        end
+        legend(hs, 'Location', 'best', 'FontSize', 7, 'Interpreter', 'none');
     end
 
 end

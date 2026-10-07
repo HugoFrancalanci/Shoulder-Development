@@ -339,21 +339,20 @@ partageant la même inclinaison (non indépendantes) ; pas de correction pour
 comparaisons multiples (3 tâches x 3 groupes).
 
 **Corrélation posture x ROM** (`Multi/Core/CorrelatePostureROM.m`) :
-1) inclinaison x pic HT et inclinaison x pic HG ; 2) SIR (Moroder) x pic HT et
-SIR x pic HG. ANALYTIC1 et ANALYTIC2, PRE / POST / asymptomatique. Rien n'est
-recalculé : prend les `Results` (et `AsymResults`, 2e sortie) de
-`ComputeClinicalContributionsFromDatabase` (`HT_<C>_max_deg`),
-`ComputeFunctionalContributionsFromDatabase` (`HG_<C>_max_deg`) et
-`ComputePostureFromDatabase`, appariés par `Numero`+`Side`+`Task`
-(+`Condition` pour les asymptomatiques). **ROM = pic d'élévation**
-(`*_max_deg`), pas l'amplitude ; **posture = même essai** que le ROM (100
-premières frames d'ANALYTIC1/2, avant le mouvement), pas CALIBRATION3. Mêmes
-plages que ci-dessus (inclinaison [0, 50]°, SIR [10, 60]°), mêmes statistiques
-(Pearson, Spearman, p, régression). Feuille `Correlation_ROM` ajoutée à
-`Posture_Summary.xlsx` + 4 figures (2 tâches x {inclinaison, SIR}), 2x3 (ROM
-HT / HG x PRE / POST / asympto.). 24 tests, pas de correction pour
-comparaisons multiples. Lancée depuis `MAIN_MULTI_Protocol_01.m` après les
-sections clinical/functional/posture (leurs sorties doivent être en mémoire).
+1) inclinaison x ROM HT et inclinaison x ROM HG ; 2) SIR (Moroder) x ROM HT et
+SIR x ROM HG (ROM = valeurs des colonnes de l'Excel, telles quelles). Posture PRE x ROM PRE et posture PRE x ROM POST. Aucun `.mat`
+chargé, rien n'est recalculé : lit l'Excel trié à la main `PostureDataFile`
+(`Multi/Results/Data_posture.xlsx`, feuilles `Posture` et `Cinematique`),
+appariement par `Numero`, aucune exclusion (le tri est fait dans l'Excel ;
+lignes vides ignorées). Statistiques : Pearson, Spearman, p, régression.
+Feuille `Correlation_ROM` dans `CorrelationROMOutputFile`
+(`Multi/Results/Correlation_Posture_ROM.xlsx`) + 2 figures ({inclinaison,
+SIR}), 2x2 (ROM HT / HG x PRE / POST). 8 tests, pas de correction pour
+comparaisons multiples. Plus, sur la feuille `Posture` seule : histogramme des
+types de Moroder (`Moroder_type_pre`, feuille `Moroder_Distribution`) et
+corrélation inclinaison x SIR (feuille `Correlation_Incl_SIR`), 1 figure 1x2.
+Axe SIR borné à 70° (`SIRAxisMax`, affichage seulement : points au-delà comptés
+dans le titre, gardés dans les calculs). Section indépendante dans `MAIN_MULTI_Protocol_01.m`.
 
 Épaules asymptomatiques : avec `Opts.AsymptomaticSelection` (passé par
 `MAIN_MULTI_Protocol_01.m`, voir section « Épaules asymptomatiques »), une

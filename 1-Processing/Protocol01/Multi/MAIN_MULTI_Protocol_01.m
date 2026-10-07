@@ -58,7 +58,7 @@ end
 shortDrive = 'S:';
 isCD8 = strcmp(getenv('COMPUTERNAME'), 'CD-8K18T74');
 if isCD8
-    % S: déjà pris sur ce PC (subst échouait -> chemins > 260 car.) :
+    % S: déjà pris sur ce PC :
     % première lettre libre à partir de Z:
     shortDrive = findFreeDriveLetter();
 end
@@ -484,6 +484,5 @@ ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibili
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 %%
-% Posture x ROM : inclinaison / SIR vs pic d'élévation HT / HG (même essai)
-% Nécessite les 3 sections précédentes (ClinRes/FuncRes/PostRes en mémoire)
-CorrelatePostureROM(PostRes, PostAsym, ClinRes, ClinAsym, FuncRes, FuncAsym, PostureOutputFile);
+% Posture x ROM (Article E02_01_Posture)
+CorrelatePostureROM(PostureDataFile, CorrelationROMOutputFile);
