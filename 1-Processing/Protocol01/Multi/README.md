@@ -115,6 +115,19 @@ pipelines — pas besoin de dupliquer entre solo et multi. Les fonctions
 propres au reporting multi-patients (Compute*/Export* listées ci-dessus),
 elles, vivent dans `Multi/Core/`, `Multi/IO/`.
 
+**Contrôle du xiphoïde virtuel (SXS), solo et multi.**
+`runProtocol01` appelle `DetectSXSCorrection` (`Protocol01/Core/`) une fois
+par session : le SXS écrit dans les C3D par la toolbox K-LAB (pointage au
+stylet en CALIBRATION3) est comparé à STY05 (pointe du stylet actuel) et à la
+pointe de l'ancien stylet (Stylus1) au moment du pointage. S'il est
+incohérent (calculé au mauvais instant ou avec le mauvais modèle de stylet,
+surtout janvier à juin 2024), `ApplySXSCorrection` le reconstruit frame par
+frame dans chaque essai, dans le repère technique du thorax (SJN, SME, TV5,
+CV7). Les C3D ne sont pas modifiés ; la décision est affichée en console
+(« Contrôle SXS : ... ») et gardée dans `Trial(k).SXSCorrection`. Testé sur
+362 sessions : 53 corrigées (47 par STY05, 6 par l'ancien stylet). Même
+contrôle dans `MAIN_Protocol_01.m` (solo).
+
 ## Reporting actuel : contributions cliniques humérothoraciques (GH/ST/TX)
 
 `Multi/Core/ComputeClinicalContributionsFromDatabase.m` recharge `PatientDatabase.mat` et

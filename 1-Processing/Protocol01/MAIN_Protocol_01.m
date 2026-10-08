@@ -119,6 +119,11 @@ for itype = 1:length(trialOrder)
 end
 orderedIdx = orderedIdx(1:nIdx);
 
+% Virtual xiphoid (SXS) check: rebuilt in every trial when the SXS written
+% in the C3D is inconsistent with the stylus pointing (see
+% DetectSXSCorrection.m). The C3D files are not modified.
+SXSFix = DetectSXSCorrection(c3dFiles);
+
 for i = orderedIdx
     for j = 1:size(trialTypes,2)
         if contains(c3dFiles(i).name, trialTypes{j})
@@ -144,6 +149,12 @@ for i = orderedIdx
             Marker               = btkGetMarkers(Trial(k).btk);
             Trial(k).Marker      = [];
             Trial(k)             = InitialiseMarkerTrajectories(markerSet,Trial(k),Marker,Units);
+            % Rebuilt SXS (DetectSXSCorrection.m), decision kept for traceability
+            if SXSFix.apply
+                iSXS = find(strcmp({Trial(k).Marker.label}, 'SXS'), 1);
+                Trial(k).Marker(iSXS).Trajectory.full = ApplySXSCorrection(Marker, SXSFix, Units);
+            end
+            Trial(k).SXSCorrection = SXSFix;
             % Initialise virtual marker trajectories
             Trial(k).Vmarker     = [];
             Trial(k)             = InitialiseVmarkerTrajectories(Trial(k));            

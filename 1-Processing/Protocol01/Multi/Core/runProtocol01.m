@@ -31,6 +31,7 @@
 %                     STATIC/ISOMETRIC, absent from trialTypes)
 % -------------------------------------------------------------------------
 % Dependencies : ImportSessionData.m, ComputeSCoRE.m, TestSCoRE.m,
+%                DetectSXSCorrection.m, ApplySXSCorrection.m,
 %                SetUnits.m, InitialiseMarkerTrajectories.m,
 %                InitialiseVmarkerTrajectories.m, InitialiseSegments.m,
 %                InitialiseJoints.m, DefineSegments.m, ComputeKinematics.m,
@@ -116,6 +117,11 @@ orderedIdx = orderedIdx(1:nIdx);
 % SkipKinematics
 skipKinematics = isfield(Folder, 'skipKinematics') && Folder.skipKinematics;
 
+% Virtual xiphoid (SXS) check: rebuilt in every trial when the SXS written
+% in the C3D is inconsistent with the stylus pointing (see
+% DetectSXSCorrection.m). The C3D files are not modified.
+SXSFix = DetectSXSCorrection(c3dFiles);
+
 % -------------------------------------------------------------------------
 % TRIALS LOOP
 % -------------------------------------------------------------------------
@@ -152,6 +158,12 @@ for i = orderedIdx
             Marker           = btkGetMarkers(Trial(k).btk);
             Trial(k).Marker  = [];
             Trial(k)         = InitialiseMarkerTrajectories(markerSet, Trial(k), Marker, Units);
+            % Rebuilt SXS (DetectSXSCorrection.m), decision kept for traceability
+            if SXSFix.apply
+                iSXS = find(strcmp({Trial(k).Marker.label}, 'SXS'), 1);
+                Trial(k).Marker(iSXS).Trajectory.full = ApplySXSCorrection(Marker, SXSFix, Units);
+            end
+            Trial(k).SXSCorrection = SXSFix;
             % Virtual markers
             Trial(k).Vmarker = [];
             Trial(k)         = InitialiseVmarkerTrajectories(Trial(k));
