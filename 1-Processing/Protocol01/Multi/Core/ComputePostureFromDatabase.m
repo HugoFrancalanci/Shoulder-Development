@@ -52,6 +52,11 @@
 %           + corrélation inclinaison vs SIR par tâche/groupe
 %           (CorrelatePosture : Pearson, Spearman, p, régression ; feuille
 %           'Correlation_Incl_SIR' + 1 figure de nuages par tâche)
+%           ThxFlex (struct array) flexion thoracique signée pendant le
+%           geste, ANALYTIC1/2, PRE et POST, une ligne par patient/côté
+%           (summariseThoraxFlexion, lecture seule des cycles de la base) ;
+%           feuille 'Thorax_Flexion_Signed', colonnes au format de
+%           Data_posture.xlsx (ex. analytic1_TXflex_Change_Post)
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
@@ -61,7 +66,7 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function [Results, AsymResults] = ComputePostureFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
+function [Results, AsymResults, ThxFlex] = ComputePostureFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
 
 if nargin < 3, ResultsFolder = ''; end
 if nargin < 4, Opts = struct(); end
@@ -91,6 +96,12 @@ AsymResults = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, 'Con
     'Inclination_deg', {}, 'PostureType', {}, 'SIR_deg', {}, 'Moroder', {});
 
 conditions = {'PRE', 'POST'};
+
+% Flexion thoracique signée pendant le geste (voir summariseThoraxFlexion) :
+% une ligne par patient/côté/tâche/condition, mise en large à l'export
+flexTasks = {'ANALYTIC1', 'ANALYTIC2'};
+ThxLong = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, 'Condition', {}, ...
+    'Start', {}, 'AtPeak', {}, 'Change', {}, 'Min', {}, 'Max', {}, 'nCycles', {});
 
 totalPatients = 0;
 for iFile = 1:numel(fileList)
@@ -143,6 +154,23 @@ for iP = 1:nInFile
             end
         end
 
+        % Flexion thoracique signée (lecture des cycles stockés, rien n'est recalculé)
+        for iT = 1:numel(flexTasks)
+            k = find(strcmp({Trial.task}, flexTasks{iT}), 1);
+            if isempty(k), continue; end
+            for iS = 1:numel(sides)
+                s = summariseThoraxFlexion(Trial(k), sides{iS});
+                if isempty(s), continue; end
+                li = numel(ThxLong) + 1;
+                ThxLong(li).Numero = d.Numero;   ThxLong(li).PatientID = d.PatientID;
+                ThxLong(li).Side   = sides{iS};  ThxLong(li).Task      = flexTasks{iT};
+                ThxLong(li).Condition = condition;
+                ThxLong(li).Start  = s.Start;    ThxLong(li).AtPeak = s.AtPeak;
+                ThxLong(li).Change = s.Change;   ThxLong(li).Min    = s.Min;
+                ThxLong(li).Max    = s.Max;      ThxLong(li).nCycles = s.nCycles;
+            end
+        end
+
         % Épaule asymptomatique de ce patient à cette condition ?
         asymSide = findAsymptomaticSide(Opts.AsymptomaticSelection, d, condition);
         if isempty(asymSide), continue; end
@@ -174,6 +202,7 @@ end
 % EXPORT EXCEL
 % -------------------------------------------------------------------------
 Corr = CorrelatePosture(Results, AsymResults, taskDef);
+ThxFlex = pivotThoraxFlexion(ThxLong, flexTasks);
 
 if ~isempty(Results)
     T = struct2table(Results);
@@ -184,6 +213,9 @@ if ~isempty(Results)
     end
     if ~isempty(Corr)
         writetable(struct2table(Corr), OutputFile, 'Sheet', 'Correlation_Incl_SIR');
+    end
+    if ~isempty(ThxFlex)
+        writetable(struct2table(ThxFlex), OutputFile, 'Sheet', 'Thorax_Flexion_Signed');
     end
     disp(' ');
     disp(['Excel exporté : ', OutputFile]);
@@ -587,6 +619,94 @@ if contains(full, 'Type A'),     short = 'A';
 elseif contains(full, 'Type B'), short = 'B';
 elseif contains(full, 'Type C'), short = 'C';
 else,                            short = '';
+end
+end
+
+% =========================================================================
+%  FLEXION THORACIQUE SIGNÉE PENDANT LE GESTE
+% =========================================================================
+% Lecture seule des cycles déjà stockés dans la base (rien n'est
+% recalculé) : thorax = Joint(11).Euler, DOF3 = Z, flexion/extension du
+% thorax par rapport au repère gravitaire du patient (ComputeKinematics.m :
+% négatif = flexion, positif = extension) ; pic d'élévation repéré sur HG
+% (Joint 12 côté R / 13 côté L, DOF1 = élévation). Cycles du côté du
+% patient (rcycle / lcycle ; thorax partagé : repli sur l'autre côté si
+% vide). Par cycle, puis moyenne des cycles :
+%   Start  : thorax au début du cycle (moyenne des 3 premières frames,
+%            bras le long du corps)
+%   AtPeak : thorax à la frame du pic d'élévation HG
+%   Change : AtPeak moins Start (> 0 = le tronc se redresse pendant
+%            l'élévation, < 0 = il s'enroule)
+%   Min / Max : extrêmes signés du thorax sur le cycle
+% Vide si pas de cycle thorax.
+function s = summariseThoraxFlexion(t, side)
+s = [];
+if strcmp(side, 'R'), cf = 'rcycle'; jHG = 12; else, cf = 'lcycle'; jHG = 13; end
+if ~isfield(t, 'Joint') || numel(t.Joint) < 11, return; end
+tx = cycleCurves(t.Joint(11), cf, 3, true);
+if isempty(tx), return; end
+hg = [];
+if numel(t.Joint) >= jHG, hg = cycleCurves(t.Joint(jHG), cf, 1, false); end
+
+nc = size(tx, 2);
+st = NaN(1, nc); pk = NaN(1, nc); mn = NaN(1, nc); mx = NaN(1, nc);
+for c = 1:nc
+    z = tx(:, c);
+    if all(isnan(z)), continue; end
+    st(c) = mean(z(1:3), 'omitnan');
+    mn(c) = min(z); mx(c) = max(z);
+    if ~isempty(hg) && c <= size(hg, 2) && any(~isnan(hg(:, c)))
+        [~, ip] = max(abs(hg(:, c)));
+        pk(c) = z(ip);
+    end
+end
+s.Start   = mean(st, 'omitnan');
+s.AtPeak  = mean(pk, 'omitnan');
+s.Change  = mean(pk - st, 'omitnan');
+s.Min     = mean(mn, 'omitnan');
+s.Max     = mean(mx, 'omitnan');
+s.nCycles = sum(~isnan(st));
+end
+
+% Cycles [101 x nCycles] d'un DOF de Joint.Euler ; shared = joint unique
+% (thorax) : repli sur l'autre côté si le champ demandé est vide
+function c = cycleCurves(J, cf, dof, shared)
+c = [];
+if ~isfield(J, 'Euler') || ~isstruct(J.Euler), return; end
+E = J.Euler;
+if shared && (~isfield(E, cf) || isempty(E.(cf)))
+    if strcmp(cf, 'rcycle'), cf = 'lcycle'; else, cf = 'rcycle'; end
+end
+if ~isfield(E, cf) || isempty(E.(cf)), return; end
+c = squeeze(E.(cf)(1, dof, :, :));
+if isvector(c), c = c(:); end
+end
+
+% Format large, une ligne par patient/côté, colonnes nommées comme
+% Data_posture.xlsx : <tâche>_TXflex_<Start|AtPeak|Change|Min|Max>_<Pre|Post>
+% (+ <tâche>_TXflex_nCycles_<Pre|Post>), ex. analytic1_TXflex_Change_Post
+function W = pivotThoraxFlexion(L, flexTasks)
+W = [];
+if isempty(L), return; end
+stats = {'Start', 'AtPeak', 'Change', 'Min', 'Max', 'nCycles'};
+cond  = struct('PRE', 'Pre', 'POST', 'Post');
+keys  = strcat(arrayfun(@num2str, [L.Numero], 'UniformOutput', false), '|', {L.Side});
+[uk, iu] = unique(keys, 'stable');
+for i = 1:numel(uk)
+    row = struct('Numero', L(iu(i)).Numero, 'PatientID', L(iu(i)).PatientID, 'Side', L(iu(i)).Side);
+    for iT = 1:numel(flexTasks)
+        for cc = {'PRE', 'POST'}
+            for st = stats
+                row.(sprintf('%s_TXflex_%s_%s', lower(flexTasks{iT}), st{1}, cond.(cc{1}))) = NaN;
+            end
+        end
+    end
+    for j = find(strcmp(keys, uk{i}))
+        for st = stats
+            row.(sprintf('%s_TXflex_%s_%s', lower(L(j).Task), st{1}, cond.(L(j).Condition))) = L(j).(st{1});
+        end
+    end
+    if isempty(W), W = row; else, W(end+1) = row; end %#ok<AGROW>
 end
 end
 
