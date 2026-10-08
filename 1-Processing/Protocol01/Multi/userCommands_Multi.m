@@ -280,6 +280,9 @@ PostureOutputFile = fullfile(ResultsFolder, 'Posture_Summary.xlsx');
 % entrée de CorrelatePostureROM ; CorrelationROMOutputFile : sa sortie
 PostureDataFile          = fullfile(Folder.toolbox, 'Multi', 'Results', 'Data_posture.xlsx');
 CorrelationROMOutputFile = fullfile(Folder.toolbox, 'Multi', 'Results', 'Correlation_Posture_ROM.xlsx');
+% InclinationOutputFile : sortie de InclinationClassification (stratification
+% de l'inclinaison et seuil critique)
+InclinationOutputFile    = fullfile(Folder.toolbox, 'Multi', 'Results', 'Inclination_Classification.xlsx');
 
 % PatientInfosFile : fichier Excel de sortie (infos démographiques patients)
 PatientInfosFile = fullfile(ResultsFolder, 'PatientInfos_Summary.xlsx');

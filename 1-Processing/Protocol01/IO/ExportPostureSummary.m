@@ -14,7 +14,7 @@
 %
 %                Console content (one row per trial) :
 %                  - Trial task name
-%                  - Posture angle (deg) + posture type
+%                  - Thoracic inclination (deg)
 %                  - Moroder R / L
 %                  - Rot Y  : mean | range (min / max)
 %                  - Tilt X : mean | range (min / max)
@@ -63,9 +63,9 @@ for k = 1:length(Trial)
 
     ps = t.Joint(11).PostureSummary;
 
-    % osture + short type
+    % Thoracic inclination
     posture     = safeGet(ps,'thoracic_curvature_angle', NaN);
-    postureType = getPostureShort(safeGetStr(ps,'thorax_posture_type','N/A'), posture);
+    postureType = sprintf('%.1f deg', posture);
 
     % Moroder
 
@@ -94,7 +94,7 @@ end
 % CONSOLE SUMMARY
 % -------------------------------------------------------------------------
 fprintf('  %-14s  %-20s  %-16s  %-16s  %-24s  %-24s  %-24s\n', ...
-    'Task', 'Posture', ...
+    'Task', 'Inclination', ...
     'Mor.R', 'Mor.L', ...
 'Tilt X : mean | range (min/max)', ...
 'Rot Y : mean | range (min/max)', ...
@@ -128,19 +128,6 @@ mn     = mean(data,  'omitnan');
 mn_val = min(data,   [], 'omitnan');
 mx_val = max(data,   [], 'omitnan');
 rng    = mx_val - mn_val;
-end
-
-% -------------------------------------------------------------------------
-%  POSTURE TYPE
-% -------------------------------------------------------------------------
-function short = getPostureShort(full, posture)
-if contains(full,'Erect')
-    short = sprintf('Erect-like (%.1f deg)', posture);
-elseif contains(full,'Slouched')
-    short = sprintf('Slouched-like (%.1f deg)', posture);
-else
-    short = sprintf('N/A (%.1f deg)', posture);
-end
 end
 
 function val = safeGet(s, field, default)

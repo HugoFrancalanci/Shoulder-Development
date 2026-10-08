@@ -99,23 +99,11 @@ v_grav = [0; 0; 1];
 thoracic_curvature_angle = acosd(max(-1, min(1, ...
     dot(v_thorax, v_grav) / (norm(v_thorax) + 1e-10))));
 
-% Functional classification
-% Based on Kebaetse et al. (1999) two-posture comparison :
-%   Erect posture   : 26.4 +/- 11.5 deg
-%   Slouched posture: 38.5 +/- 10.8 deg
-% Reference : Kebaetse M, McClure P, Pratt NA.
-%   Thoracic position effect on shoulder range of motion, strength,
-%   and three-dimensional scapular kinematics.
-%   Arch Phys Med Rehabil 1999;80:945-50.
-% Note : method differs but are close (TV8->CV7 vs T2-T11).
-if thoracic_curvature_angle < 32
-    thorax_posture_type = 'Erect-like posture (<32 deg)';
-else
-    thorax_posture_type = 'Slouched-like posture (>=32 deg)';
-end
-
+% No fixed posture class is stored here: the former Erect/Slouched split at
+% 32 deg (attributed to Kebaetse et al. 1999, a seated study that does not
+% state this threshold) was removed. Inclination types are now derived at
+% cohort level (mean +/- 1 SD, see Multi/Core/InclinationClassification.m).
 Trial.Joint(11).PostureSummary.thoracic_curvature_angle = round(thoracic_curvature_angle, 1);
-Trial.Joint(11).PostureSummary.thorax_posture_type      = thorax_posture_type;
 
 % -------------------------------------------------------------------------
 % MORODER CLASSIFICATION — scapular internal rotation (SIR)

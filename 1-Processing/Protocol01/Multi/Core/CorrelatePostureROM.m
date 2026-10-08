@@ -45,8 +45,8 @@
 %                bilatéral (loi de Student, df = n-2, sans Statistics
 %                Toolbox), régression cinématique ~ posture.
 %
-%                Réserves : 2 métriques x 2 tâches x 2 postures x 2 joints
-%                x 2 groupes = 32 tests (pas de correction pour comparaisons
+%                Réserves : 2 métriques x 2 tâches x 3 postures x 2 joints
+%                x 2 groupes = 48 tests (pas de correction pour comparaisons
 %                multiples) ; PRE et POST = mêmes patients ; SIR cinématique
 %                non validée vs SIR CT de Moroder.
 % -------------------------------------------------------------------------
@@ -188,8 +188,6 @@ for iM = 1:numel(metricDef)
                     end
                     if isSIR
                         xline(36, ':k'); xline(46, ':k');
-                    else
-                        xline(32, ':k');
                     end
                     hold off;
                     xlim(xl); ylim(yl);
@@ -258,8 +256,9 @@ end
 % de différence significative ne prouve pas l'équivalence) :
 %   Bland-Altman : biais (assis moins debout), SD, limites d'accord à 95 %
 %   ICC(A,1) : accord absolu, modèle à deux facteurs (McGraw et Wong 1996)
-%   Pearson r, test t apparié, % de patients changeant de classe
-%   Erect/Slouched (seuil 32°)
+%   Pearson r, test t apparié, % de patients changeant de type
+%   d'inclinaison I-A / I-B / I-C entre assis et debout (types construits
+%   comme Moroder : moyenne ± 1 SD, propres à chaque position)
 % Figure 1x2 : assis vs debout (droite d'identité), Bland-Altman.
 % Vide (avec message) si la colonne debout est absente.
 function S = AnalyseSeatedStanding(P, DataFile)
@@ -278,12 +277,13 @@ d = a - b;
 [mD, loD, hiD, pD] = meanCI(d);
 sdD = std(d);
 icc = iccA1([a(:), b(:)]);
-classChange = 100 * mean((a >= 32) ~= (b >= 32));
+typeOf = @(v) 1 + (v >= mean(v) - std(v)) + (v > mean(v) + std(v));
+classChange = 100 * mean(typeOf(a) ~= typeOf(b));
 
 S = struct('n', n, 'Seated_mean', mean(a), 'Seated_SD', std(a), 'Standing_mean', mean(b), 'Standing_SD', std(b), ...
     'Bias_seated_minus_standing', mD, 'Bias_CI95_low', loD, 'Bias_CI95_high', hiD, 'p_paired_t', pD, ...
     'SD_diff', sdD, 'LoA_low', mD - 1.96 * sdD, 'LoA_high', mD + 1.96 * sdD, ...
-    'Pearson_r', r, 'Pearson_p', pr, 'ICC_A1', icc, 'Pct_class_change_32deg', classChange);
+    'Pearson_r', r, 'Pearson_p', pr, 'ICC_A1', icc, 'Pct_changement_type_inclinaison', classChange);
 
 col = [0.30 0.30 0.60];
 figure('Name', 'Inclinaison thoracique assis vs debout', 'Color', 'w');
@@ -291,11 +291,10 @@ subplot(1, 2, 1); hold on;
 scatter(b, a, 22, col, 'filled', 'MarkerFaceAlpha', 0.6);
 lim = [min([a, b]) - 2, max([a, b]) + 2];
 plot(lim, lim, 'k--', 'LineWidth', 1);
-xline(32, ':k'); yline(32, ':k');
 hold off; axis equal; xlim(lim); ylim(lim); box on;
 xlabel('Inclinaison debout, CALIBRATION3 (deg)'); ylabel('Inclinaison assis, ANALYTIC (deg)');
 title({sprintf('n=%d | r=%.2f (%s) | ICC(A,1)=%.2f', n, r, fmtP(pr), icc), ...
-       sprintf('%.0f %% des patients changent de classe Erect/Slouched (32°)', classChange)}, 'FontSize', 9);
+       sprintf('%.0f %% des patients changent de type d''inclinaison (I-A, I-B, I-C)', classChange)}, 'FontSize', 9);
 
 subplot(1, 2, 2); hold on;
 m = (a + b) / 2;
@@ -806,8 +805,7 @@ end
 %   milieu : distribution gaussienne de la SIR (cf. Moroder Figure 7),
 %            colorée par type, sur l'histogramme des SIR mesurées
 %   droite : inclinaison (x) vs SIR (y), droite de régression, Pearson /
-%            Spearman, seuils 32° (Erect/Slouched) et 36/46° (Moroder
-%            A/B/C) ; axe SIR borné à SIRAxisMax (points au-delà comptés
+%            Spearman, seuils 36/46° (Moroder A/B/C) ; axe SIR borné à SIRAxisMax (points au-delà comptés
 %            dans le titre, pas exclus du calcul)
 % Outputs : MoroderDist (struct array) une ligne par type : Type, n, Pct
 %           CorrInclSIR (struct) une ligne : n, Pearson, Spearman, régression
@@ -904,7 +902,7 @@ if n > 0
         plot(xx, slope * xx + icpt, '-', 'Color', col * 0.7, 'LineWidth', 2);
     end
 end
-xline(32, ':k'); yline(36, ':k'); yline(46, ':k');
+yline(36, ':k'); yline(46, ':k');
 hold off;
 if n > 0
     xlim([min(x) - 2, max(x) + 2]);

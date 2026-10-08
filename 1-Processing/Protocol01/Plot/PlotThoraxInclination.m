@@ -188,9 +188,7 @@ ax2.YAxis.Visible = 'on';
 ylabel(ax2, 'Thoracic inclination from vertical (°)', 'FontSize',9);
 title(ax2, 'Postural classification', 'FontSize',10,'FontWeight','bold');
 
-% Classification text + note
-text(ax2, 1.7, 48, ps.thorax_posture_type, 'FontSize',8,'FontWeight','bold', ...
-    'Color',[0.2 0.2 0.2],'Interpreter','none');
+% Note
 text(ax2, 1.7, 42, 'Thresholds provisional', 'FontSize',7, ...
     'Color',[0.6 0.6 0.6],'Interpreter','none','FontAngle','italic');
 text(ax2, 1.7, 36, '— to be refined', 'FontSize',7, ...

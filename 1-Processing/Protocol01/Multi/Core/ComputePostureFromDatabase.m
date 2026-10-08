@@ -14,8 +14,6 @@
 %                  thoracic_curvature_angle : angle 3D TV8->CV7 vs verticale,
 %                      moyenne des 100 premières frames (0 deg = thorax
 %                      vertical)
-%                  thorax_posture_type      : Erect-like (<32 deg) /
-%                      Slouched-like (>=32 deg), Kebaetse et al. 1999
 %                  SIR_R / SIR_L            : |ST DOF2 Y| (Joint 3 / 8),
 %                      moyenne des 100 premières frames - approximation
 %                      cinématique de la SIR de Moroder (CT), non validée
@@ -47,7 +45,8 @@
 %           Fichier Excel écrit sur disque (feuilles 'Posture' et, si
 %           AsymptomaticSelection non vide, 'Posture_Asymptomatic')
 %           + 1 figure de distribution par tâche (PlotPostureDistribution :
-%           inclinaison, SIR, % Erect/Slouched, % Moroder A/B/C - PRE vs
+%           inclinaison, SIR, % types d'inclinaison I-A/I-B/I-C (moyenne
+%           ± 1 SD), % Moroder A/B/C - PRE vs
 %           POST vs asymptomatique ; SIR > 100 deg = outlier exclu)
 %           + corrélation inclinaison vs SIR par tâche/groupe
 %           (CorrelatePosture : Pearson, Spearman, p, régression ; feuille
@@ -87,13 +86,13 @@ taskDef = struct('name',    {'CALIBRATION3', 'ANALYTIC1', 'ANALYTIC2'}, ...
 % BOUCLE PATIENTS (depuis Database, pas depuis PatientSelection/C3D)
 % -------------------------------------------------------------------------
 Results = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
-    'Inclination_PRE_deg', {}, 'PostureType_PRE', {}, 'SIR_PRE_deg', {}, 'Moroder_PRE', {}, ...
-    'Inclination_POST_deg', {}, 'PostureType_POST', {}, 'SIR_POST_deg', {}, 'Moroder_POST', {});
+    'Inclination_PRE_deg', {}, 'SIR_PRE_deg', {}, 'Moroder_PRE', {}, ...
+    'Inclination_POST_deg', {}, 'SIR_POST_deg', {}, 'Moroder_POST', {});
 
 % Épaules asymptomatiques (côté controlatéral, une seule session) - même
 % correspondance que ComputeClinicalContributionsFromDatabase.m
 AsymResults = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, 'Condition', {}, ...
-    'Inclination_deg', {}, 'PostureType', {}, 'SIR_deg', {}, 'Moroder', {});
+    'Inclination_deg', {}, 'SIR_deg', {}, 'Moroder', {});
 
 conditions = {'PRE', 'POST'};
 
@@ -141,14 +140,12 @@ for iP = 1:nInFile
                     Results(ri).Task      = taskDef(iT).name;
                     for c = conditions
                         Results(ri).(['Inclination_', c{1}, '_deg']) = NaN;
-                        Results(ri).(['PostureType_', c{1}])         = '';
                         Results(ri).(['SIR_', c{1}, '_deg'])         = NaN;
                         Results(ri).(['Moroder_', c{1}])             = '';
                     end
                 end
 
                 Results(ri).(['Inclination_', condition, '_deg']) = getNum(ps, 'thoracic_curvature_angle');
-                Results(ri).(['PostureType_', condition])         = shortPostureType(getStr(ps, 'thorax_posture_type'));
                 Results(ri).(['SIR_', condition, '_deg'])         = getNum(ps, ['SIR_', side]);
                 Results(ri).(['Moroder_', condition])             = shortMoroderType(getStr(ps, ['moroder_', side]));
             end
@@ -184,7 +181,6 @@ for iP = 1:nInFile
             AsymResults(ai).Task            = taskDef(iT).name;
             AsymResults(ai).Condition       = condition;
             AsymResults(ai).Inclination_deg = getNum(ps, 'thoracic_curvature_angle');
-            AsymResults(ai).PostureType     = shortPostureType(getStr(ps, 'thorax_posture_type'));
             AsymResults(ai).SIR_deg         = getNum(ps, ['SIR_', asymSide]);
             AsymResults(ai).Moroder         = shortMoroderType(getStr(ps, ['moroder_', asymSide]));
         end
@@ -249,8 +245,8 @@ end
 %                 robuste aux valeurs extrêmes restantes
 % p bilatéral via la loi de Student (df = n-2), sans Statistics Toolbox.
 % Une figure par tâche, 1x3 : nuage de points + droite de régression
-% (moindres carrés), r/rho/p/n dans le titre, lignes aux seuils 32 deg
-% (Erect/Slouched) et 36/46 deg (Moroder A/B/C).
+% (moindres carrés), r/rho/p/n dans le titre, lignes aux seuils 36/46 deg
+% (Moroder A/B/C).
 % Outputs : Corr (struct array) une ligne par tâche/groupe - feuille Excel
 %           'Correlation_Incl_SIR'
 function Corr = CorrelatePosture(Results, AsymResults, taskDef)
@@ -315,7 +311,7 @@ for iT = 1:numel(taskDef)
                 plot(xx, slope * xx + icpt, '-', 'Color', cols(g, :) * 0.7, 'LineWidth', 2);
             end
         end
-        xline(32, ':k'); yline(36, ':k'); yline(46, ':k');
+        yline(36, ':k'); yline(46, ':k');
         hold off;
         xlim(InclRange); ylim(SIRRange);
         xlabel('Inclinaison thoracique (deg)');
@@ -375,13 +371,16 @@ end
 % =========================================================================
 % Une figure par tâche (CALIBRATION3, ANALYTIC1, ANALYTIC2), 3x2 :
 %   haut gauche  : inclinaison thoracique, points individuels (jitter) +
-%                  médiane et IQR par groupe, seuil Erect/Slouched (32 deg)
+%                  médiane et IQR par groupe, seuils des types d'inclinaison
 %   haut droite  : SIR (Moroder), idem, seuils A/B (36 deg) et B/C (46 deg)
-%   bas gauche   : % Erect / Slouched par groupe
+%   bas gauche   : % de types d'inclinaison I-A / I-B / I-C par groupe,
+%                  construits comme Moroder : moyenne ± 1 SD de
+%                  l'inclinaison PRE de la tâche (voir
+%                  InclinationClassification.m)
 %   bas droite   : % Moroder A / B / C par groupe
 %   dernière ligne (pleine largeur) : inclinaison par strates de 5 deg
 %                  (5-10 ... 45-50), % de chaque groupe par strate, hors
-%                  plage comptés dans le titre
+%                  plage comptés dans le titre, seuils des types
 % PRE rouge, POST bleu, asymptomatique vert. Inclinaison : une valeur par
 % patient (propre au thorax - dédoublonnée pour les patients 'RL'). SIR :
 % une valeur par côté. SIR > SIROutlierDeg = outlier (valeur aberrante, à
@@ -402,15 +401,15 @@ end
 for iT = 1:numel(taskDef)
     task = taskDef(iT).name;
     incl = cell(1, 3); sir = cell(1, 3); nOut = zeros(1, 3);
-    ptype = cell(1, 3); mor = cell(1, 3);
+    mor = cell(1, 3);
 
     for g = 1:3
         if strcmp(groups{g}, 'ASYM')
             if isempty(AsymResults), R = AsymResults; else, R = AsymResults(strcmp({AsymResults.Task}, task)); end
-            fI = 'Inclination_deg'; fP = 'PostureType'; fS = 'SIR_deg'; fM = 'Moroder';
+            fI = 'Inclination_deg'; fS = 'SIR_deg'; fM = 'Moroder';
         else
             if isempty(Results), R = Results; else, R = Results(strcmp({Results.Task}, task)); end
-            fI = ['Inclination_', groups{g}, '_deg']; fP = ['PostureType_', groups{g}];
+            fI = ['Inclination_', groups{g}, '_deg'];
             fS = ['SIR_', groups{g}, '_deg'];          fM = ['Moroder_', groups{g}];
         end
         if isempty(R), continue; end
@@ -418,10 +417,7 @@ for iT = 1:numel(taskDef)
         % Inclinaison : une valeur par patient (Numero)
         [~, iu] = unique([R.Numero], 'stable');
         vI = [R(iu).(fI)];
-        keepI = ~isnan(vI);
-        incl{g}  = vI(keepI);
-        pt = {R(iu).(fP)};
-        ptype{g} = pt(keepI);
+        incl{g}  = vI(~isnan(vI));
 
         % SIR : une valeur par côté, outliers exclus
         vS = [R.(fS)];
@@ -435,11 +431,23 @@ for iT = 1:numel(taskDef)
 
     if all(cellfun(@isempty, incl)) && all(cellfun(@isempty, sir)), continue; end
 
+    % Types d'inclinaison : moyenne ± 1 SD de l'inclinaison PRE de la tâche
+    % (construction des seuils de Moroder), appliqués à tous les groupes
+    ref = incl{1}; if isempty(ref), ref = [incl{:}]; end
+    thrI = mean(ref) + [-1 1] * std(ref);
+    itype = cell(1, 3);
+    for g = 1:3
+        t = repmat({'I-B'}, size(incl{g}));
+        t(incl{g} < thrI(1)) = {'I-A'}; t(incl{g} > thrI(2)) = {'I-C'};
+        itype{g} = t;
+    end
+
     figure('Name', ['Distribution posture — ', task], 'Color', 'w');
 
     subplot(3, 2, 1);
     drawDots(incl, cols);
-    yline(32, '--k', 'Erect | Slouched (32°)', 'LabelHorizontalAlignment', 'left');
+    yline(thrI(1), '--k', sprintf('I-A | I-B (%.1f°)', thrI(1)), 'LabelHorizontalAlignment', 'left');
+    yline(thrI(2), '--k', sprintf('I-B | I-C (%.1f°)', thrI(2)), 'LabelHorizontalAlignment', 'left');
     finishAxes(labels, incl, 'Inclinaison thoracique (deg)', 'Inclinaison thoracique (TV8→CV7 vs verticale)');
 
     subplot(3, 2, 2);
@@ -451,15 +459,15 @@ for iT = 1:numel(taskDef)
     finishAxes(labels, sir, 'SIR (deg)', {'SIR (Moroder, approx. cinématique)', outTxt});
 
     subplot(3, 2, 3);
-    drawPct(ptype, {'Erect', 'Slouched'}, labels, [0.55 0.75 0.90; 0.95 0.65 0.35]);
-    title('Type postural (% par groupe)');
+    drawPct(itype, {'I-A', 'I-B', 'I-C'}, labels, [0.55 0.80 0.55; 0.98 0.85 0.40; 0.90 0.45 0.40]);
+    title(sprintf('Types d''inclinaison (%% par groupe ; seuils = moyenne ± SD PRE : %.1f et %.1f°)', thrI));
 
     subplot(3, 2, 4);
     drawPct(mor, {'A', 'B', 'C'}, labels, [0.55 0.80 0.55; 0.98 0.85 0.40; 0.90 0.45 0.40]);
     title('Classification de Moroder (% par groupe, outliers exclus)');
 
     subplot(3, 2, [5 6]);
-    drawStrata(incl, labels, cols, 5:5:50);
+    drawStrata(incl, labels, cols, 5:5:50, thrI);
 
     sgtitle(['Posture — ', task, ' — PRE vs POST vs asymptomatique']);
 end
@@ -485,8 +493,8 @@ end
 % Inclinaison par strates de 5 deg (edges 5:5:50) : % de chaque groupe par
 % strate, barres groupées PRE/POST/asympto. Dernière strate fermée à droite
 % (45-50 inclut 50). Valeurs hors [5, 50] non tracées, comptées dans le
-% titre. Ligne verticale au seuil Erect/Slouched (32 deg).
-function drawStrata(vals, labels, cols, edges)
+% titre. Lignes verticales aux seuils des types d'inclinaison (thr).
+function drawStrata(vals, labels, cols, edges, thr)
 nB = numel(edges) - 1;
 P  = zeros(nB, numel(vals));
 nBelow = zeros(1, numel(vals)); nAbove = zeros(1, numel(vals));
@@ -504,9 +512,11 @@ for g = 1:numel(vals)
 end
 binLbl = arrayfun(@(k) sprintf('%d-%d', edges(k), edges(k+1)), 1:nB, 'UniformOutput', false);
 set(gca, 'XTick', 1:nB, 'XTickLabel', binLbl);
-% 32 deg -> position sur l'axe des strates (centre de strate k = k)
-xl = 0.5 + (32 - edges(1)) / (edges(2) - edges(1));
-xline(xl, '--k', 'Erect | Slouched (32°)', 'HandleVisibility', 'off');
+% seuils -> position sur l'axe des strates (centre de strate k = k)
+for it = 1:numel(thr)
+    xl = 0.5 + (thr(it) - edges(1)) / (edges(2) - edges(1));
+    xline(xl, '--k', sprintf('%.1f°', thr(it)), 'HandleVisibility', 'off');
+end
 xlabel('Inclinaison thoracique (deg)');
 ylabel('% du groupe');
 legend('Location', 'northeast');
@@ -603,14 +613,6 @@ end
 function v = getStr(s, field)
 v = '';
 if isfield(s, field) && ~isempty(s.(field)), v = s.(field); end
-end
-
-% 'Erect-like posture (<32 deg)' -> 'Erect' ; 'Slouched-like ...' -> 'Slouched'
-function short = shortPostureType(full)
-if contains(full, 'Erect'),        short = 'Erect';
-elseif contains(full, 'Slouched'), short = 'Slouched';
-else,                              short = '';
-end
 end
 
 % 'Type A — Upright (...)' -> 'A' (même règle que ExportPostureSummary.m)

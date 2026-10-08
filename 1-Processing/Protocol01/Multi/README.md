@@ -305,7 +305,6 @@ inchangées.
 
 * `Inclination_<C>_deg` : `thoracic_curvature_angle`, angle 3D TV8→CV7 vs
   verticale, moyenne des 100 premières frames (0° = thorax vertical)
-* `PostureType_<C>` : `Erect` (< 32°) / `Slouched` (≥ 32°), Kebaetse et al. 1999
 * `SIR_<C>_deg` : `SIR_R`/`SIR_L` du côté de la ligne, |ST DOF2 Y| (Joint 3/8),
   moyenne des 100 premières frames — approximation cinématique de la SIR de
   Moroder (mesurée sur CT), **non validée**
@@ -322,13 +321,14 @@ Excel `Posture_Summary.xlsx`, feuille `Posture`.
 **Figures** (`PlotPostureDistribution`, fonction locale) : une par tâche, 3x2,
 PRE (rouge) vs POST (bleu) vs asymptomatique (vert) :
 
-* inclinaison thoracique : points individuels + médiane/IQR, seuil 32°
-  (Erect/Slouched) ; une valeur par patient (dédoublonnée pour les `RL`)
+* inclinaison thoracique : points individuels + médiane/IQR, seuils des types
+  d'inclinaison ; une valeur par patient (dédoublonnée pour les `RL`)
 * SIR : idem, seuils 36° (A/B) et 46° (B/C) ; une valeur par côté
-* % Erect / Slouched par groupe
+* % de types d'inclinaison I-A / I-B / I-C par groupe (construits comme
+  Moroder : moyenne ± 1 SD de l'inclinaison PRE de la tâche)
 * % Moroder A / B / C par groupe
 * inclinaison par strates de 5° (5-10 … 45-50), % de chaque groupe par
-  strate (barres groupées), ligne au seuil 32° ; valeurs < 5° ou > 50°
+  strate (barres groupées), lignes aux seuils des types ; valeurs < 5° ou > 50°
   non tracées, comptées dans le titre
 
 **SIR > 100° = outlier** (valeurs aberrantes, à traiter plus tard) : exclu des
@@ -345,6 +345,16 @@ pendant l'élévation), `Min`/`Max`. Feuille `Thorax_Flexion_Signed` de
 `Posture_Summary.xlsx`, une ligne par patient/côté, colonnes au format de
 `Data_posture.xlsx` (ex. `analytic1_TXflex_Change_Post`).
 
+**Stratification de l'inclinaison et seuil critique**
+(`Multi/Core/InclinationClassification.m`, section dédiée de `MAIN`, sortie
+`InclinationOutputFile`) : lit le même `Data_posture.xlsx`. 1) Types I-A / I-B /
+I-C construits comme Moroder (moyenne ± 1 SD), vérifiés par k-means 1D exact
+(variance expliquée k = 2 à 5) et mélange de gaussiennes (BIC k = 1 à 4) ;
+kappa vs Moroder A/B/C ; élévation POST par type (Kruskal-Wallis, epsilon²,
+écart type 3 moins type 1). 2) Mauvais résultat = pic HG POST < 90° : ROC (AUC,
+seuil de Youden, IC bootstrap), régression segmentée, % par tranche de 5°.
+Debout et assis, SIR en comparaison ; sans Statistics Toolbox.
+
 **Corrélation inclinaison vs SIR** (`CorrelatePosture`, fonction locale) : par
 tâche et par groupe (PRE, POST, asymptomatique), paires (inclinaison, SIR) de
 la même session et du même côté, **uniquement dans la plage plausible :
@@ -357,7 +367,7 @@ Spearman ρ (monotone, rangs avec ex-aequo au rang moyen), p bilatéral par la
 loi de Student (df = n-2, calculé sans Statistics Toolbox), pente/ordonnée de
 la régression SIR ~ inclinaison. Feuille `Correlation_Incl_SIR` (une ligne
 par tâche/groupe) + une figure par tâche (nuages 1x3, droite de régression,
-lignes aux seuils 32° et 36°/46°). Un patient `RL` donne deux paires
+lignes aux seuils 36°/46°). Un patient `RL` donne deux paires
 partageant la même inclinaison (non indépendantes) ; pas de correction pour
 comparaisons multiples (3 tâches x 3 groupes).
 
@@ -395,7 +405,8 @@ du thorax (colonnes `Thoracique`), PRE et POST, r(HG moins HT, thorax) indicatif
 Inclinaison assis vs debout (`AnalyseSeatedStanding`, feuille
 `Seated_vs_Standing`) : colonne `Inclinaison_thoracique_Pre_Calibration3`
 (debout) vs `Inclinaison_thoracique_Pre` (assis), Bland-Altman, ICC(A,1), t
-apparié, r, % de changement de classe Erect/Slouched. Flexion thoracique signée
+apparié, r, % de changement de type d'inclinaison I-A / I-B / I-C (moyenne ± 1 SD
+propre à chaque position). Flexion thoracique signée
 (`AnalyseThoraxFlexion`, feuille `Thorax_Flexion`, lit la feuille
 `Cinematique_thorax`) : thorax au repos vs inclinaison, changement pendant le
 geste (t vs 0, % qui se redressent, POST moins PRE apparié), HG moins HT vs
@@ -407,7 +418,7 @@ dans le titre, gardés dans les calculs). Section indépendante dans `MAIN_MULTI
 `MAIN_MULTI_Protocol_01.m`, voir section « Épaules asymptomatiques »), une
 feuille séparée `Posture_Asymptomatic`, une ligne par épaule/tâche pour la
 seule condition retenue : `Numero, PatientID, Side, Task, Condition,
-Inclination_deg, PostureType, SIR_deg, Moroder` (SIR/Moroder du côté
+Inclination_deg, SIR_deg, Moroder` (SIR/Moroder du côté
 asymptomatique). Même correspondance que pour les courbes vertes ; la console
 affiche `Épaules asymptomatiques retrouvées : X / N`. La feuille `Posture`
 est inchangée. Les trajectoires

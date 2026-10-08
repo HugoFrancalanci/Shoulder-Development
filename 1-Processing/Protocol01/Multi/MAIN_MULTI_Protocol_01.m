@@ -486,3 +486,7 @@ ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibili
 %%
 % Posture x ROM (Article E02_01_Posture)
 CorrelatePostureROM(PostureDataFile, CorrelationROMOutputFile);
+
+%%
+% Inclinaison thoracique : stratification (vs Moroder) et seuil critique (Article E02_01_Posture)
+InclinationClassification(PostureDataFile, InclinationOutputFile);
