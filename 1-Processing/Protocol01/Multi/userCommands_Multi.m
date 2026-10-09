@@ -276,9 +276,14 @@ CurveQualityOutputFile = fullfile(ResultsFolder, 'CurveQuality_Summary.xlsx');
 % PostureOutputFile : fichier Excel de sortie (inclinaison thoracique + Moroder)
 PostureOutputFile = fullfile(ResultsFolder, 'Posture_Summary.xlsx');
 
-% PostureDataFile : Excel trié à la main (feuilles Posture + Cinematique),
-% entrée de CorrelatePostureROM ; CorrelationROMOutputFile : sa sortie
-PostureDataFile          = fullfile(Folder.toolbox, 'Multi', 'Results', 'Data_posture.xlsx');
+% PostureDataFile : Excel trié à la main (feuilles Posture, Cinematique...
+% et _Asym), entrée de CorrelatePostureROM, InclinationClassification,
+% AsymptomaticComparison et PlotMeanCurvesFromDatabase ; gardé sur OneDrive
+% (hors du dépôt GitHub). Chemin relatif au profil Windows pour fonctionner
+% sur les deux machines. CorrelationROMOutputFile : sortie de CorrelatePostureROM
+PostureDataFile          = fullfile(getenv('USERPROFILE'), 'OneDrive - Université de Genève', 'PhD Hugo', ...
+    '01_Etude', '02_Sub-projects 2', 'E02_Classification_rTSA', 'E02_01 Posture rTSA', 'Results', ...
+    '02_Pre-article_posture', 'Data_posture.xlsx');
 CorrelationROMOutputFile = fullfile(Folder.toolbox, 'Multi', 'Results', 'Correlation_Posture_ROM.xlsx');
 % InclinationOutputFile : sortie de InclinationClassification (stratification
 % de l'inclinaison et seuil critique)

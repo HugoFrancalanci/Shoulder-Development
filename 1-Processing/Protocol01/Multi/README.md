@@ -361,6 +361,15 @@ POST, et posture x déficit opéré moins sain. Les élévations ANALYTIC1/2 son
 « saine » pour la compensation par le tronc (thorax apparié = contrôle,
 écart attendu nul). 26 épaules : exploratoire.
 
+**Courbes moyennes des trois populations**
+(`Multi/Core/PlotMeanCurvesFromDatabase.m`, section dédiée de `MAIN`) : lit les
+cycles stockés dans la base pour les patients de la feuille `Posture` (rTSA
+PRE et POST, côté opéré) et les épaules de `Posture_Asym` (côté sain, session
+retenue). HG, HT, GH (DOF de la tâche, valeur absolue), ST rotation latérale
+(signée, sens harmonisé entre côtés) et thorax (flexion signée), moyenne ± 1 SD
+par population, flexion et scaption (figure 2 x 5). Sortie `Curves` :
+`Curves.<PRE|POST|ASYM>.<ANALYTIC1|ANALYTIC2>.<HG|HT|GH|ST|TX>` = [n x 101].
+
 **Stratification de l'inclinaison et seuil critique**
 (`Multi/Core/InclinationClassification.m`, section dédiée de `MAIN`, sortie
 `InclinationOutputFile`) : lit le même `Data_posture.xlsx`. 1) Types I-A / I-B /

@@ -454,43 +454,42 @@ addpath(fullfile(Folder.toolbox, 'Multi', 'Core'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'IO'));
 run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DatabaseFile, OutputFile, FunctionalOutputFile, CoRQualityOutputFile, CurveQualityOutputFile, ResultsFolder
 
-%%
+%% Metric validation
 % CoR residual validation
 ComputeCoRQualityFromDatabase(DatabaseFile, CoRQualityOutputFile, ResultsFolder, 30, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
-%%
 % Curve validity diagnostic 
 ComputeCurveQualityFromDatabase(DatabaseFile, CurveQualityOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
-%%
+%% Asymptomatic selection
 % Asymptomatic shoulder classification
 ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibilityFile, ResultsFolder);
 
-%%
+%% Curve analysis
 % Clinical movement decomposition : HT, GH, ST, TX
 [ClinRes, ClinAsym] = ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
-%%
 % Functional decomposition : HG, GH, ST, TX
 [FuncRes, FuncAsym] = ComputeFunctionalContributionsFromDatabase(DatabaseFile, FunctionalOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
-%%
+%% Posture analysis
 % Posture : inclinaison thoracique et classification de Moroder
 [PostRes, PostAsym] = ComputePostureFromDatabase(DatabaseFile, PostureOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
-%%
-% Posture x ROM (Article E02_01_Posture)
+%% Article E02_01_Posture
+% Posture x ROM 
 CorrelatePostureROM(PostureDataFile, CorrelationROMOutputFile);
 
-%%
-% Inclinaison thoracique : stratification (vs Moroder) et seuil critique (Article E02_01_Posture)
+% Inclinaison thoracique : stratification (vs Moroder) et seuil critique 
 InclinationClassification(PostureDataFile, InclinationOutputFile);
 
-%%
-% Épaules asymptomatiques controlatérales vs rTSA (Article E02_01_Posture)
+% Épaules asymptomatiques controlatérales vs rTSA 
 AsymptomaticComparison(PostureDataFile, AsymptomaticOutputFile);
+
+% Courbes moyennes HG, HT, GH, ST, thorax : rTSA PRE, POST et épaules saines
+MeanCurves = PlotMeanCurvesFromDatabase(DatabaseFile, PostureDataFile);
