@@ -56,6 +56,10 @@
 %           (summariseThoraxFlexion, lecture seule des cycles de la base) ;
 %           feuille 'Thorax_Flexion_Signed', colonnes au format de
 %           Data_posture.xlsx (ex. analytic1_TXflex_Change_Post)
+%           ThxFlexAsym (struct array) idem pour les épaules
+%           asymptomatiques (cycles du bras asymptomatique, session
+%           retenue seulement) ; feuille 'Thorax_Flexion_Signed_Asym',
+%           colonnes <tâche>_TXflex_<stat>_Asym + Condition
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
@@ -65,7 +69,7 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function [Results, AsymResults, ThxFlex] = ComputePostureFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
+function [Results, AsymResults, ThxFlex, ThxFlexAsym] = ComputePostureFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
 
 if nargin < 3, ResultsFolder = ''; end
 if nargin < 4, Opts = struct(); end
@@ -101,6 +105,7 @@ conditions = {'PRE', 'POST'};
 flexTasks = {'ANALYTIC1', 'ANALYTIC2'};
 ThxLong = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, 'Condition', {}, ...
     'Start', {}, 'AtPeak', {}, 'Change', {}, 'Min', {}, 'Max', {}, 'nCycles', {});
+ThxAsymLong = ThxLong;   % même chose pour les épaules asymptomatiques
 
 totalPatients = 0;
 for iFile = 1:numel(fileList)
@@ -184,6 +189,20 @@ for iP = 1:nInFile
             AsymResults(ai).SIR_deg         = getNum(ps, ['SIR_', asymSide]);
             AsymResults(ai).Moroder         = shortMoroderType(getStr(ps, ['moroder_', asymSide]));
         end
+        % Flexion thoracique signée, cycles du bras asymptomatique
+        for iT = 1:numel(flexTasks)
+            k = find(strcmp({Trial.task}, flexTasks{iT}), 1);
+            if isempty(k), continue; end
+            s = summariseThoraxFlexion(Trial(k), asymSide);
+            if isempty(s), continue; end
+            li = numel(ThxAsymLong) + 1;
+            ThxAsymLong(li).Numero = d.Numero;   ThxAsymLong(li).PatientID = d.PatientID;
+            ThxAsymLong(li).Side   = asymSide;   ThxAsymLong(li).Task      = flexTasks{iT};
+            ThxAsymLong(li).Condition = condition;
+            ThxAsymLong(li).Start  = s.Start;    ThxAsymLong(li).AtPeak = s.AtPeak;
+            ThxAsymLong(li).Change = s.Change;   ThxAsymLong(li).Min    = s.Min;
+            ThxAsymLong(li).Max    = s.Max;      ThxAsymLong(li).nCycles = s.nCycles;
+        end
     end
 end
 clear S
@@ -199,6 +218,7 @@ end
 % -------------------------------------------------------------------------
 Corr = CorrelatePosture(Results, AsymResults, taskDef);
 ThxFlex = pivotThoraxFlexion(ThxLong, flexTasks);
+ThxFlexAsym = pivotThoraxFlexionAsym(ThxAsymLong, flexTasks);
 
 if ~isempty(Results)
     T = struct2table(Results);
@@ -212,6 +232,9 @@ if ~isempty(Results)
     end
     if ~isempty(ThxFlex)
         writetable(struct2table(ThxFlex), OutputFile, 'Sheet', 'Thorax_Flexion_Signed');
+    end
+    if ~isempty(ThxFlexAsym)
+        writetable(struct2table(ThxFlexAsym), OutputFile, 'Sheet', 'Thorax_Flexion_Signed_Asym');
     end
     disp(' ');
     disp(['Excel exporté : ', OutputFile]);
@@ -706,6 +729,32 @@ for i = 1:numel(uk)
     for j = find(strcmp(keys, uk{i}))
         for st = stats
             row.(sprintf('%s_TXflex_%s_%s', lower(L(j).Task), st{1}, cond.(L(j).Condition))) = L(j).(st{1});
+        end
+    end
+    if isempty(W), W = row; else, W(end+1) = row; end %#ok<AGROW>
+end
+end
+
+% Même format pour les épaules asymptomatiques (une seule session par
+% épaule) : une ligne par épaule, colonne Condition (PRE/POST de la
+% session retenue) et colonnes <tâche>_TXflex_<stat>_Asym
+function W = pivotThoraxFlexionAsym(L, flexTasks)
+W = [];
+if isempty(L), return; end
+stats = {'Start', 'AtPeak', 'Change', 'Min', 'Max', 'nCycles'};
+keys  = strcat(arrayfun(@num2str, [L.Numero], 'UniformOutput', false), '|', {L.Side});
+[uk, iu] = unique(keys, 'stable');
+for i = 1:numel(uk)
+    row = struct('Numero', L(iu(i)).Numero, 'PatientID', L(iu(i)).PatientID, 'Side', L(iu(i)).Side, ...
+                 'Condition', L(iu(i)).Condition);
+    for iT = 1:numel(flexTasks)
+        for st = stats
+            row.(sprintf('%s_TXflex_%s_Asym', lower(flexTasks{iT}), st{1})) = NaN;
+        end
+    end
+    for j = find(strcmp(keys, uk{i}))
+        for st = stats
+            row.(sprintf('%s_TXflex_%s_Asym', lower(L(j).Task), st{1})) = L(j).(st{1});
         end
     end
     if isempty(W), W = row; else, W(end+1) = row; end %#ok<AGROW>

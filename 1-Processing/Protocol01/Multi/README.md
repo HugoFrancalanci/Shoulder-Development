@@ -343,7 +343,23 @@ PRE et POST. Par cycle puis moyenne : `Start` (3 premières frames), `AtPeak`
 (frame du pic HG), `Change` = AtPeak moins Start (> 0 = le tronc se redresse
 pendant l'élévation), `Min`/`Max`. Feuille `Thorax_Flexion_Signed` de
 `Posture_Summary.xlsx`, une ligne par patient/côté, colonnes au format de
-`Data_posture.xlsx` (ex. `analytic1_TXflex_Change_Post`).
+`Data_posture.xlsx` (ex. `analytic1_TXflex_Change_Post`). Même calcul pour les
+épaules asymptomatiques (cycles du bras sain, session retenue) : feuille
+`Thorax_Flexion_Signed_Asym`, colonnes `<tâche>_TXflex_<stat>_Asym` + `Condition`.
+
+**Épaules asymptomatiques vs rTSA** (`Multi/Core/AsymptomaticComparison.m`,
+section dédiée de `MAIN`, sortie `AsymptomaticOutputFile`) : lit les feuilles
+`Posture_Asym`, `Cinematique_Asym`, `Cinematique_pics_Asym` et
+`Cinematique_thorax_Asym` de `Data_posture.xlsx` (26 épaules controlatérales
+saines, une session PRE ou POST chacune, suffixe `_Asym`), en plus des
+feuilles patients. 1) Valeurs de référence (HG, HT, HG moins HT, thorax,
+saines vs rTSA PRE et POST, Welch et g de Hedges). 2) Même patient, même
+session : côté opéré moins côté sain (t apparié, % du côté sain). 3) Posture
+de la session x HG / HT du côté sain (Pearson, IC 95 % de Fisher) vs rTSA
+POST, et posture x déficit opéré moins sain. Les élévations ANALYTIC1/2 sont
+**bilatérales** : le thorax est commun aux deux côtés, donc pas de référence
+« saine » pour la compensation par le tronc (thorax apparié = contrôle,
+écart attendu nul). 26 épaules : exploratoire.
 
 **Stratification de l'inclinaison et seuil critique**
 (`Multi/Core/InclinationClassification.m`, section dédiée de `MAIN`, sortie

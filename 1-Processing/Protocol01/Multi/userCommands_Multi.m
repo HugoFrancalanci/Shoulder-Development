@@ -283,6 +283,9 @@ CorrelationROMOutputFile = fullfile(Folder.toolbox, 'Multi', 'Results', 'Correla
 % InclinationOutputFile : sortie de InclinationClassification (stratification
 % de l'inclinaison et seuil critique)
 InclinationOutputFile    = fullfile(Folder.toolbox, 'Multi', 'Results', 'Inclination_Classification.xlsx');
+% AsymptomaticOutputFile : sortie de AsymptomaticComparison (épaules saines
+% controlatérales, feuilles _Asym de PostureDataFile)
+AsymptomaticOutputFile   = fullfile(Folder.toolbox, 'Multi', 'Results', 'Asymptomatic_Comparison.xlsx');
 
 % PatientInfosFile : fichier Excel de sortie (infos démographiques patients)
 PatientInfosFile = fullfile(ResultsFolder, 'PatientInfos_Summary.xlsx');

@@ -490,3 +490,7 @@ CorrelatePostureROM(PostureDataFile, CorrelationROMOutputFile);
 %%
 % Inclinaison thoracique : stratification (vs Moroder) et seuil critique (Article E02_01_Posture)
 InclinationClassification(PostureDataFile, InclinationOutputFile);
+
+%%
+% Épaules asymptomatiques controlatérales vs rTSA (Article E02_01_Posture)
+AsymptomaticComparison(PostureDataFile, AsymptomaticOutputFile);
