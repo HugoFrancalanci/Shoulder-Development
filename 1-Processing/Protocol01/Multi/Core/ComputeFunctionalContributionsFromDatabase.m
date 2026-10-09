@@ -95,8 +95,12 @@ Results = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
     'ST_PRE_deg', {}, 'ST_PRE_pct', {}, 'TX_PRE_deg', {}, 'TX_PRE_pct', {}, ...
     'HG_POST_deg', {}, 'GH_POST_deg', {}, 'GH_POST_pct', {}, ...
     'ST_POST_deg', {}, 'ST_POST_pct', {}, 'TX_POST_deg', {}, 'TX_POST_pct', {}, ...
-    'HG_PRE_max_deg', {}, 'GH_PRE_max_deg', {}, 'ST_PRE_max_deg', {}, 'TX_PRE_max_deg', {}, ...
-    'HG_POST_max_deg', {}, 'GH_POST_max_deg', {}, 'ST_POST_max_deg', {}, 'TX_POST_max_deg', {});
+    'HG_PRE_max_deg', {}, 'GH_PRE_max_deg', {}, 'ST_PRE_max_deg', {}, ...
+    'HG_POST_max_deg', {}, 'GH_POST_max_deg', {}, 'ST_POST_max_deg', {});
+% Pas de pic pour le thorax : max |angle| n'a pas de sens quand la flexion
+% passe par zéro (il mélange la flexion au repos et l'extension au pic) ;
+% le thorax est décrit par son ROM (signal signé) et la flexion signée
+% (ComputePostureFromDatabase.m)
 
 % Courbes angle vs % cycle
 Curves = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
@@ -163,7 +167,6 @@ for iP = 1:nInFile
                 Results(ri).HG_PRE_max_deg = NaN; Results(ri).HG_POST_max_deg = NaN;
                 Results(ri).GH_PRE_max_deg = NaN; Results(ri).GH_POST_max_deg = NaN;
                 Results(ri).ST_PRE_max_deg = NaN; Results(ri).ST_POST_max_deg = NaN;
-                Results(ri).TX_PRE_max_deg = NaN; Results(ri).TX_POST_max_deg = NaN;
             end
 
             Results(ri).(['HG_', condition, '_deg']) = c.HG_range;
@@ -177,7 +180,6 @@ for iP = 1:nInFile
             Results(ri).(['HG_', condition, '_max_deg']) = c.HG_max;
             Results(ri).(['GH_', condition, '_max_deg']) = c.GH_max;
             Results(ri).(['ST_', condition, '_max_deg']) = c.ST_max;
-            Results(ri).(['TX_', condition, '_max_deg']) = c.TX_max;
 
             if length(Curves) < ri
                 Curves(ri).Numero    = d.Numero;
@@ -223,7 +225,6 @@ for iP = 1:nInFile
             AsymResults(ai).HG_ASYM_max_deg = c.HG_max;
             AsymResults(ai).GH_ASYM_max_deg = c.GH_max;
             AsymResults(ai).ST_ASYM_max_deg = c.ST_max;
-            AsymResults(ai).TX_ASYM_max_deg = c.TX_max;
             AsymCurves(ai).PatientID = d.PatientID;
             AsymCurves(ai).Side      = c.side;
             AsymCurves(ai).Task      = c.task;
@@ -366,10 +367,12 @@ end
 %   ST Joint(3/8)   ANALYTIC1/2: DOF1 X — upward rot. | ANALYTIC3/4: DOF2 Y — protraction/retraction (YXZ)
 %   TX Joint(11)    ANALYTIC1/2: DOF3 Z — flexion     | ANALYTIC3/4: DOF2 Y — axial rotation (ZXY)
 %
-% HG_max/GH_max/ST_max/TX_max : peak angle reached (mean of each cycle's
+% HG_max/GH_max/ST_max : peak angle reached (mean of each cycle's
 % max |angle|, same cycle-averaging convention as HG_range etc., but max
 % instead of max-min) - NOT the same as *_range, which is an amplitude
-% (max-min).
+% (max-min). No thorax peak: the thorax flexion crosses zero during the
+% movement, so max |angle| would mix rest flexion and peak extension ;
+% TX_range is max - min of the SIGNED angle (getRangeCycleTH).
 %
 % HG_curve/GH_curve/ST_curve/TX_curve : mean curve (across cycles) of the
 % angle vs % cycle (0-100%), same number of points as the cycle
@@ -383,14 +386,14 @@ end
 % Outputs : Contrib (struct array, one row per task found x side 'R'/'L')
 %           with fields task ('ANALYTIC1'-'ANALYTIC4'), side, HG_range,
 %           GH_range, GH_pct, ST_range, ST_pct, TX_range, TX_pct, HG_max,
-%           GH_max, ST_max, TX_max, HG_curve, GH_curve, ST_curve, TX_curve
+%           GH_max, ST_max, HG_curve, GH_curve, ST_curve, TX_curve
 %           Empty (0x0) struct array if neither task is found in Trial.
 function Contrib = ComputeFunctionalContributions(Trial)
 
 Contrib = struct('task', {}, 'side', {}, 'HG_range', {}, ...
                   'GH_range', {}, 'GH_pct', {}, 'ST_range', {}, 'ST_pct', {}, ...
                   'TX_range', {}, 'TX_pct', {}, ...
-                  'HG_max', {}, 'GH_max', {}, 'ST_max', {}, 'TX_max', {}, ...
+                  'HG_max', {}, 'GH_max', {}, 'ST_max', {}, ...
                   'HG_curve', {}, 'GH_curve', {}, 'ST_curve', {}, 'TX_curve', {}, ...
                   'ST_raw', {}, 'ST_rangeRaw', {}, 'ST_peakExc', {}, 'ST_excSign', {}, ...
                   'TX_raw', {}, 'TX_rangeRaw', {}, 'TX_peakExc', {}, 'TX_excSign', {});
@@ -443,7 +446,6 @@ for iT = 1:numel(taskDOF)
         Contrib(i).HG_max = getPeakCycle(t, s.jiHG, dofHG, s.cycField);
         Contrib(i).GH_max = getPeakCycle(t, s.jiGH, dofGH, s.cycField);
         Contrib(i).ST_max = getPeakCycle(t, s.jiST, dofST, s.cycField);
-        Contrib(i).TX_max = getPeakCycleTH(t, 11, dofTX, s.cycField);
 
         Contrib(i).HG_curve = getCurveCycle(t, s.jiHG, dofHG, s.cycField);
         Contrib(i).GH_curve = getCurveCycle(t, s.jiGH, dofGH, s.cycField);
@@ -506,7 +508,11 @@ if isempty(t.Joint(ji).Euler.(cf))
     if strcmp(cf,'rcycle'), cf = 'lcycle'; else, cf = 'rcycle'; end
 end
 if isempty(t.Joint(ji).Euler.(cf)), return; end
-data = abs(squeeze(t.Joint(ji).Euler.(cf)(1, dof, :, :)));
+% Thorax : amplitude sur le signal SIGNÉ (max - min), pas sur abs() : la
+% flexion du thorax passe souvent par zéro pendant le geste (fléchi au
+% repos, redressé au pic), et abs() replie alors la courbe et sous-estime
+% l'amplitude (ex. -15.5 à +6 deg : 21.5 deg réels, 15.5 deg avec abs).
+data = squeeze(t.Joint(ji).Euler.(cf)(1, dof, :, :));
 if isvector(data), data = data(:); end
 ranges = max(data, [], 1) - min(data, [], 1);
 r = mean(ranges, 'omitnan');
@@ -523,21 +529,6 @@ peaks = max(data, [], 1);
 r = mean(peaks, 'omitnan');
 end
 
-function r = getPeakCycleTH(t, ji, dof, cycField)
-% Same as getPeakCycle, with the R/L cycField fallback also used by
-% getRangeCycleTH (joint 11 = thorax, single shared joint).
-r = NaN;
-if length(t.Joint) < ji, return; end
-cf = cycField;
-if isempty(t.Joint(ji).Euler.(cf))
-    if strcmp(cf,'rcycle'), cf = 'lcycle'; else, cf = 'rcycle'; end
-end
-if isempty(t.Joint(ji).Euler.(cf)), return; end
-data = abs(squeeze(t.Joint(ji).Euler.(cf)(1, dof, :, :)));
-if isvector(data), data = data(:); end
-peaks = max(data, [], 1);
-r = mean(peaks, 'omitnan');
-end
 
 function c = getCurveCycle(t, ji, dof, cycField)
 % Mean curve (across cycles) of the angle, already normalised to % cycle

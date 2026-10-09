@@ -242,7 +242,10 @@ if isempty(t.Joint(ji).Euler.(cf))
     if strcmp(cf,'rcycle'), cf = 'lcycle'; else, cf = 'rcycle'; end
 end
 if isempty(t.Joint(ji).Euler.(cf)), return; end
-data = abs(squeeze(t.Joint(ji).Euler.(cf)(1, dof, :, :)));
+% Thorax : amplitude sur le signal SIGNÉ (max - min), pas sur abs() : la
+% flexion du thorax passe souvent par zéro pendant le geste et abs()
+% replierait la courbe (amplitude sous-estimée)
+data = squeeze(t.Joint(ji).Euler.(cf)(1, dof, :, :));
 if isvector(data), data = data(:); end
 ranges = max(data, [], 1) - min(data, [], 1);
 r = mean(ranges, 'omitnan');

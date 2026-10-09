@@ -213,10 +213,14 @@ for iM = 1:numel(metricDef)
         end
     end
 
+    % Thorax : toujours son ROM (max moins min du signal signé, feuille
+    % 'Cinematique'), quelle que soit la métrique ; pas de « pic » du thorax
+    % (max |angle| mélangerait la flexion au repos et l'extension au pic)
+    Kthx = readSheet(DataFile, metricDef(1).sheet);
     % Test HG moins HT (rôle du thorax), même métrique, flexion et scaption
-    HGHT = [HGHT, TestHGminusHT(P, K, iP, iK, md, taskDef, postDef, groups, grpSuffix, cols, DataFile)]; %#ok<AGROW>
+    HGHT = [HGHT, TestHGminusHT(P, K, Kthx, iP, iK, md, taskDef, postDef, groups, grpSuffix, cols, DataFile)]; %#ok<AGROW>
     % Ampleur de la contribution du thorax (HG moins HT, ROM thorax), sans posture
-    ThxDesc = [ThxDesc, DescribeThoraxContribution(K, md, taskDef, groups, grpSuffix, cols, DataFile)]; %#ok<AGROW>
+    ThxDesc = [ThxDesc, DescribeThoraxContribution(K, Kthx, md, taskDef, groups, grpSuffix, cols, DataFile)]; %#ok<AGROW>
 end
 
 % Inclinaison assis vs debout (CALIBRATION3) et flexion thoracique signée
@@ -503,12 +507,13 @@ end
 %   moyenne, SD, médiane, IQR, min, max ; |D| moyen ; % de patients avec
 %   |D| > 5° et > 10° ; r(D, thorax) en indication.
 % Réserves : D contient aussi la différence de définition des angles (HT
-% Cardan dans le plan du thorax, HG YXY élévation 3D) ; thorax = amplitude
-% (abs) sans sens (flexion ou extension), donc r(D, thorax) est seulement
-% indicatif (le point 2 demandera la flexion thoracique signée).
+% Cardan dans le plan du thorax, HG YXY élévation 3D) ; thorax = ROM (max
+% moins min du signal signé, feuille Cinematique, le même pour les deux
+% métriques), amplitude sans sens (flexion ou extension), donc r(D, thorax)
+% est seulement indicatif (voir la flexion thoracique signée).
 % Figure : 2x2, lignes flexion / scaption ; colonnes distribution de D et
 % distribution du thorax, PRE et POST superposés.
-function R = DescribeThoraxContribution(K, md, taskDef, groups, grpSuffix, cols, DataFile)
+function R = DescribeThoraxContribution(K, Kthx, md, taskDef, groups, grpSuffix, cols, DataFile)
 
 R = struct('Metric', {}, 'Task', {}, 'Movement', {}, 'Group', {}, 'n', {}, ...
     'HT_mean', {}, 'HT_SD', {}, 'HG_mean', {}, 'HG_SD', {}, ...
@@ -526,7 +531,7 @@ for iT = 1:numel(taskDef)
         colOf = @(joint) sprintf('%s_%s_%s%s', td.key, md.key, joint, grpSuffix{g});
         hg = getCol(K, colOf('Humerogravitaire'));
         ht = getCol(K, colOf('Humerothoracique'));
-        tx = getCol(K, colOf('Thoracique'));
+        tx = alignCol(Kthx, sprintf('%s_ROM_Thoracique%s', td.key, grpSuffix{g}), getCol(K, 'Numero'));
         v  = ~isnan(hg) & ~isnan(ht);
         d  = hg(v) - ht(v);
         vt = ~isnan(tx);
@@ -574,14 +579,14 @@ for iT = 1:numel(taskDef)
             'HandleVisibility', 'off');
     end
     hold off; box on; groupLegend(groups, cols);
-    xlabel(sprintf('%s thorax %s (deg, amplitude sans sens)', md.name, td.label)); ylabel('Nombre de patients');
+    xlabel(sprintf('ROM thorax %s (deg, max moins min du signal signé)', td.label)); ylabel('Nombre de patients');
     title(tTxt, 'FontSize', 8);
 end
 sgtitle(sprintf('Ampleur de la contribution du thorax, %s : flexion (ligne 1) et scaption (ligne 2)', md.name));
 annotation(fig, 'textbox', [0 0 1 0.04], 'String', ...
     sprintf(['Données : %s, feuille %s, tous les patients. HG moins HT contient aussi la différence de ', ...
-             'définition des angles (HT Cardan plan du thorax, HG YXY élévation 3D). Thorax : amplitude ', ...
-             'sans sens (abs), r indicatif.'], getFileName(DataFile), md.sheet), ...
+             'définition des angles (HT Cardan plan du thorax, HG YXY élévation 3D). Thorax : ROM ', ...
+             '(max moins min du signal signé, feuille Cinematique), r indicatif.'], getFileName(DataFile), md.sheet), ...
     'EdgeColor', 'none', 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
     'FontSize', 7, 'Interpreter', 'none');
 end
@@ -621,8 +626,9 @@ end
 %   1) régression D ~ posture : pente, IC 95 %, p vs 0 et p vs -1
 %      (pente -1 = le déficit d'élévation gravitaire égale l'inclinaison :
 %      aucune compensation ; entre -1 et 0 = compensation partielle)
-%   2) thorax (colonne Thoracique, même métrique) ~ posture : Pearson,
-%      Spearman (le tronc bouge-t-il différemment selon la posture ?)
+%   2) ROM du thorax (colonne Thoracique de la feuille Cinematique, quelle
+%      que soit la métrique) ~ posture : Pearson, Spearman (le tronc
+%      bouge-t-il différemment selon la posture ?)
 %   3) comparaison de r(posture, HG) et r(posture, HT), corrélations
 %      dépendantes (variable commune = posture) : test Z de Meng, Rosenthal
 %      et Rubin (1992), qui utilise aussi r(HG, HT). Répond à « l'effet est-il
@@ -634,7 +640,7 @@ end
 % Figure (inclinaison seulement, la SIR est dans l'Excel) : 2x3, lignes
 % flexion / scaption ; colonnes D vs inclinaison (référence pente moins 1),
 % thorax vs inclinaison, r(inclinaison, HT) vs r(inclinaison, HG).
-function R = TestHGminusHT(P, K, iP, iK, md, taskDef, postDef, groups, grpSuffix, cols, DataFile)
+function R = TestHGminusHT(P, K, Kthx, iP, iK, md, taskDef, postDef, groups, grpSuffix, cols, DataFile)
 
 R = struct('Metric', {}, 'Task', {}, 'Movement', {}, 'Posture', {}, 'Group', {}, 'n', {}, ...
     'Slope_HGminusHT_per_deg', {}, 'Slope_CI95_low', {}, 'Slope_CI95_high', {}, ...
@@ -659,7 +665,8 @@ for iT = 1:numel(taskDef)
             colOf = @(joint) sprintf('%s_%s_%s%s', td.key, md.key, joint, grpSuffix{g});
             hg = getCol(K, colOf('Humerogravitaire')); hg = hg(iK);
             ht = getCol(K, colOf('Humerothoracique')); ht = ht(iK);
-            tx = getCol(K, colOf('Thoracique'));       tx = tx(iK);
+            tx = alignCol(Kthx, sprintf('%s_ROM_Thoracique%s', td.key, grpSuffix{g}), getCol(K, 'Numero'));
+            tx = tx(iK);
 
             valid = ~isnan(xAll) & ~isnan(hg) & ~isnan(ht);
             x = xAll(valid); d = hg(valid) - ht(valid); n = numel(x);
@@ -721,7 +728,7 @@ for iT = 1:numel(taskDef)
 
         subplot(numel(taskDef), 3, (iT - 1) * 3 + 2);
         hold off; box on; legend('Location', 'best', 'FontSize', 7);
-        xlabel(pd.label); ylabel(sprintf('%s thorax %s (deg)', md.name, td.label));
+        xlabel(pd.label); ylabel(sprintf('ROM thorax %s (deg)', td.label));
         title(txTxt, 'FontSize', 7);
 
         subplot(numel(taskDef), 3, (iT - 1) * 3 + 3);

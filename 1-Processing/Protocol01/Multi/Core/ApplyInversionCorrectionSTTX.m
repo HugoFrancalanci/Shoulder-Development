@@ -30,6 +30,7 @@
 %                  range    = moyenne des cycles de (max - min) du BRUT
 %                             (indépendant du signe et de l'offset)
 %                  max      = moyenne des cycles de max(sp*(brut - repos))
+%                             (ST seulement : pas de pic pour le thorax)
 %                             + repos_cohorte
 %                  pct      = range corrigé / range de la référence (HT ou HG)
 %                repos = moyenne du début et de la fin du cycle du patient ;
@@ -45,7 +46,7 @@
 %
 % Inputs  : Results   (struct array) tel que construit par les fonctions
 %                     Compute*ContributionsFromDatabase (champs
-%                     <M>_<PRE|POST>_deg/_pct/_max_deg, M = ST, TX)
+%                     <M>_<PRE|POST>_deg/_pct, M = ST, TX ; _max_deg pour ST)
 %           Curves    (struct array, même indexation que Results) champs
 %                     <M>_<C> (courbe abs) et <M>_<C>_raw, _rangeRaw,
 %                     _peakExc, _excSign (M = ST, TX ; C = PRE, POST)
@@ -127,7 +128,9 @@ for it = 1:numel(tasks)
             Curves(i).(f)                = sp * (raw - base) + rest;
             Results(i).([f, '_deg'])     = rangeRaw;
             Results(i).([f, '_pct'])     = safePct(rangeRaw, Results(i).([refPrefix, '_', cn, '_deg']));
-            Results(i).([f, '_max_deg']) = Curves(i).([f, '_peakExc']) + rest;
+            if isfield(Results, [f, '_max_deg'])   % pas de pic pour le thorax (TX)
+                Results(i).([f, '_max_deg']) = Curves(i).([f, '_peakExc']) + rest;
+            end
             Results(i).([f, '_corrected']) = 1;
             nFix = nFix + 1;
         end

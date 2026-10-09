@@ -150,11 +150,18 @@ C3D ni par `MAIN_MULTI_Protocol_01.m`.
 Le résultat est accumulé dans le struct `Results` (une ligne par
 patient/côté/tâche — ANALYTIC1 à ANALYTIC4 sur des lignes séparées), avec
 les colonnes PRE et POST côte à côte, plus le pic d'angle atteint
-(`*_max_deg`, distinct du range) pour chaque DOF :
+(`*_max_deg`, distinct du range) pour HT, GH et ST :
 `PatientID, Side, Task, HT_PRE_deg, GH_PRE_deg, GH_PRE_pct, ST_PRE_deg,
 ST_PRE_pct, TX_PRE_deg, TX_PRE_pct, HT_POST_deg, GH_POST_deg, ...,
-HT_PRE_max_deg, GH_PRE_max_deg, ST_PRE_max_deg, TX_PRE_max_deg,
-HT_POST_max_deg, ...`
+HT_PRE_max_deg, GH_PRE_max_deg, ST_PRE_max_deg, HT_POST_max_deg, ...`
+
+**Thorax (TX)** : le range est `max - min` de l'angle **signé** (pas de
+`abs()`), car la flexion du thorax passe souvent par zéro pendant le geste
+(fléchi au repos, redressé au pic) et `abs()` replierait la courbe
+(amplitude sous-estimée : 85 % des sessions en flexion passent par zéro,
+écart médian -4.5°). Pas de pic pour le thorax (`max |angle|` mélangerait la
+flexion au repos et l'extension au pic) : le thorax est décrit par son range
+et par la flexion signée (`ComputePostureFromDatabase.m`).
 
 Elle extrait aussi `HT_curve`/`GH_curve`/`ST_curve`/`TX_curve` (angle vs % cycle),
 accumulées à part dans `Curves` (avec le `Task` d'origine) et tracées par la
@@ -187,8 +194,9 @@ vérifier `HG_*_deg` contre `HT_*_deg` avant de s'y fier.
 
 Colonnes : `PatientID, Side, Task, HG_PRE_deg, GH_PRE_deg, GH_PRE_pct,
 ST_PRE_deg, ST_PRE_pct, TX_PRE_deg, TX_PRE_pct, HG_POST_deg, ..., HG_PRE_max_deg,
-GH_PRE_max_deg, ST_PRE_max_deg, TX_PRE_max_deg, HG_POST_max_deg, ...`
-(export Excel, feuille `Functional_Contributions`).
+GH_PRE_max_deg, ST_PRE_max_deg, HG_POST_max_deg, ...`
+(export Excel, feuille `Functional_Contributions` ; thorax : range signé, pas
+de pic, comme ci-dessus).
 
 ## Correction des courbes ST et TX « inversées » (clinical + functional)
 
@@ -276,7 +284,8 @@ référence ni les résultats des patients.
 **Export.** Feuille séparée dans chaque Excel (`Clinical_Asymptomatic`,
 `Functional_Asymptomatic`), une ligne par épaule/tâche pour la seule condition
 retenue : `Numero, PatientID, Side, Task, Condition, HT_ASYM_deg` (ou
-`HG_ASYM_deg`), `GH/ST/TX_ASYM_deg`, `GH/ST/TX_ASYM_pct`, `*_ASYM_max_deg`, et
+`HG_ASYM_deg`), `GH/ST/TX_ASYM_deg`, `GH/ST/TX_ASYM_pct`, `*_ASYM_max_deg` (sauf
+thorax), et
 `ST/TX_ASYM_corrected` (0/1) si la correction est active. Les feuilles
 principales (`Clinical_Contributions`, `Functional_Contributions`) sont
 inchangées.
@@ -369,6 +378,21 @@ retenue). HG, HT, GH (DOF de la tâche, valeur absolue), ST rotation latérale
 (signée, sens harmonisé entre côtés) et thorax (flexion signée), moyenne ± 1 SD
 par population, flexion et scaption (figure 2 x 5). Sortie `Curves` :
 `Curves.<PRE|POST|ASYM>.<ANALYTIC1|ANALYTIC2>.<HG|HT|GH|ST|TX>` = [n x 101].
+
+**Illustrations des mesures** (`Multi/Core/PlotMeasureIllustrations.m`, section
+dédiée de `MAIN`) : sur un patient réel (Numero donné, ou patient
+représentatif choisi automatiquement : type B, valeurs proches de la moyenne,
+session PRE non corrigée pour le SXS), retraite ses sessions PRE et POST par
+`runProtocol01` (copie locale montée sur un lecteur virtuel `subst`, BTK
+échouant sur les chemins accentués ou trop longs) et produit, avec une
+silhouette schématique du patient : 1) l'inclinaison thoracique assis et
+debout (vue sagittale, même échelle) ; 2) la SIR (vue de dessus dans le repère
+du thorax, 1re rotation Y de YXZ, côté gauche avec la convention de
+`ComputeKinematics`) ; 3) HG et HT au repos et au pic, en flexion (vue
+sagittale) et en scaption (vue de face), avec les courbes de l'essai. Valeurs
+affichées = valeurs du pipeline. Export PNG, PDF vectoriel et SVG (formes et
+textes séparés, modifiables dans Inkscape) dans le dossier `Illustrations` à
+côté de `Data_posture.xlsx`.
 
 **Stratification de l'inclinaison et seuil critique**
 (`Multi/Core/InclinationClassification.m`, section dédiée de `MAIN`, sortie

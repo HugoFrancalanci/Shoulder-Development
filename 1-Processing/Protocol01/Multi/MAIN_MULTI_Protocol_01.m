@@ -493,3 +493,12 @@ AsymptomaticComparison(PostureDataFile, AsymptomaticOutputFile);
 
 % Courbes moyennes HG, HT, GH, ST, thorax : rTSA PRE, POST et épaules saines
 MeanCurves = PlotMeanCurvesFromDatabase(DatabaseFile, PostureDataFile);
+
+%%
+% Illustrations des mesures (inclinaison, SIR, HG et HT) sur un patient réel,
+% avec silhouette ; PNG, PDF vectoriel et SVG (Article E02_01_Posture).
+% Retraite les sessions PRE et POST du patient (quelques minutes) ;
+% dernier argument = Numero du patient ([] = patient représentatif automatique)
+Folder.deps = fullfile(fileparts(Folder.toolbox), 'dependencies');
+IllustrationInfo = PlotMeasureIllustrations(Folder, PatientSelection, DataFolder, PostureDataFile, ...
+    fullfile(fileparts(PostureDataFile), 'Illustrations'), 152);
