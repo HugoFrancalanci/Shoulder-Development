@@ -90,11 +90,17 @@ Results = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
     'HT_POST_deg', {}, 'GH_POST_deg', {}, 'GH_POST_pct', {}, ...
     'ST_POST_deg', {}, 'ST_POST_pct', {}, 'TX_POST_deg', {}, 'TX_POST_pct', {}, ...
     'HT_PRE_max_deg', {}, 'GH_PRE_max_deg', {}, 'ST_PRE_max_deg', {}, ...
-    'HT_POST_max_deg', {}, 'GH_POST_max_deg', {}, 'ST_POST_max_deg', {});
+    'HT_POST_max_deg', {}, 'GH_POST_max_deg', {}, 'ST_POST_max_deg', {}, ...
+    'TXlat_PRE_deg', {}, 'TXlat_POST_deg', {});
 % Pas de pic pour le thorax : max |angle| n'a pas de sens quand la flexion
 % passe par zéro (il mélange la flexion au repos et l'extension au pic) ;
 % le thorax est décrit par son ROM (signal signé) et la flexion signée
 % (ComputePostureFromDatabase.m)
+% TXlat : ROM de l'inclinaison latérale du thorax (Joint 11, DOF1 X), en
+% plus de TX (flexion / extension) : en scaption, c'est surtout par
+% l'inclinaison latérale que le tronc compense. Hors pourcentages et hors
+% correction des courbes inversées (amplitude du signal signé, indépendante
+% du sens).
 
 % Courbes angle vs % cycle
 Curves = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
@@ -161,6 +167,7 @@ for iP = 1:nInFile
                 Results(ri).HT_PRE_max_deg = NaN; Results(ri).HT_POST_max_deg = NaN;
                 Results(ri).GH_PRE_max_deg = NaN; Results(ri).GH_POST_max_deg = NaN;
                 Results(ri).ST_PRE_max_deg = NaN; Results(ri).ST_POST_max_deg = NaN;
+                Results(ri).TXlat_PRE_deg  = NaN; Results(ri).TXlat_POST_deg  = NaN;
             end
 
             Results(ri).(['HT_', condition, '_deg']) = c.HT_range;
@@ -174,6 +181,7 @@ for iP = 1:nInFile
             Results(ri).(['HT_', condition, '_max_deg']) = c.HT_max;
             Results(ri).(['GH_', condition, '_max_deg']) = c.GH_max;
             Results(ri).(['ST_', condition, '_max_deg']) = c.ST_max;
+            Results(ri).(['TXlat_', condition, '_deg'])  = c.TXlat_range;
 
             if length(Curves) < ri
                 Curves(ri).Numero    = d.Numero;
@@ -219,6 +227,7 @@ for iP = 1:nInFile
             AsymResults(ai).HT_ASYM_max_deg = c.HT_max;
             AsymResults(ai).GH_ASYM_max_deg = c.GH_max;
             AsymResults(ai).ST_ASYM_max_deg = c.ST_max;
+            AsymResults(ai).TXlat_ASYM_deg  = c.TXlat_range;
             AsymCurves(ai).PatientID = d.PatientID;
             AsymCurves(ai).Side      = c.side;
             AsymCurves(ai).Task      = c.task;
@@ -368,6 +377,10 @@ end
 %   GH Joint(2/7)  ANALYTIC1: DOF3 Z — flexion/extension | ANALYTIC2: DOF1 X — abduction | ANALYTIC3/4: DOF2 Y — axial rotation
 %   ST Joint(3/8)  ANALYTIC1/2: DOF1 X — upward rot. | ANALYTIC3/4: DOF2 Y — protraction/retraction (YXZ)
 %   TX Joint(11)   ANALYTIC1/2: DOF3 Z — flexion     | ANALYTIC3/4: DOF2 Y — axial rotation (ZXY)
+%   TXlat Joint(11) all tasks: DOF1 X — lateral tilt (+ = toward the right),
+%                  middle angle of ZXY (small, no gimbal lock) ; range on the
+%                  SIGNED angle like TX (getRangeCycleTH), not part of the
+%                  percentages
 %
 % HT_max/GH_max/ST_max : peak angle reached (mean of each cycle's
 % max |angle|, same cycle-averaging convention as HT_range etc., but max
@@ -394,7 +407,7 @@ function Contrib = ComputeClinicalContributions(Trial)
 
 Contrib = struct('task', {}, 'side', {}, 'HT_range', {}, ...
                   'GH_range', {}, 'GH_pct', {}, 'ST_range', {}, 'ST_pct', {}, ...
-                  'TX_range', {}, 'TX_pct', {}, ...
+                  'TX_range', {}, 'TX_pct', {}, 'TXlat_range', {}, ...
                   'HT_max', {}, 'GH_max', {}, 'ST_max', {}, ...
                   'HT_curve', {}, 'GH_curve', {}, 'ST_curve', {}, 'TX_curve', {}, ...
                   'ST_raw', {}, 'ST_rangeRaw', {}, 'ST_peakExc', {}, 'ST_excSign', {}, ...
@@ -405,7 +418,8 @@ Contrib = struct('task', {}, 'side', {}, 'HT_range', {}, ...
 % par la tache dans ComputeKinematics.m).
 % ANALYTIC3/4 (rotations) : DOF2 Y (axial / protraction-retraction) partout.
 taskDOF = struct('name', {'ANALYTIC1', 'ANALYTIC2', 'ANALYTIC3', 'ANALYTIC4'}, ...
-                  'dofHT', {3, 1, 2, 2}, 'dofGH', {3, 1, 2, 2}, 'dofST', {1, 1, 2, 2}, 'dofTX', {3, 3, 2, 2});
+                  'dofHT', {3, 1, 2, 2}, 'dofGH', {3, 1, 2, 2}, 'dofST', {1, 1, 2, 2}, 'dofTX', {3, 3, 2, 2}, ...
+                  'dofTXlat', {1, 1, 1, 1});
 
 sideDef = struct('side', {'R','L'}, 'jiHT', {1,6}, 'jiGH', {2,7}, 'jiST', {3,8}, ...
                   'cycField', {'rcycle','lcycle'});
@@ -446,6 +460,7 @@ for iT = 1:numel(taskDOF)
         Contrib(i).ST_pct   = safePct(st, ht);
         Contrib(i).TX_range = tx;
         Contrib(i).TX_pct   = safePct(tx, ht);
+        Contrib(i).TXlat_range = getRangeCycleTH(t, 11, taskDOF(iT).dofTXlat, s.cycField);
 
         Contrib(i).HT_max = getPeakCycle(t, s.jiHT, dofHT, s.cycField);
         Contrib(i).GH_max = getPeakCycle(t, s.jiGH, dofGH, s.cycField);

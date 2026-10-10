@@ -163,6 +163,14 @@ HT_PRE_max_deg, GH_PRE_max_deg, ST_PRE_max_deg, HT_POST_max_deg, ...`
 flexion au repos et l'extension au pic) : le thorax est décrit par son range
 et par la flexion signée (`ComputePostureFromDatabase.m`).
 
+**Inclinaison latérale du thorax (TXlat)** : colonnes `TXlat_PRE_deg`,
+`TXlat_POST_deg` (et `TXlat_ASYM_deg`), range sur l'angle signé du DOF1 X du
+`Joint(11)` (+ = vers la droite ; angle du milieu de ZXY, petit, sans blocage
+de cardan ni saut de ±180°), en plus de TX (flexion / extension). En scaption,
+c'est surtout par l'inclinaison latérale que le tronc compense : r(HG moins HT,
+ROM latéral) = 0.54 en POST contre 0.13 pour la flexion / extension. Hors
+pourcentages et hors correction des courbes inversées.
+
 Elle extrait aussi `HT_curve`/`GH_curve`/`ST_curve`/`TX_curve` (angle vs % cycle),
 accumulées à part dans `Curves` (avec le `Task` d'origine) et tracées par la
 fonction locale `PlotHTContributionsCurves` (aussi fusionnée dans
@@ -355,6 +363,14 @@ pendant l'élévation), `Min`/`Max`. Feuille `Thorax_Flexion_Signed` de
 `Data_posture.xlsx` (ex. `analytic1_TXflex_Change_Post`). Même calcul pour les
 épaules asymptomatiques (cycles du bras sain, session retenue) : feuille
 `Thorax_Flexion_Signed_Asym`, colonnes `<tâche>_TXflex_<stat>_Asym` + `Condition`.
+Même résumé pour l'inclinaison latérale du thorax (DOF1 X), après les colonnes
+de flexion : `<tâche>_TXlat_<Start|AtPeak|Change|Min|Max>_<Pre|Post|Asym>`,
+signe ramené au bras mesuré (> 0 = le tronc penche du côté opposé au bras).
+Élévations bilatérales : en POST, le tronc penche du côté opposé au bras opéré
+(vers le côté sain) ; pour le bras sain, la valeur est donc en général négative.
+Ces colonnes, et `<tâche>_ROM_ThoraciqueLateral_<Pre|Post|Asym>`, sont aussi
+dans `Data_posture.xlsx` (feuilles `Cinematique`, `Cinematique_thorax` et leurs
+versions `_Asym`).
 
 **Épaules asymptomatiques vs rTSA** (`Multi/Core/AsymptomaticComparison.m`,
 section dédiée de `MAIN`, sortie `AsymptomaticOutputFile`) : lit les feuilles
@@ -477,7 +493,9 @@ Ampleur de la contribution du thorax (`DescribeThoraxContribution`, feuille
 `Thorax_Contribution`, 1 figure par métrique) : distribution de HG moins HT par
 patient (moyenne, SD, médiane, IQR, étendue, % |HG moins HT| > 5° et > 10°) et
 du thorax (colonnes `Thoracique`), PRE et POST, r(HG moins HT, thorax) indicatif
-(thorax = amplitude sans sens).
+(thorax = amplitude sans sens) ; si les colonnes `ThoraciqueLateral` existent,
+même description pour le ROM d'inclinaison latérale du thorax et
+r(HG moins HT, inclinaison latérale) (3e colonne de la figure).
 Inclinaison assis vs debout (`AnalyseSeatedStanding`, feuille
 `Seated_vs_Standing`) : colonne `Inclinaison_thoracique_Pre_Calibration3`
 (debout) vs `Inclinaison_thoracique_Pre` (assis), Bland-Altman, ICC(A,1), t
@@ -486,7 +504,12 @@ propre à chaque position). Flexion thoracique signée
 (`AnalyseThoraxFlexion`, feuille `Thorax_Flexion`, lit la feuille
 `Cinematique_thorax`) : thorax au repos vs inclinaison, changement pendant le
 geste (t vs 0, % qui se redressent, POST moins PRE apparié), HG moins HT vs
-changement (ROM et pic), changement vs inclinaison.
+changement (ROM et pic), changement vs inclinaison ; si les colonnes
+`<tâche>_TXlat_Change_<Pre|Post>` existent, inclinaison latérale du thorax au
+pic (> 0 = côté opposé au bras ; moyenne, t vs 0, % qui penchent du côté opposé)
+et HG moins HT vs inclinaison latérale (5e colonne de la figure). Résultat : en
+scaption, HG moins HT suit l'inclinaison latérale (r = 0.36 PRE, 0.48 POST) et
+non la flexion / extension ; en flexion, l'inverse.
 Axe SIR borné à 70° (`SIRAxisMax`, affichage seulement : points au-delà comptés
 dans le titre, gardés dans les calculs). Section indépendante dans `MAIN_MULTI_Protocol_01.m`.
 

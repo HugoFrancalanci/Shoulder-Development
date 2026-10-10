@@ -55,7 +55,11 @@
 %           geste, ANALYTIC1/2, PRE et POST, une ligne par patient/côté
 %           (summariseThoraxFlexion, lecture seule des cycles de la base) ;
 %           feuille 'Thorax_Flexion_Signed', colonnes au format de
-%           Data_posture.xlsx (ex. analytic1_TXflex_Change_Post)
+%           Data_posture.xlsx (ex. analytic1_TXflex_Change_Post), puis
+%           inclinaison latérale signée du thorax (DOF1 X, > 0 = du côté
+%           opposé au bras mesuré), colonnes <tâche>_TXlat_<stat>_<Pre|Post>
+%           (en scaption, le tronc compense surtout par l'inclinaison
+%           latérale)
 %           ThxFlexAsym (struct array) idem pour les épaules
 %           asymptomatiques (cycles du bras asymptomatique, session
 %           retenue seulement) ; feuille 'Thorax_Flexion_Signed_Asym',
@@ -103,8 +107,12 @@ conditions = {'PRE', 'POST'};
 % Flexion thoracique signée pendant le geste (voir summariseThoraxFlexion) :
 % une ligne par patient/côté/tâche/condition, mise en large à l'export
 flexTasks = {'ANALYTIC1', 'ANALYTIC2'};
+% Inclinaison latérale signée du thorax (Lat*), même résumé sur le DOF1 X,
+% signe ramené au bras mesuré : > 0 = le tronc penche du côté opposé au
+% bras (voir latSign)
 ThxLong = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, 'Condition', {}, ...
-    'Start', {}, 'AtPeak', {}, 'Change', {}, 'Min', {}, 'Max', {}, 'nCycles', {});
+    'Start', {}, 'AtPeak', {}, 'Change', {}, 'Min', {}, 'Max', {}, 'nCycles', {}, ...
+    'LatStart', {}, 'LatAtPeak', {}, 'LatChange', {}, 'LatMin', {}, 'LatMax', {});
 ThxAsymLong = ThxLong;   % même chose pour les épaules asymptomatiques
 
 totalPatients = 0;
@@ -170,6 +178,7 @@ for iP = 1:nInFile
                 ThxLong(li).Start  = s.Start;    ThxLong(li).AtPeak = s.AtPeak;
                 ThxLong(li).Change = s.Change;   ThxLong(li).Min    = s.Min;
                 ThxLong(li).Max    = s.Max;      ThxLong(li).nCycles = s.nCycles;
+                ThxLong(li) = addLateral(ThxLong(li), Trial(k), sides{iS});
             end
         end
 
@@ -202,6 +211,7 @@ for iP = 1:nInFile
             ThxAsymLong(li).Start  = s.Start;    ThxAsymLong(li).AtPeak = s.AtPeak;
             ThxAsymLong(li).Change = s.Change;   ThxAsymLong(li).Min    = s.Min;
             ThxAsymLong(li).Max    = s.Max;      ThxAsymLong(li).nCycles = s.nCycles;
+            ThxAsymLong(li) = addLateral(ThxAsymLong(li), Trial(k), asymSide);
         end
     end
 end
@@ -664,11 +674,15 @@ end
 %            l'élévation, < 0 = il s'enroule)
 %   Min / Max : extrêmes signés du thorax sur le cycle
 % Vide si pas de cycle thorax.
-function s = summariseThoraxFlexion(t, side)
+% dof, sgn (optionnels) : DOF du thorax résumé (3 = flexion par défaut,
+% 1 = inclinaison latérale) et signe appliqué au signal (1 par défaut).
+function s = summariseThoraxFlexion(t, side, dof, sgn)
+if nargin < 3, dof = 3; end
+if nargin < 4, sgn = 1; end
 s = [];
 if strcmp(side, 'R'), cf = 'rcycle'; jHG = 12; else, cf = 'lcycle'; jHG = 13; end
 if ~isfield(t, 'Joint') || numel(t.Joint) < 11, return; end
-tx = cycleCurves(t.Joint(11), cf, 3, true);
+tx = sgn * cycleCurves(t.Joint(11), cf, dof, true);
 if isempty(tx), return; end
 hg = [];
 if numel(t.Joint) >= jHG, hg = cycleCurves(t.Joint(jHG), cf, 1, false); end
@@ -693,6 +707,24 @@ s.Max     = mean(mx, 'omitnan');
 s.nCycles = sum(~isnan(st));
 end
 
+% Inclinaison latérale signée du thorax (Joint 11, DOF1 X ; ComputeKinematics :
+% + = inclinaison vers la droite), ramenée au bras mesuré : signe inversé
+% pour le bras droit, de sorte que > 0 = le tronc penche du côté opposé au
+% bras. Élévations bilatérales : en POST, le tronc penche du côté opposé au
+% bras opéré (vers le côté sain) ; pour le bras sain, la valeur est donc en
+% général négative. Mêmes statistiques que la flexion (Start, AtPeak,
+% Change, Min, Max), champs Lat*.
+function r = addLateral(r, t, side)
+l = summariseThoraxFlexion(t, side, 1, latSign(side));
+for st = {'Start', 'AtPeak', 'Change', 'Min', 'Max'}
+    if isempty(l), r.(['Lat', st{1}]) = NaN; else, r.(['Lat', st{1}]) = l.(st{1}); end
+end
+end
+
+function sg = latSign(side)
+if strcmp(side, 'R'), sg = -1; else, sg = 1; end
+end
+
 % Cycles [101 x nCycles] d'un DOF de Joint.Euler ; shared = joint unique
 % (thorax) : repli sur l'autre côté si le champ demandé est vide
 function c = cycleCurves(J, cf, dof, shared)
@@ -709,11 +741,14 @@ end
 
 % Format large, une ligne par patient/côté, colonnes nommées comme
 % Data_posture.xlsx : <tâche>_TXflex_<Start|AtPeak|Change|Min|Max>_<Pre|Post>
-% (+ <tâche>_TXflex_nCycles_<Pre|Post>), ex. analytic1_TXflex_Change_Post
+% (+ <tâche>_TXflex_nCycles_<Pre|Post>), ex. analytic1_TXflex_Change_Post ;
+% puis l'inclinaison latérale <tâche>_TXlat_<Start|AtPeak|Change|Min|Max>_<Pre|Post>
+% (> 0 = du côté opposé au bras), après toutes les colonnes de flexion
 function W = pivotThoraxFlexion(L, flexTasks)
 W = [];
 if isempty(L), return; end
 stats = {'Start', 'AtPeak', 'Change', 'Min', 'Max', 'nCycles'};
+latStats = {'Start', 'AtPeak', 'Change', 'Min', 'Max'};
 cond  = struct('PRE', 'Pre', 'POST', 'Post');
 keys  = strcat(arrayfun(@num2str, [L.Numero], 'UniformOutput', false), '|', {L.Side});
 [uk, iu] = unique(keys, 'stable');
@@ -726,9 +761,19 @@ for i = 1:numel(uk)
             end
         end
     end
+    for iT = 1:numel(flexTasks)
+        for cc = {'PRE', 'POST'}
+            for st = latStats
+                row.(sprintf('%s_TXlat_%s_%s', lower(flexTasks{iT}), st{1}, cond.(cc{1}))) = NaN;
+            end
+        end
+    end
     for j = find(strcmp(keys, uk{i}))
         for st = stats
             row.(sprintf('%s_TXflex_%s_%s', lower(L(j).Task), st{1}, cond.(L(j).Condition))) = L(j).(st{1});
+        end
+        for st = latStats
+            row.(sprintf('%s_TXlat_%s_%s', lower(L(j).Task), st{1}, cond.(L(j).Condition))) = L(j).(['Lat', st{1}]);
         end
     end
     if isempty(W), W = row; else, W(end+1) = row; end %#ok<AGROW>
@@ -742,6 +787,7 @@ function W = pivotThoraxFlexionAsym(L, flexTasks)
 W = [];
 if isempty(L), return; end
 stats = {'Start', 'AtPeak', 'Change', 'Min', 'Max', 'nCycles'};
+latStats = {'Start', 'AtPeak', 'Change', 'Min', 'Max'};
 keys  = strcat(arrayfun(@num2str, [L.Numero], 'UniformOutput', false), '|', {L.Side});
 [uk, iu] = unique(keys, 'stable');
 for i = 1:numel(uk)
@@ -752,9 +798,17 @@ for i = 1:numel(uk)
             row.(sprintf('%s_TXflex_%s_Asym', lower(flexTasks{iT}), st{1})) = NaN;
         end
     end
+    for iT = 1:numel(flexTasks)
+        for st = latStats
+            row.(sprintf('%s_TXlat_%s_Asym', lower(flexTasks{iT}), st{1})) = NaN;
+        end
+    end
     for j = find(strcmp(keys, uk{i}))
         for st = stats
             row.(sprintf('%s_TXflex_%s_Asym', lower(L(j).Task), st{1})) = L(j).(st{1});
+        end
+        for st = latStats
+            row.(sprintf('%s_TXlat_%s_Asym', lower(L(j).Task), st{1})) = L(j).(['Lat', st{1}]);
         end
     end
     if isempty(W), W = row; else, W(end+1) = row; end %#ok<AGROW>

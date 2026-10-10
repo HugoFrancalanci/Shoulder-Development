@@ -340,7 +340,13 @@ end
 %      gravitaire)
 %   4) Change vs inclinaison PRE : les patients inclinés se redressent-ils
 %      davantage ?
-% Figure 2x4 (lignes flexion / scaption ; HG moins HT en ROM).
+%   5) si les colonnes <tâche>_TXlat_Change_<Pre|Post> existent :
+%      inclinaison latérale du thorax au pic (> 0 = le tronc penche du côté
+%      opposé au bras) : moyenne (IC 95 %, t vs 0), % de patients qui
+%      penchent du côté opposé, et HG moins HT (ROM et pic) vs ce
+%      changement (en scaption, c'est surtout par là que le tronc compense)
+% Figure 2x4 (2x5 avec l'inclinaison latérale ; lignes flexion / scaption ;
+% HG moins HT en ROM).
 function R = AnalyseThoraxFlexion(DataFile, P, metricDef, taskDef, groups, grpSuffix, cols)
 R = [];
 try
@@ -362,17 +368,25 @@ R = struct('Task', {}, 'Movement', {}, 'Group', {}, 'n', {}, ...
     'p_ChangePOSTminusPRE', {}, ...
     'ROM_slope_HGminusHT_per_degChange', {}, 'ROM_r_HGminusHT_Change', {}, 'ROM_p_HGminusHT_Change', {}, ...
     'Pic_slope_HGminusHT_per_degChange', {}, 'Pic_r_HGminusHT_Change', {}, 'Pic_p_HGminusHT_Change', {}, ...
-    'slope_Change_per_degIncl', {}, 'r_Change_incl', {}, 'p_Change_incl', {});
+    'slope_Change_per_degIncl', {}, 'r_Change_incl', {}, 'p_Change_incl', {}, ...
+    'Lat_Change_mean', {}, 'Lat_Change_CI95_low', {}, 'Lat_Change_CI95_high', {}, 'p_Lat_Change_vs0', {}, ...
+    'Pct_lean_away', {}, ...
+    'ROM_slope_HGminusHT_per_degLatChange', {}, 'ROM_r_HGminusHT_LatChange', {}, 'ROM_p_HGminusHT_LatChange', {}, ...
+    'Pic_slope_HGminusHT_per_degLatChange', {}, 'Pic_r_HGminusHT_LatChange', {}, 'Pic_p_HGminusHT_LatChange', {});
+latKey = @(td, g) sprintf('%s_TXlat_Change%s', td.key, grpSuffix{g});
+hasLat = hasCol(Kt, latKey(taskDef(1), 1));
+nc     = 4 + hasLat;
 
 fig = figure('Name', 'Flexion thoracique signée pendant le geste', 'Color', 'w');
 for iT = 1:numel(taskDef)
     td = taskDef(iT);
     chg = cell(1, numel(groups));
-    txt = repmat({{}}, 1, 4);
+    txt = repmat({{}}, 1, nc);
     for g = 1:numel(groups)
         st = alignCol(Kt, sprintf('%s_TXflex_Start%s', td.key, grpSuffix{g}), numP);
         ch = alignCol(Kt, sprintf('%s_TXflex_Change%s', td.key, grpSuffix{g}), numP);
         chg{g} = ch;
+        if hasLat, lc = alignCol(Kt, latKey(td, g), numP); else, lc = NaN(size(ch)); end
 
         k = numel(R) + 1;
         R(k).Task = td.name; R(k).Movement = td.label; R(k).Group = groups{g};
@@ -402,8 +416,18 @@ for iT = 1:numel(taskDef)
             R(k).([md.name, '_slope_HGminusHT_per_degChange']) = b;
             R(k).([md.name, '_r_HGminusHT_Change'])            = r;
             R(k).([md.name, '_p_HGminusHT_Change'])            = p;
-            if iM == 1, Dplot = D; vdPlot = vd; end
+            % HG moins HT vs inclinaison latérale au pic
+            vl = ~isnan(D) & ~isnan(lc);
+            [rl, pl] = pearsonP(lc(vl), D(vl));
+            R(k).([md.name, '_slope_HGminusHT_per_degLatChange']) = slopeTest(lc(vl), D(vl));
+            R(k).([md.name, '_r_HGminusHT_LatChange'])            = rl;
+            R(k).([md.name, '_p_HGminusHT_LatChange'])            = pl;
+            if iM == 1, Dplot = D; vdPlot = vd; vlPlot = vl; end
         end
+        [R(k).Lat_Change_mean, R(k).Lat_Change_CI95_low, R(k).Lat_Change_CI95_high, R(k).p_Lat_Change_vs0] = ...
+            meanCI(lc(~isnan(lc)));
+        R(k).Pct_lean_away = 100 * mean(lc(~isnan(lc)) > 0);
+        if ~hasLat, R(k).Pct_lean_away = NaN; end
 
         vi = ~isnan(ch) & ~isnan(incl);
         R(k).slope_Change_per_degIncl = slopeTest(incl(vi), ch(vi));
@@ -411,50 +435,63 @@ for iT = 1:numel(taskDef)
 
         % --- Figure ---
         figure(fig);
-        c0 = (iT - 1) * 4;
-        subplot(numel(taskDef), 4, c0 + 1); hold on;
+        c0 = (iT - 1) * nc;
+        subplot(numel(taskDef), nc, c0 + 1); hold on;
         scatter(incl(vs), st(vs), 12, cols(g, :), 'filled', 'MarkerFaceAlpha', 0.5, 'HandleVisibility', 'off');
         addFit(incl(vs), st(vs), cols(g, :));
         txt{1}{end+1} = sprintf('%s : r=%.2f (%s)', groups{g}, R(k).r_Start_incl, fmtP(R(k).p_Start_incl));
 
-        subplot(numel(taskDef), 4, c0 + 2); hold on;
+        subplot(numel(taskDef), nc, c0 + 2); hold on;
         histogram(ch(v), 'BinWidth', 2.5, 'FaceColor', cols(g, :), 'FaceAlpha', 0.45, 'EdgeColor', 'none', ...
             'HandleVisibility', 'off');
         xline(R(k).Change_mean, 'Color', cols(g, :) * 0.7, 'LineWidth', 2, 'HandleVisibility', 'off');
         txt{2}{end+1} = sprintf('%s : %.1f° [%.1f ; %.1f], %.0f %% se redressent', groups{g}, ...
             R(k).Change_mean, R(k).Change_CI95_low, R(k).Change_CI95_high, R(k).Pct_extension);
 
-        subplot(numel(taskDef), 4, c0 + 3); hold on;
+        subplot(numel(taskDef), nc, c0 + 3); hold on;
         scatter(ch(vdPlot), Dplot(vdPlot), 12, cols(g, :), 'filled', 'MarkerFaceAlpha', 0.5, 'HandleVisibility', 'off');
         addFit(ch(vdPlot), Dplot(vdPlot), cols(g, :));
         txt{3}{end+1} = sprintf('%s : pente %.2f, r=%.2f (%s)', groups{g}, R(k).ROM_slope_HGminusHT_per_degChange, ...
             R(k).ROM_r_HGminusHT_Change, fmtP(R(k).ROM_p_HGminusHT_Change));
 
-        subplot(numel(taskDef), 4, c0 + 4); hold on;
+        subplot(numel(taskDef), nc, c0 + 4); hold on;
         scatter(incl(vi), ch(vi), 12, cols(g, :), 'filled', 'MarkerFaceAlpha', 0.5, 'HandleVisibility', 'off');
         addFit(incl(vi), ch(vi), cols(g, :));
         txt{4}{end+1} = sprintf('%s : r=%.2f (%s)', groups{g}, R(k).r_Change_incl, fmtP(R(k).p_Change_incl));
+
+        if hasLat
+            subplot(numel(taskDef), nc, c0 + 5); hold on;
+            scatter(lc(vlPlot), Dplot(vlPlot), 12, cols(g, :), 'filled', 'MarkerFaceAlpha', 0.5, 'HandleVisibility', 'off');
+            addFit(lc(vlPlot), Dplot(vlPlot), cols(g, :));
+            txt{5}{end+1} = sprintf('%s : %.1f° (%.0f %% côté opposé), pente %.2f, r=%.2f (%s)', groups{g}, ...
+                R(k).Lat_Change_mean, R(k).Pct_lean_away, R(k).ROM_slope_HGminusHT_per_degLatChange, ...
+                R(k).ROM_r_HGminusHT_LatChange, fmtP(R(k).ROM_p_HGminusHT_LatChange));
+        end
     end
     txt{2}{end+1} = sprintf('POST moins PRE : %.1f° (%s)', R(end).ChangePOSTminusPRE_mean, fmtP(R(end).p_ChangePOSTminusPRE));
 
     xl = {'Inclinaison thoracique PRE (deg)', sprintf('Changement thorax, %s (deg)', td.label), ...
-          sprintf('Changement thorax, %s (deg)', td.label), 'Inclinaison thoracique PRE (deg)'};
+          sprintf('Changement thorax, %s (deg)', td.label), 'Inclinaison thoracique PRE (deg)', ...
+          sprintf('Incl. latérale au pic, %s (deg)', td.label)};
     yl = {sprintf('Thorax au repos, %s (deg)', td.label), 'Nombre de patients', ...
-          sprintf('HG moins HT, ROM %s (deg)', td.label), sprintf('Changement thorax, %s (deg)', td.label)};
-    for c = 1:4
-        subplot(numel(taskDef), 4, (iT - 1) * 4 + c);
-        if c == 2 || c == 3, xline(0, ':k', 'HandleVisibility', 'off'); end
-        if c == 3 || c == 4, yline(0, ':k', 'HandleVisibility', 'off'); end
+          sprintf('HG moins HT, ROM %s (deg)', td.label), sprintf('Changement thorax, %s (deg)', td.label), ...
+          sprintf('HG moins HT, ROM %s (deg)', td.label)};
+    for c = 1:nc
+        subplot(numel(taskDef), nc, (iT - 1) * nc + c);
+        if any(c == [2 3 5]), xline(0, ':k', 'HandleVisibility', 'off'); end
+        if any(c == [3 4 5]), yline(0, ':k', 'HandleVisibility', 'off'); end
         hold off; box on; groupLegend(groups, cols);
         xlabel(xl{c}); ylabel(yl{c}); title(txt{c}, 'FontSize', 7);
     end
 end
-sgtitle({'Flexion thoracique signée (négatif = flexion, positif = extension) : flexion (ligne 1), scaption (ligne 2)', ...
-         'Thorax au repos vs inclinaison | changement pendant le geste | HG moins HT vs changement | changement vs inclinaison'}, ...
+ttl2 = 'Thorax au repos vs inclinaison | changement pendant le geste | HG moins HT vs changement | changement vs inclinaison';
+if hasLat, ttl2 = [ttl2, ' | HG moins HT vs inclinaison latérale']; end
+sgtitle({'Flexion thoracique signée (négatif = flexion, positif = extension) : flexion (ligne 1), scaption (ligne 2)', ttl2}, ...
         'FontSize', 10);
 annotation(fig, 'textbox', [0 0 1 0.03], 'String', ...
     sprintf(['Données : %s, feuilles Posture, Cinematique_thorax, Cinematique. Changement = thorax au pic ', ...
-             'd''élévation HG moins thorax au début du cycle (> 0 = le tronc se redresse).'], getFileName(DataFile)), ...
+             'd''élévation HG moins thorax au début du cycle (> 0 = le tronc se redresse). Inclinaison ', ...
+             'latérale au pic : > 0 = le tronc penche du côté opposé au bras.'], getFileName(DataFile)), ...
     'EdgeColor', 'none', 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
     'FontSize', 7, 'Interpreter', 'none');
 end
@@ -516,8 +553,12 @@ end
 % moins min du signal signé, feuille Cinematique, le même pour les deux
 % métriques), amplitude sans sens (flexion ou extension), donc r(D, thorax)
 % est seulement indicatif (voir la flexion thoracique signée).
-% Figure : 2x2, lignes flexion / scaption ; colonnes distribution de D et
-% distribution du thorax, PRE et POST superposés.
+% Inclinaison latérale du thorax (colonne ThoraciqueLateral, ROM du signal
+% signé), si présente : même description et r(D, inclinaison latérale). En
+% scaption, c'est surtout par l'inclinaison latérale que le tronc compense.
+% Figure : 2x2 (2x3 avec l'inclinaison latérale), lignes flexion / scaption ;
+% colonnes distribution de D, du ROM de flexion / extension du thorax et du
+% ROM d'inclinaison latérale, PRE et POST superposés.
 function R = DescribeThoraxContribution(K, Kthx, md, taskDef, groups, grpSuffix, cols, DataFile)
 
 R = struct('Metric', {}, 'Task', {}, 'Movement', {}, 'Group', {}, 'n', {}, ...
@@ -525,13 +566,17 @@ R = struct('Metric', {}, 'Task', {}, 'Movement', {}, 'Group', {}, 'n', {}, ...
     'D_mean', {}, 'D_SD', {}, 'D_median', {}, 'D_Q1', {}, 'D_Q3', {}, 'D_min', {}, 'D_max', {}, ...
     'absD_mean', {}, 'Pct_absD_gt5', {}, 'Pct_absD_gt10', {}, ...
     'TX_mean', {}, 'TX_SD', {}, 'TX_median', {}, 'TX_Q1', {}, 'TX_Q3', {}, 'TX_min', {}, 'TX_max', {}, ...
-    'r_D_TX', {}, 'p_D_TX', {});
+    'r_D_TX', {}, 'p_D_TX', {}, ...
+    'TXlat_mean', {}, 'TXlat_SD', {}, 'TXlat_median', {}, 'r_D_TXlat', {}, 'p_D_TXlat', {});
+latCol = @(td, g) sprintf('%s_ROM_ThoraciqueLateral%s', td.key, grpSuffix{g});
+hasLat = hasCol(Kthx, latCol(taskDef(1), 1));
+nCol   = 2 + hasLat;
 
 fig = figure('Name', sprintf('Contribution du thorax, %s, flexion et scaption', md.name), 'Color', 'w');
 for iT = 1:numel(taskDef)
     td = taskDef(iT);
-    Dg = cell(1, numel(groups)); Tg = cell(1, numel(groups));
-    dTxt = cell(1, numel(groups)); tTxt = cell(1, numel(groups));
+    Dg = cell(1, numel(groups)); Tg = cell(1, numel(groups)); Lg = cell(1, numel(groups));
+    dTxt = cell(1, numel(groups)); tTxt = cell(1, numel(groups)); lTxt = cell(1, numel(groups));
     for g = 1:numel(groups)
         colOf = @(joint) sprintf('%s_%s_%s%s', td.key, md.key, joint, grpSuffix{g});
         hg = getCol(K, colOf('Humerogravitaire'));
@@ -557,16 +602,27 @@ for iT = 1:numel(taskDef)
         R(k).TX_mean = mean(tx(vt)); R(k).TX_SD = std(tx(vt)); R(k).TX_median = median(tx(vt));
         R(k).TX_Q1 = qt(1); R(k).TX_Q3 = qt(2); R(k).TX_min = min(tx(vt)); R(k).TX_max = max(tx(vt));
         R(k).r_D_TX = rDT; R(k).p_D_TX = pDT;
+        R(k).TXlat_mean = NaN; R(k).TXlat_SD = NaN; R(k).TXlat_median = NaN;
+        R(k).r_D_TXlat = NaN; R(k).p_D_TXlat = NaN;
+        if hasLat
+            tl = alignCol(Kthx, latCol(td, g), getCol(K, 'Numero'));
+            vl = ~isnan(tl); vdl = v & vl;
+            [R(k).r_D_TXlat, R(k).p_D_TXlat] = pearsonP(hg(vdl) - ht(vdl), tl(vdl));
+            R(k).TXlat_mean = mean(tl(vl)); R(k).TXlat_SD = std(tl(vl)); R(k).TXlat_median = median(tl(vl));
+            Lg{g} = tl(vl);
+            lTxt{g} = sprintf('%s : %.1f ± %.1f° | r(HG moins HT, incl. latérale)=%.2f (%s)', ...
+                groups{g}, R(k).TXlat_mean, R(k).TXlat_SD, R(k).r_D_TXlat, fmtP(R(k).p_D_TXlat));
+        end
 
         Dg{g} = d; Tg{g} = tx(vt);
         dTxt{g} = sprintf('%s : %.1f ± %.1f° (%.0f %% des patients à plus de 10°)', ...
             groups{g}, R(k).D_mean, R(k).D_SD, R(k).Pct_absD_gt10);
-        tTxt{g} = sprintf('%s : %.1f ± %.1f° | r(HG moins HT, thorax)=%.2f (%s)', ...
+        tTxt{g} = sprintf('%s : %.1f ± %.1f° | r(HG moins HT, flexion thorax)=%.2f (%s)', ...
             groups{g}, R(k).TX_mean, R(k).TX_SD, rDT, fmtP(pDT));
     end
 
     figure(fig);
-    subplot(numel(taskDef), 2, (iT - 1) * 2 + 1); hold on;
+    subplot(numel(taskDef), nCol, (iT - 1) * nCol + 1); hold on;
     edges = floor(min([Dg{:}]) / 5) * 5 : 5 : ceil(max([Dg{:}]) / 5) * 5;
     for g = 1:numel(groups)
         histogram(Dg{g}, edges, 'FaceColor', cols(g, :), 'FaceAlpha', 0.45, 'EdgeColor', 'none', ...
@@ -577,21 +633,34 @@ for iT = 1:numel(taskDef)
     xlabel(sprintf('HG moins HT, %s %s (deg)', md.name, td.label)); ylabel('Nombre de patients');
     title(dTxt, 'FontSize', 8);
 
-    subplot(numel(taskDef), 2, (iT - 1) * 2 + 2); hold on;
+    subplot(numel(taskDef), nCol, (iT - 1) * nCol + 2); hold on;
     edges = 0 : 2.5 : ceil(max([Tg{:}]) / 2.5) * 2.5;
     for g = 1:numel(groups)
         histogram(Tg{g}, edges, 'FaceColor', cols(g, :), 'FaceAlpha', 0.45, 'EdgeColor', 'none', ...
             'HandleVisibility', 'off');
     end
     hold off; box on; groupLegend(groups, cols);
-    xlabel(sprintf('ROM thorax %s (deg, max moins min du signal signé)', td.label)); ylabel('Nombre de patients');
+    xlabel(sprintf('ROM thorax flexion / extension, %s (deg)', td.label)); ylabel('Nombre de patients');
     title(tTxt, 'FontSize', 8);
+
+    if hasLat
+        subplot(numel(taskDef), nCol, (iT - 1) * nCol + 3); hold on;
+        edges = 0 : 1 : ceil(max([Lg{:}]));
+        for g = 1:numel(groups)
+            histogram(Lg{g}, edges, 'FaceColor', cols(g, :), 'FaceAlpha', 0.45, 'EdgeColor', 'none', ...
+                'HandleVisibility', 'off');
+        end
+        hold off; box on; groupLegend(groups, cols);
+        xlabel(sprintf('ROM thorax inclinaison latérale, %s (deg)', td.label)); ylabel('Nombre de patients');
+        title(lTxt, 'FontSize', 8);
+    end
 end
 sgtitle(sprintf('Ampleur de la contribution du thorax, %s : flexion (ligne 1) et scaption (ligne 2)', md.name));
 annotation(fig, 'textbox', [0 0 1 0.04], 'String', ...
     sprintf(['Données : %s, feuille %s, tous les patients. HG moins HT contient aussi la différence de ', ...
              'définition des angles (HT Cardan plan du thorax, HG YXY élévation 3D). Thorax : ROM ', ...
-             '(max moins min du signal signé, feuille Cinematique), r indicatif.'], getFileName(DataFile), md.sheet), ...
+             '(max moins min du signal signé, feuille Cinematique) en flexion / extension et en ', ...
+             'inclinaison latérale, r indicatif.'], getFileName(DataFile), md.sheet), ...
     'EdgeColor', 'none', 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
     'FontSize', 7, 'Interpreter', 'none');
 end
@@ -976,6 +1045,11 @@ function T = readSheet(DataFile, sheet)
 T = readtable(DataFile, 'Sheet', sheet, 'VariableNamingRule', 'preserve');
 num = getCol(T, 'Numero');
 T = T(~isnan(num), :);
+end
+
+% Vrai si la colonne existe (insensible à la casse)
+function tf = hasCol(T, name)
+tf = any(strcmpi(T.Properties.VariableNames, name));
 end
 
 % Colonne numérique (ligne) par nom, insensible à la casse. Une colonne lue
