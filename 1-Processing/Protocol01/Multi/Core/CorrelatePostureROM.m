@@ -12,7 +12,10 @@
 %                  1) inclinaison x HT   et   inclinaison x HG
 %                  2) SIR (Moroder) x HT et   SIR x HG
 %                Et sur la posture PRE seule (feuille 'Posture') :
-%                  3) histogramme des types de Moroder (Moroder_type_pre)
+%                  3) histogramme des types de Moroder (Moroder_type_pre),
+%                     en %, avec en superposition la cohorte rétrospective
+%                     de Moroder et al. 2024 (681 rTSA, A / B / C = 33 /
+%                     48 / 19 %) et un chi² 2 x 3 entre les deux cohortes
 %                  4) distribution gaussienne de la SIR (cf. Moroder Fig. 7)
 %                  5) corrélation inclinaison x SIR
 %                Et le test HG moins HT (part du thorax dans l'effet de la
@@ -58,8 +61,10 @@
 % Outputs : Corr        (struct array) une ligne par métrique/tâche/
 %                       posture/joint/groupe
 %           CorrInclSIR (struct) corrélation inclinaison x SIR
-%           MoroderDist (struct array) effectif et % par type de Moroder
-%           HGHT        (struct array) test HG moins HT, une ligne par
+%           MoroderDist (struct array) effectif et % par type de Moroder,
+%                       % de Moroder et al. 2024, chi² et p de la
+%                       comparaison des deux cohortes
+%           HGHT       (struct array) test HG moins HT, une ligne par
 %                       métrique/tâche/posture/groupe
 %           Feuilles Excel + 8 figures (2 métriques x 2 tâches x {inclinaison,
 %           SIR}), chacune 2x2 (lignes HT / HG, colonnes PRE / POST) + 1
@@ -807,14 +812,16 @@ end
 % =========================================================================
 % Une figure 1x3 :
 %   gauche : histogramme des types de Moroder (A, B, C, puis tout autre
-%            type présent), effectif et % au-dessus de chaque barre ;
-%            types vides comptés dans le titre
+%            type présent), en %, effectif et % au-dessus de chaque barre ;
+%            types vides comptés dans le titre ; superposé (hold on) :
+%            Moroder et al. 2024 (barres vides tiretées) et chi² 2 x 3
 %   milieu : distribution gaussienne de la SIR (cf. Moroder Figure 7),
 %            colorée par type, sur l'histogramme des SIR mesurées
 %   droite : inclinaison (x) vs SIR (y), droite de régression, Pearson /
 %            Spearman, seuils 36/46° (Moroder A/B/C) ; axe SIR borné à SIRAxisMax (points au-delà comptés
 %            dans le titre, pas exclus du calcul)
-% Outputs : MoroderDist (struct array) une ligne par type : Type, n, Pct
+% Outputs : MoroderDist (struct array) une ligne par type : Type, n, Pct,
+%                       Pct_Moroder2024, Chi2_vs_Moroder2024, p_vs_Moroder2024
 %           CorrInclSIR (struct) une ligne : n, Pearson, Spearman, régression
 function [MoroderDist, CorrInclSIR] = PlotPosturePRE(incl, sir, mor, DataFile, SIRAxisMax)
 
@@ -833,21 +840,51 @@ MoroderDist = struct('Type', types, 'n', num2cell(nT), 'Pct', num2cell(pct));
 % Couleurs A / B / C comme la Figure 7 de Moroder (bleu, vert, rouge)
 morCols = [0.10 0.10 0.70; 0.40 0.85 0.10; 0.75 0.10 0.10];
 SIRThresh = [36 46];   % deg : seuils A|B et B|C
+% Référence : cohorte rétrospective de Moroder et al. (2024), J Shoulder
+% Elbow Surg 33:2159-2170 : 681 rTSA, types A / B / C = 33 / 48 / 19 %
+% (SIR sur imagerie en coupe, patient couché)
+morRefPct = [33 48 19]; morRefN = 681;
+
+% Comparaison des proportions A / B / C (tableau 2 x 3, chi² de Pearson ;
+% effectifs de Moroder reconstruits à partir des % publiés)
+nABC = cellfun(@(t) sum(strcmp(mor, t)), {'A', 'B', 'C'});
+refN = round(morRefN * morRefPct / 100);
+O = [nABC; refN]; E = sum(O, 2) * sum(O, 1) / sum(O(:));
+chi2 = sum((O(:) - E(:)).^2 ./ E(:));
+pChi = gammainc(chi2 / 2, 1, 'upper');                 % ddl = 2
+[MoroderDist.Pct_Moroder2024] = deal(NaN);
+for k = 1:numel(MoroderDist)
+    j = find(strcmp({'A', 'B', 'C'}, MoroderDist(k).Type));
+    if ~isempty(j), MoroderDist(k).Pct_Moroder2024 = morRefPct(j); end
+end
+[MoroderDist.Chi2_vs_Moroder2024] = deal(chi2);
+[MoroderDist.p_vs_Moroder2024]    = deal(pChi);
 
 figure('Name', 'Posture PRE, Moroder et inclinaison x SIR', 'Color', 'w');
-subplot(1, 3, 1);
+subplot(1, 3, 1); hold on;
 if ~isempty(types)
-    b = bar(categorical(types, types), nT, 0.6, 'FaceColor', 'flat');
+    xc = categorical(types, types);
+    b = bar(xc, pct, 0.6, 'FaceColor', 'flat', 'DisplayName', sprintf('Notre cohorte (n=%d)', nTot));
     for k = 1:numel(types)
         if k <= size(morCols, 1), b.CData(k, :) = morCols(k, :); else, b.CData(k, :) = [0.6 0.6 0.6]; end
     end
-    text(1:numel(types), nT, compose('%d (%.0f %%)', nT(:), pct(:)), ...
+    text(1:numel(types), pct, compose('%d (%.0f %%)', nT(:), pct(:)), ...
         'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', 'FontSize', 9);
-    ylim([0, max(nT) * 1.15]);
+    % Moroder et al. (2024) superposé : barres vides à contour noir
+    iRef = find(ismember(types, {'A', 'B', 'C'}));
+    refPct = arrayfun(@(k) morRefPct(strcmp({'A', 'B', 'C'}, types{k})), iRef);
+    bar(xc(iRef), refPct, 0.8, 'FaceColor', 'none', 'EdgeColor', 'k', 'LineWidth', 1.8, 'LineStyle', '--', ...
+        'DisplayName', sprintf('Moroder et al. 2024 (n=%d)', morRefN));
+    text(iRef + 0.42, refPct, compose('%.0f %%', refPct(:)), 'HorizontalAlignment', 'left', ...
+        'VerticalAlignment', 'middle', 'FontSize', 9, 'FontAngle', 'italic');
+    ylim([0, max([pct, morRefPct]) * 1.25]);
+    legend('Location', 'northeast', 'FontSize', 8);
 end
-xlabel('Type de Moroder (PRE)'); ylabel('Nombre de patients');
-title({sprintf('Classification de Moroder (n=%d)', nTot), ...
-       sprintf('A : SIR < 36° | B : 36 à 46° | C : > 46° | %d sans type', sum(isEmpty))}, 'FontSize', 9);
+hold off;
+xlabel('Type de Moroder (PRE)'); ylabel('Patients (%)');
+title({sprintf('Classification de Moroder (n=%d, %d sans type)', nTot, sum(isEmpty)), ...
+       'A : SIR < 36° | B : 36 à 46° | C : > 46°', ...
+       sprintf('vs Moroder et al. 2024 : \\chi^2 = %.1f, %s', chi2, fmtP(pChi))}, 'FontSize', 9);
 box on;
 
 % --- Distribution gaussienne de la SIR (cf. Moroder, Figure 7) ---

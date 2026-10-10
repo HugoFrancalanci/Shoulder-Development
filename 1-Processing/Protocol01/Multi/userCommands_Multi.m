@@ -291,6 +291,9 @@ InclinationOutputFile    = fullfile(Folder.toolbox, 'Multi', 'Results', 'Inclina
 % AsymptomaticOutputFile : sortie de AsymptomaticComparison (épaules saines
 % controlatérales, feuilles _Asym de PostureDataFile)
 AsymptomaticOutputFile   = fullfile(Folder.toolbox, 'Multi', 'Results', 'Asymptomatic_Comparison.xlsx');
+% CurveCheckFolder : sorties de CheckCurvesFromDatabase (QC_courbes.xlsx,
+% figures), à côté de PostureDataFile (OneDrive)
+CurveCheckFolder         = fullfile(fileparts(PostureDataFile), 'Controle_courbes');
 
 % PatientInfosFile : fichier Excel de sortie (infos démographiques patients)
 PatientInfosFile = fullfile(ResultsFolder, 'PatientInfos_Summary.xlsx');

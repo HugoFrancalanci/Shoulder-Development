@@ -24,17 +24,32 @@
 %                points, puis moyenne ± SD par population.
 %                Élévations bilatérales : le thorax des épaules saines est
 %                celui de la session du patient (commun aux deux bras).
+%                Vue d'ensemble (plotOverview) : une figure par tâche,
+%                courbe de chaque épaule en gris et moyenne de la
+%                population, pour repérer les courbes atypiques.
+%                Limite connue : en flexion, GH (séquence ZXY) approche le
+%                blocage de cardan (angle du milieu proche de 90°) ; sa
+%                courbe d'Euler mélange élévation et rotation axiale.
 %                Textes de la figure sans tiret ni tiret long.
 % -------------------------------------------------------------------------
 % Inputs  : DatabaseFile (char) chemin vers PatientDatabase.mat (ou ses
-%                        parties _partXofY, détectées automatiquement)
+%                        parties _partXofY, détectées automatiquement),
+%                        ou (struct) Curves d'un appel précédent : les
+%                        figures sont retracées sans relire la base
 %           DataFile     (char) chemin vers Data_posture.xlsx (feuilles
-%                        'Posture' et 'Posture_Asym')
+%                        'Posture' et 'Posture_Asym'), ignoré si Curves
+%                        est fourni
+%           Metrics      (cellstr, optionnel) mesures à tracer parmi HG,
+%                        HT, GH, ST, TX (défaut : toutes), ex. {'HG', 'HT',
+%                        'TX'} ; Curves contient toujours les cinq
 % Outputs : Curves (struct) Curves.<PRE|POST|ASYM>.<ANALYTIC1|ANALYTIC2>
 %                  .<HG|HT|GH|ST|TX> = [n x 101] (une ligne par épaule),
 %                  .side = côté de chaque ligne
 %           + 1 figure 2 x 5 (lignes : flexion, scaption ; colonnes : HG,
 %           HT, GH, ST, thorax)
+%           + 2 figures de vue d'ensemble 3 x 5 (flexion, scaption ;
+%           lignes : PRE, POST, épaules saines ; colonnes : HG, HT, GH, ST,
+%           thorax)
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
@@ -44,7 +59,33 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function Curves = PlotMeanCurvesFromDatabase(DatabaseFile, DataFile)
+function Curves = PlotMeanCurvesFromDatabase(DatabaseFile, DataFile, Metrics)
+
+tasks = {'ANALYTIC1', 'ANALYTIC2'};
+tlbl  = {'flexion', 'scaption'};
+dofHT = [3 1];                      % DOF de HT et GH par tâche
+mets  = {'HG', 'HT', 'GH', 'ST', 'TX'};
+mlbl  = {'HG, élévation / gravité', 'HT, élévation / thorax', 'GH, élévation', ...
+         'ST, rotation latérale', 'Thorax, flexion signée'};
+grps  = {'PRE', 'POST', 'ASYM'};
+glbl  = {'rTSA PRE', 'rTSA POST', 'Épaules saines'};
+cols  = [0.8500 0.3250 0.0980; 0 0.4470 0.7410; 0.4660 0.6740 0.1880];
+
+% Mesures tracées (toutes par défaut)
+if nargin < 3 || isempty(Metrics), Metrics = mets; end
+Metrics = cellstr(Metrics);
+bad = setdiff(Metrics, mets);
+if ~isempty(bad)
+    error('PlotMeanCurvesFromDatabase:metric', 'Mesure inconnue : %s (HG, HT, GH, ST, TX).', strjoin(bad, ', '));
+end
+sel = ismember(mets, Metrics);
+
+% Curves déjà calculées : on retrace seulement les figures
+if isstruct(DatabaseFile)
+    Curves = DatabaseFile;
+    plotFigures(Curves, tasks, tlbl, mets(sel), mlbl(sel), grps, glbl, cols);
+    return;
+end
 
 fileList = discoverDatabaseFiles(DatabaseFile);
 if isempty(fileList)
@@ -57,16 +98,6 @@ P  = readtable(DataFile, 'Sheet', 'Posture', 'VariableNamingRule', 'preserve');
 nums = P.Numero(~isnan(P.Numero));
 Pa = readtable(DataFile, 'Sheet', 'Posture_Asym', 'VariableNamingRule', 'preserve');
 Pa = Pa(~isnan(Pa.Numero), :);
-
-tasks = {'ANALYTIC1', 'ANALYTIC2'};
-tlbl  = {'flexion', 'scaption'};
-dofHT = [3 1];                      % DOF de HT et GH par tâche
-mets  = {'HG', 'HT', 'GH', 'ST', 'TX'};
-mlbl  = {'HG, élévation / gravité', 'HT, élévation / thorax', 'GH, élévation', ...
-         'ST, rotation latérale', 'Thorax, flexion signée'};
-grps  = {'PRE', 'POST', 'ASYM'};
-glbl  = {'rTSA PRE', 'rTSA POST', 'Épaules saines'};
-cols  = [0.8500 0.3250 0.0980; 0 0.4470 0.7410; 0.4660 0.6740 0.1880];
 
 Curves = struct();
 for g = 1:numel(grps)
@@ -134,9 +165,26 @@ for t = 1:numel(tasks)
     end
 end
 
-% -------------------------------------------------------------------------
-% FIGURE
-% -------------------------------------------------------------------------
+plotFigures(Curves, tasks, tlbl, mets(sel), mlbl(sel), grps, glbl, cols);
+for g = 1:numel(grps)
+    fprintf('%s : %d courbes en flexion, %d en scaption\n', glbl{g}, ...
+        size(Curves.(grps{g}).ANALYTIC1.HG, 1), size(Curves.(grps{g}).ANALYTIC2.HG, 1));
+end
+
+end
+
+% =========================================================================
+%  FIGURES
+% =========================================================================
+function plotFigures(Curves, tasks, tlbl, mets, mlbl, grps, glbl, cols)
+plotMeans(Curves, tasks, tlbl, mets, mlbl, grps, glbl, cols);
+for t = 1:numel(tasks)
+    plotOverview(Curves, tasks{t}, tlbl{t}, mets, mlbl, grps, glbl, cols);
+end
+end
+
+% Moyenne ± 1 SD des trois populations (une figure 2 x 5)
+function plotMeans(Curves, tasks, tlbl, mets, mlbl, grps, glbl, cols)
 fig = figure('Name', 'Courbes moyennes : rTSA PRE, rTSA POST et épaules saines', 'Color', 'w');
 x = 0:100;
 for t = 1:numel(tasks)
@@ -161,18 +209,60 @@ for t = 1:numel(tasks)
 end
 sgtitle(fig, 'Courbes moyennes ± 1 SD : rTSA PRE, rTSA POST et épaules saines controlatérales', 'FontSize', 13);
 annotation(fig, 'textbox', [0 0 1 0.03], 'String', ['Élévations bilatérales : le thorax des épaules saines est celui ', ...
-    'de la session du patient. HG, HT, GH en valeur absolue ; ST et thorax signés (thorax > 0 = extension).'], ...
+    'de la session du patient. ', signNote(mets)], ...
     'EdgeColor', 'none', 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', 'FontSize', 9);
-for g = 1:numel(grps)
-    fprintf('%s : %d courbes en flexion, %d en scaption\n', glbl{g}, ...
-        size(Curves.(grps{g}).ANALYTIC1.HG, 1), size(Curves.(grps{g}).ANALYTIC2.HG, 1));
 end
 
+% Vue d'ensemble d'une tâche : courbe de chaque épaule (gris) et moyenne
+% de la population (couleur), lignes PRE, POST, épaules saines
+function plotOverview(Curves, task, tl, mets, mlbl, grps, glbl, cols)
+fig = figure('Name', sprintf('Vue d''ensemble, %s : courbes individuelles', tl), 'Color', 'w');
+x = 0:100;
+for g = 1:numel(grps)
+    for m = 1:numel(mets)
+        ax = subplot(numel(grps), numel(mets), (g - 1) * numel(mets) + m); hold(ax, 'on');
+        Y = Curves.(grps{g}).(task).(mets{m});
+        Y = Y(~all(isnan(Y), 2), :);
+        if ~isempty(Y)
+            plot(ax, x, Y', '-', 'Color', [0.55 0.55 0.55 0.35], 'LineWidth', 0.5);
+            plot(ax, x, mean(Y, 1, 'omitnan'), '-', 'Color', cols(g, :), 'LineWidth', 2.4);
+        end
+        if strcmp(mets{m}, 'TX'), yline(ax, 0, ':k'); end
+        hold(ax, 'off'); box(ax, 'on'); grid(ax, 'on');
+        title(ax, sprintf('%s\n%s (n=%d)', mlbl{m}, glbl{g}, size(Y, 1)), 'FontSize', 9);
+        if g == numel(grps), xlabel(ax, '% du cycle'); end
+        if m == 1, ylabel(ax, 'angle (deg)'); end
+    end
+end
+sgtitle(fig, sprintf('Vue d''ensemble, %s : courbe de chaque épaule (gris) et moyenne (couleur)', tl), 'FontSize', 13);
+note = signNote(mets);
+if strcmp(task, 'ANALYTIC1') && any(strcmp(mets, 'GH'))
+    note = [note, ' GH en flexion : séquence ZXY proche du blocage de cardan, élévation et rotation axiale mélangées.'];
+end
+annotation(fig, 'textbox', [0 0 1 0.03], 'String', note, 'EdgeColor', 'none', ...
+    'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', 'FontSize', 9);
 end
 
 % =========================================================================
 %  OUTILS
 % =========================================================================
+% Note de bas de figure : convention de signe des seules mesures tracées
+function s = signNote(mets)
+a = mets(ismember(mets, {'HG', 'HT', 'GH'}));
+b = strrep(mets(ismember(mets, {'ST', 'TX'})), 'TX', 'thorax');
+parts = {};
+if ~isempty(a), parts{end+1} = [strjoin(a, ', '), ' en valeur absolue']; end
+if ~isempty(b)
+    t = [strjoin(b, ' et '), ternary(numel(b) > 1, ' signés', ' signé')];
+    if any(strcmp(mets, 'TX')), t = [t, ' (thorax > 0 = extension)']; end
+    parts{end+1} = t;
+end
+s = [strjoin(parts, ' ; '), '.'];
+end
+
+function v = ternary(c, a, b)
+if c, v = a; else, v = b; end
+end
 % Cycles [101 x nCycles] d'un DOF de Joint.Euler ; shared = joint unique
 % (thorax) : repli sur l'autre côté si le champ demandé est vide
 function c = cycles(t, ji, dof, cf, shared)

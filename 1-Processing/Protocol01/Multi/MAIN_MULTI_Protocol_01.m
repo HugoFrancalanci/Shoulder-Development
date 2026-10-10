@@ -463,6 +463,10 @@ ComputeCoRQualityFromDatabase(DatabaseFile, CoRQualityOutputFile, ResultsFolder,
 ComputeCurveQualityFromDatabase(DatabaseFile, CurveQualityOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
+% Contrôle des courbes patient par patient : sauts ±180°, forme, élévation 3D
+[CurveQC, CurveQCSummary, CurveCycles] = CheckCurvesFromDatabase(DatabaseFile, PostureDataFile, ...
+    CurveCheckFolder, CurveQualityOutputFile);
+
 %% Asymptomatic selection
 % Asymptomatic shoulder classification
 ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibilityFile, ResultsFolder);
@@ -488,17 +492,13 @@ CorrelatePostureROM(PostureDataFile, CorrelationROMOutputFile);
 % Inclinaison thoracique : stratification (vs Moroder) et seuil critique 
 InclinationClassification(PostureDataFile, InclinationOutputFile);
 
-% Épaules asymptomatiques controlatérales vs rTSA 
-AsymptomaticComparison(PostureDataFile, AsymptomaticOutputFile);
-
 % Courbes moyennes HG, HT, GH, ST, thorax : rTSA PRE, POST et épaules saines
 MeanCurves = PlotMeanCurvesFromDatabase(DatabaseFile, PostureDataFile);
 
-%%
-% Illustrations des mesures (inclinaison, SIR, HG et HT) sur un patient réel,
-% avec silhouette ; PNG, PDF vectoriel et SVG (Article E02_01_Posture).
-% Retraite les sessions PRE et POST du patient (quelques minutes) ;
-% dernier argument = Numero du patient ([] = patient représentatif automatique)
+% Épaules asymptomatiques controlatérales vs rTSA 
+AsymptomaticComparison(PostureDataFile, AsymptomaticOutputFile);
+
+% Illustrations des mesures (inclinaison, SIR, HG et HT) sur un patient réel
 Folder.deps = fullfile(fileparts(Folder.toolbox), 'dependencies');
 IllustrationInfo = PlotMeasureIllustrations(Folder, PatientSelection, DataFolder, PostureDataFile, ...
     fullfile(fileparts(PostureDataFile), 'Illustrations'), 152);

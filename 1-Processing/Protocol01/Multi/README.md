@@ -378,6 +378,30 @@ retenue). HG, HT, GH (DOF de la tâche, valeur absolue), ST rotation latérale
 (signée, sens harmonisé entre côtés) et thorax (flexion signée), moyenne ± 1 SD
 par population, flexion et scaption (figure 2 x 5). Sortie `Curves` :
 `Curves.<PRE|POST|ASYM>.<ANALYTIC1|ANALYTIC2>.<HG|HT|GH|ST|TX>` = [n x 101].
+Deux figures de vue d'ensemble (flexion, scaption ; 3 x 5) montrent en plus la
+courbe de chaque épaule (gris) sous la moyenne de chaque population, pour
+repérer les courbes atypiques. `PlotMeanCurvesFromDatabase(Curves)` retrace
+toutes les figures sans relire la base ; un 3e argument limite les mesures
+tracées, ex. `PlotMeanCurvesFromDatabase(Curves, '', {'HG', 'HT', 'TX'})`.
+
+**Contrôle des courbes patient par patient**
+(`Multi/Core/CheckCurvesFromDatabase.m`, section dédiée de `MAIN`) : mêmes
+populations, joints, DOF et conventions que `PlotMeanCurvesFromDatabase`, mais
+tous les cycles, les 3 DOF et le signal signé sont gardés. Contrôles par
+épaule x session x tâche x mesure : saut > 90° entre deux échantillons (angle
+qui franchit ±180°), repli créé par la valeur absolue, forme inversée ou
+atypique (r avec la moyenne du groupe), ROM extrême (z robuste), cycles
+dispersés, écart entre l'angle d'Euler et l'élévation 3D de HT et GH
+(acos(cos DOF1 cos DOF3), indépendante de la séquence, avec l'angle du milieu
+au pic pour repérer le blocage de cardan), verdict de
+`ComputeCurveQualityFromDatabase` si fourni. Sorties dans `CurveCheckFolder`
+(OneDrive) : `QC_courbes.xlsx` (feuilles `QC_courbes`, `Synthese`, `Sauts` avec
+les valeurs de `Data_posture`), figures de contrôle par tâche et GH Euler vs
+3D. Renvoie aussi `Cycles` pour relancer sans relire la
+base : `CheckCurvesFromDatabase(CurveCycles, PostureDataFile, CurveCheckFolder)`. Limites connues : GH en flexion
+(séquence ZXY) approche le blocage de cardan (élévation et rotation axiale
+mélangées, valeurs d'Euler peu fiables au dessus d'environ 90° d'élévation) ;
+quelques courbes HT franchissent ±180° et sont repliées par la valeur absolue.
 
 **Illustrations des mesures** (`Multi/Core/PlotMeasureIllustrations.m`, section
 dédiée de `MAIN`) : sur un patient réel (Numero donné, ou patient
@@ -437,7 +461,10 @@ p, régression. Feuille `Correlation_ROM` (colonnes `Metric`, `Task`,
 tâches x {inclinaison, SIR}), 2x2 (HT / HG x PRE / POST). 32 tests, pas de
 correction pour comparaisons multiples. Plus, sur la feuille `Posture` seule :
 histogramme des types de Moroder (`Moroder_type_pre`, feuille
-`Moroder_Distribution`), distribution gaussienne de la SIR (cf. Moroder Fig. 7)
+`Moroder_Distribution`), en %, avec en superposition la cohorte rétrospective
+de Moroder et al. 2024 (681 rTSA, A / B / C = 33 / 48 / 19 %) et un chi² 2 x 3
+entre les deux cohortes (colonnes `Pct_Moroder2024`, `Chi2_vs_Moroder2024`,
+`p_vs_Moroder2024`), distribution gaussienne de la SIR (cf. Moroder Fig. 7)
 et corrélation inclinaison x SIR (feuille `Correlation_Incl_SIR`), 1 figure
 1x3. Textes des figures sans tiret ni tiret long. Test HG moins HT
 (`TestHGminusHT`, feuille `HG_minus_HT`, 1 figure par métrique) : régression
