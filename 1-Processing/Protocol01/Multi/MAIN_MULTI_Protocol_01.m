@@ -486,8 +486,14 @@ ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibili
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 %% Article E02_01_Posture
-% Posture x ROM 
+% H2 : posture PRE x élévation (HT, HG), 48 corrélations
 CorrelatePostureROM(PostureDataFile, CorrelationROMOutputFile);
+
+% H1 : contribution du thorax (mouvement au pic, amplitude, vérification HG moins HT)
+AnalyseThoraxContribution(PostureDataFile, CorrelationROMOutputFile);
+
+% Analyses secondaires : Moroder vs 2024, inclinaison x SIR, assis vs debout, HG moins HT vs posture
+PostureSecondaryAnalyses(PostureDataFile, CorrelationROMOutputFile);
 
 % Inclinaison thoracique : stratification (vs Moroder) et seuil critique 
 InclinationClassification(PostureDataFile, InclinationOutputFile);
@@ -502,3 +508,8 @@ AsymptomaticComparison(PostureDataFile, AsymptomaticOutputFile);
 Folder.deps = fullfile(fileparts(Folder.toolbox), 'dependencies');
 IllustrationInfo = PlotMeasureIllustrations(Folder, PatientSelection, DataFolder, PostureDataFile, ...
     fullfile(fileparts(PostureDataFile), 'Illustrations'), 152);
+
+%% Final figures
+% Figures de l'article (format JSES, une par fichier, flexion et scaption) ;
+% toutes les comparaisons sur l'amplitude (max moins min)
+[ArticleFigures, ThoracicShare, ThoracicDecomp] = PlotArticleFigures(PostureDataFile, ArticleFigureFolder);

@@ -280,7 +280,9 @@ PostureOutputFile = fullfile(ResultsFolder, 'Posture_Summary.xlsx');
 % et _Asym), entrée de CorrelatePostureROM, InclinationClassification,
 % AsymptomaticComparison et PlotMeanCurvesFromDatabase ; gardé sur OneDrive
 % (hors du dépôt GitHub). Chemin relatif au profil Windows pour fonctionner
-% sur les deux machines. CorrelationROMOutputFile : sortie de CorrelatePostureROM
+% sur les deux machines. CorrelationROMOutputFile : sortie commune de
+% CorrelatePostureROM (H2), AnalyseThoraxContribution (H1) et
+% PostureSecondaryAnalyses (une feuille par analyse)
 PostureDataFile          = fullfile(getenv('USERPROFILE'), 'OneDrive - Université de Genève', 'PhD Hugo', ...
     '01_Etude', '02_Sub-projects 2', 'E02_Classification_rTSA', 'E02_01 Posture rTSA', 'Results', ...
     '02_Pre-article_posture', 'Data_posture.xlsx');
@@ -291,6 +293,9 @@ InclinationOutputFile    = fullfile(Folder.toolbox, 'Multi', 'Results', 'Inclina
 % AsymptomaticOutputFile : sortie de AsymptomaticComparison (épaules saines
 % controlatérales, feuilles _Asym de PostureDataFile)
 AsymptomaticOutputFile   = fullfile(Folder.toolbox, 'Multi', 'Results', 'Asymptomatic_Comparison.xlsx');
+% ArticleFigureFolder : figures de l'article (PlotArticleFigures, une par
+% fichier, PDF / SVG / PNG), à côté de PostureDataFile (OneDrive)
+ArticleFigureFolder      = fullfile(fileparts(PostureDataFile), 'Figures_article');
 % CurveCheckFolder : sorties de CheckCurvesFromDatabase (QC_courbes.xlsx,
 % figures), à côté de PostureDataFile (OneDrive)
 CurveCheckFolder         = fullfile(fileparts(PostureDataFile), 'Controle_courbes');

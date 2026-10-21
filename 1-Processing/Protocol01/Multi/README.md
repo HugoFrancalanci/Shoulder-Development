@@ -460,58 +460,14 @@ lignes aux seuils 36°/46°). Un patient `RL` donne deux paires
 partageant la même inclinaison (non indépendantes) ; pas de correction pour
 comparaisons multiples (3 tâches x 3 groupes).
 
-**Corrélation posture x ROM** (`Multi/Core/CorrelatePostureROM.m`) :
-1) inclinaison (assis, `Inclinaison_thoracique_Pre`, et debout,
-`Inclinaison_thoracique_Pre_Calibration3`) x HT et x HG ; 2) SIR (Moroder) x HT et SIR x HG,
-par tâche (ANALYTIC1 = flexion, ANALYTIC2 = scaption) et pour deux métriques :
-ROM (feuille `Cinematique`) et pic (feuille `Cinematique_pics`), valeurs des
-colonnes de l'Excel telles quelles (`<analytic1|analytic2>_<ROM|MAX>_<joint>_<Pre|Post>`).
-Posture PRE x cinématique PRE et posture PRE x cinématique POST. Aucun `.mat`
-chargé, rien n'est recalculé : lit l'Excel trié à la main `PostureDataFile`
-(`Multi/Results/Data_posture.xlsx`, feuilles `Posture`, `Cinematique`,
-`Cinematique_pics`), appariement par `Numero`, aucune exclusion (le tri est
-fait dans l'Excel ; lignes vides ignorées). Statistiques : Pearson, Spearman,
-p, régression. Feuille `Correlation_ROM` (colonnes `Metric`, `Task`,
-`Movement`, `Posture`, `Joint`, `Group`, ...) dans `CorrelationROMOutputFile`
-(`Multi/Results/Correlation_Posture_ROM.xlsx`) + 8 figures (2 métriques x 2
-tâches x {inclinaison, SIR}), 2x2 (HT / HG x PRE / POST). 32 tests, pas de
-correction pour comparaisons multiples. Plus, sur la feuille `Posture` seule :
-histogramme des types de Moroder (`Moroder_type_pre`, feuille
-`Moroder_Distribution`), en %, avec en superposition la cohorte rétrospective
-de Moroder et al. 2024 (681 rTSA, A / B / C = 33 / 48 / 19 %) et un chi² 2 x 3
-entre les deux cohortes (colonnes `Pct_Moroder2024`, `Chi2_vs_Moroder2024`,
-`p_vs_Moroder2024`), distribution gaussienne de la SIR (cf. Moroder Fig. 7)
-et corrélation inclinaison x SIR (feuille `Correlation_Incl_SIR`), 1 figure
-1x3. Textes des figures sans tiret ni tiret long. Test HG moins HT
-(`TestHGminusHT`, feuille `HG_minus_HT`, 1 figure par métrique) : régression
-HG moins HT ~ posture (pente, IC 95 %, p vs 0 et vs -1 ; -1 = déficit gravitaire
-égal à l'inclinaison, sans compensation), thorax (colonnes `Thoracique`) ~
-posture, et comparaison r(posture, HG) vs r(posture, HT) par le test Z de
-Meng, Rosenthal et Rubin (1992) pour corrélations dépendantes. Réserve : HT
-(Cardan, plan du thorax) et HG (YXY, élévation 3D) n'ont pas la même définition.
-Ampleur de la contribution du thorax (`DescribeThoraxContribution`, feuille
-`Thorax_Contribution`, 1 figure par métrique) : distribution de HG moins HT par
-patient (moyenne, SD, médiane, IQR, étendue, % |HG moins HT| > 5° et > 10°) et
-du thorax (colonnes `Thoracique`), PRE et POST, r(HG moins HT, thorax) indicatif
-(thorax = amplitude sans sens) ; si les colonnes `ThoraciqueLateral` existent,
-même description pour le ROM d'inclinaison latérale du thorax et
-r(HG moins HT, inclinaison latérale) (3e colonne de la figure).
-Inclinaison assis vs debout (`AnalyseSeatedStanding`, feuille
-`Seated_vs_Standing`) : colonne `Inclinaison_thoracique_Pre_Calibration3`
-(debout) vs `Inclinaison_thoracique_Pre` (assis), Bland-Altman, ICC(A,1), t
-apparié, r, % de changement de type d'inclinaison I-A / I-B / I-C (moyenne ± 1 SD
-propre à chaque position). Flexion thoracique signée
-(`AnalyseThoraxFlexion`, feuille `Thorax_Flexion`, lit la feuille
-`Cinematique_thorax`) : thorax au repos vs inclinaison, changement pendant le
-geste (t vs 0, % qui se redressent, POST moins PRE apparié), HG moins HT vs
-changement (ROM et pic), changement vs inclinaison ; si les colonnes
-`<tâche>_TXlat_Change_<Pre|Post>` existent, inclinaison latérale du thorax au
-pic (> 0 = côté opposé au bras ; moyenne, t vs 0, % qui penchent du côté opposé)
-et HG moins HT vs inclinaison latérale (5e colonne de la figure). Résultat : en
-scaption, HG moins HT suit l'inclinaison latérale (r = 0.36 PRE, 0.48 POST) et
-non la flexion / extension ; en flexion, l'inverse.
-Axe SIR borné à 70° (`SIRAxisMax`, affichage seulement : points au-delà comptés
-dans le titre, gardés dans les calculs). Section indépendante dans `MAIN_MULTI_Protocol_01.m`.
+**Analyses de l'article posture** (octobre 2026 : l'ancienne `CorrelatePostureROM.m`, trop longue, est découpée en trois fonctions et un fichier d'outils ; résultats identiques, vérifiés feuille par feuille). Les trois fonctions lisent l'Excel trié à la main `PostureDataFile` (`Data_posture.xlsx`, appariement par `Numero`, aucune exclusion, rien n'est recalculé) et écrivent chacune leurs feuilles dans `CorrelationROMOutputFile` (`Multi/Results/Correlation_Posture_ROM.xlsx`). Postures, métriques et tâches sont définies une seule fois dans `PostureUtils.defs()`.
+
+- `Multi/Core/CorrelatePostureROM.m` (**H2**) : corrélations posture PRE (inclinaison assis `Inclinaison_thoracique_Pre`, debout `Inclinaison_thoracique_Pre_Calibration3`, SIR) x élévation HT et HG, PRE et POST, flexion (ANALYTIC1) et scaption (ANALYTIC2), ROM (feuille `Cinematique`) et pic (feuille `Cinematique_pics`) : 48 tests, Pearson, Spearman, pente en °/°. Feuille `Correlation_ROM`. Pas de figure.
+- `Multi/Core/AnalyseThoraxContribution.m` (**H1**) : mouvement du thorax pendant le geste (feuille `Cinematique_thorax`) : position au repos (contrôle vs inclinaison), extension au pic d'élévation HG (moyenne, IC 95 %, % qui se redressent, POST moins PRE apparié), inclinaison latérale au pic (> 0 = côté opposé au bras, % qui penchent du côté opposé), extension vs inclinaison PRE ; amplitude du thorax (ROM du signal signé, flexion / extension et inclinaison latérale) ; vérification : HG moins HT vs mouvement du thorax (pente attendue proche de 1) et dispersion de HG moins HT (la moyenne n'est pas interprétée : HT Cardan et HG YXY n'ont pas la même définition). Feuilles `Thorax_Contribution` et `Thorax_Flexion`. Pas de figure.
+- `Multi/Core/PostureSecondaryAnalyses.m` (secondaire) : types de Moroder en % vs Moroder et al. 2024 (681 rTSA, 33 / 48 / 19 %, chi² 2 x 3) et inclinaison x SIR (feuilles `Moroder_Distribution`, `Correlation_Incl_SIR`) ; inclinaison assis vs debout (Bland-Altman, ICC(A,1), t apparié, % de changement de type ; feuille `Seated_vs_Standing`) ; HG moins HT vs posture (pente, IC 95 %, p vs 0 et vs -1, thorax vs posture, Meng, Rosenthal et Rubin 1992 ; feuille `HG_minus_HT`). Une figure par analyse (axe SIR borné à 70°, affichage seulement).
+- `Multi/Core/PostureUtils.m` : outils communs en méthodes statiques (`defs`, `readSheet`, `getCol`, `getText`, `alignCol`, `pearsonP`, `spearmanP`, `meanCI`, `slopeTest`, `fmtP`...), sans Statistics Toolbox.
+
+- `Multi/Core/PlotArticleFigures.m` : figures de l'article, une par fichier et par tâche (flexion, scaption), textes en anglais sans tiret, 8.5 cm de large, Arial 8 pt, palette Okabe-Ito (PRE orange, POST bleu), export PDF vectoriel, SVG et PNG 600 dpi dans `ArticleFigureFolder` (`Figures_article`, à côté de `Data_posture.xlsx`). Toutes les comparaisons portent sur l'amplitude (max moins min, colonnes `_ROM_` de la feuille `Cinematique` ; le terme ROM n'apparaît plus dans les figures) : `Fig2` amplitude du thorax (flexion / extension et inclinaison latérale), PRE et POST ; `Fig3` part du thorax dans l'amplitude HG (amplitude du thorax / amplitude HG x 100, indicatif), PRE et POST : médiane et IC 95 % bootstrap, tableau affiché dans la console (deuxième sortie `Share`, pas d'Excel) ; `Fig4` amplitude du thorax x amplitude HG ; `Fig5` contribution du thorax à épaule égale (régression HG ~ HT + thorax flexion / extension + thorax inclinaison latérale, figure de régression partielle de la composante principale, coefficient [IC 95 %] et p sur la figure, tableau `Decomp` dans la console : R² épaule seule et complet, coefficients) ; `Fig6` inclinaison debout PRE x amplitude HG, un fichier PRE et un fichier POST. Renvoie une table des n, moyennes, r, p et pentes affichés.
 
 Épaules asymptomatiques : avec `Opts.AsymptomaticSelection` (passé par
 `MAIN_MULTI_Protocol_01.m`, voir section « Épaules asymptomatiques »), une
