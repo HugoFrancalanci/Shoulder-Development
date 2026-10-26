@@ -472,6 +472,8 @@ ComputeCurveQualityFromDatabase(DatabaseFile, CurveQualityOutputFile, ResultsFol
 ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibilityFile, ResultsFolder);
 
 %% Curve analysis
+% Valeurs et courbes lues sur le cycle retenu (meilleur des 3 cycles, alertes
+% en console et colonnes Cycle_* / CycleAlert_*), voir Core/BestCycle.m
 % Clinical movement decomposition : HT, GH, ST, TX
 [ClinRes, ClinAsym] = ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));

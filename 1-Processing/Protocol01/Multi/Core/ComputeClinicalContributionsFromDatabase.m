@@ -49,7 +49,7 @@
 %                         date} (voir userCommands_Multi.m), tracées en vert
 %                         sur la figure des courbes et exportées dans la
 %                         feuille 'Clinical_Asymptomatic' (une ligne par
-%                         épaule/tâche, colonnes <M>_ASYM_deg/_pct/_max_deg)
+%                         épaule/tâche, colonnes <M>_ASYM_deg/_max_deg)
 % Outputs : Results (struct array) une ligne par patient/côté - aussi
 %           retourné pour exploitation directe sans repasser par l'Excel
 %           Fichier Excel écrit sur disque + figure des courbes PRE/POST
@@ -85,13 +85,14 @@ end
 % BOUCLE PATIENTS (depuis Database, pas depuis PatientSelection/C3D)
 % -------------------------------------------------------------------------
 Results = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
-    'HT_PRE_deg', {}, 'GH_PRE_deg', {}, 'GH_PRE_pct', {}, ...
-    'ST_PRE_deg', {}, 'ST_PRE_pct', {}, 'TX_PRE_deg', {}, 'TX_PRE_pct', {}, ...
-    'HT_POST_deg', {}, 'GH_POST_deg', {}, 'GH_POST_pct', {}, ...
-    'ST_POST_deg', {}, 'ST_POST_pct', {}, 'TX_POST_deg', {}, 'TX_POST_pct', {}, ...
+    'HT_PRE_deg', {}, 'GH_PRE_deg', {}, ...
+    'ST_PRE_deg', {}, 'TX_PRE_deg', {}, ...
+    'HT_POST_deg', {}, 'GH_POST_deg', {}, ...
+    'ST_POST_deg', {}, 'TX_POST_deg', {}, ...
     'HT_PRE_max_deg', {}, 'GH_PRE_max_deg', {}, 'ST_PRE_max_deg', {}, ...
     'HT_POST_max_deg', {}, 'GH_POST_max_deg', {}, 'ST_POST_max_deg', {}, ...
-    'TXlat_PRE_deg', {}, 'TXlat_POST_deg', {});
+    'TXlat_PRE_deg', {}, 'TXlat_POST_deg', {}, ...
+    'Cycle_PRE', {}, 'Cycle_POST', {}, 'CycleAlert_PRE', {}, 'CycleAlert_POST', {});
 % Pas de pic pour le thorax : max |angle| n'a pas de sens quand la flexion
 % passe par zéro (il mélange la flexion au repos et l'extension au pic) ;
 % le thorax est décrit par son ROM (signal signé) et la flexion signée
@@ -159,29 +160,30 @@ for iP = 1:nInFile
                 Results(ri).Task         = c.task;
                 Results(ri).HT_PRE_deg   = NaN; Results(ri).HT_POST_deg  = NaN;
                 Results(ri).GH_PRE_deg   = NaN; Results(ri).GH_POST_deg  = NaN;
-                Results(ri).GH_PRE_pct   = NaN; Results(ri).GH_POST_pct  = NaN;
                 Results(ri).ST_PRE_deg   = NaN; Results(ri).ST_POST_deg  = NaN;
-                Results(ri).ST_PRE_pct   = NaN; Results(ri).ST_POST_pct  = NaN;
                 Results(ri).TX_PRE_deg   = NaN; Results(ri).TX_POST_deg  = NaN;
-                Results(ri).TX_PRE_pct   = NaN; Results(ri).TX_POST_pct  = NaN;
                 Results(ri).HT_PRE_max_deg = NaN; Results(ri).HT_POST_max_deg = NaN;
                 Results(ri).GH_PRE_max_deg = NaN; Results(ri).GH_POST_max_deg = NaN;
                 Results(ri).ST_PRE_max_deg = NaN; Results(ri).ST_POST_max_deg = NaN;
                 Results(ri).TXlat_PRE_deg  = NaN; Results(ri).TXlat_POST_deg  = NaN;
+                Results(ri).Cycle_PRE      = NaN; Results(ri).Cycle_POST      = NaN;
+                Results(ri).CycleAlert_PRE = '';  Results(ri).CycleAlert_POST = '';
             end
 
             Results(ri).(['HT_', condition, '_deg']) = c.HT_range;
             Results(ri).(['GH_', condition, '_deg']) = c.GH_range;
-            Results(ri).(['GH_', condition, '_pct']) = c.GH_pct;
             Results(ri).(['ST_', condition, '_deg']) = c.ST_range;
-            Results(ri).(['ST_', condition, '_pct']) = c.ST_pct;
             Results(ri).(['TX_', condition, '_deg']) = c.TX_range;
-            Results(ri).(['TX_', condition, '_pct']) = c.TX_pct;
 
             Results(ri).(['HT_', condition, '_max_deg']) = c.HT_max;
             Results(ri).(['GH_', condition, '_max_deg']) = c.GH_max;
             Results(ri).(['ST_', condition, '_max_deg']) = c.ST_max;
             Results(ri).(['TXlat_', condition, '_deg'])  = c.TXlat_range;
+            Results(ri).(['Cycle_', condition])      = c.cycleIdx;
+            Results(ri).(['CycleAlert_', condition]) = c.cycleAlert;
+            if ~isempty(c.cycleAlert)
+                fprintf('Alerte cycle (%s) : n°%d %s %s %s : %s\n', 'clinique', d.Numero, c.side, c.task, condition, c.cycleAlert);
+            end
 
             if length(Curves) < ri
                 Curves(ri).Numero    = d.Numero;
@@ -219,15 +221,17 @@ for iP = 1:nInFile
             AsymResults(ai).Condition = condition;
             AsymResults(ai).HT_ASYM_deg     = c.HT_range;
             AsymResults(ai).GH_ASYM_deg     = c.GH_range;
-            AsymResults(ai).GH_ASYM_pct     = c.GH_pct;
             AsymResults(ai).ST_ASYM_deg     = c.ST_range;
-            AsymResults(ai).ST_ASYM_pct     = c.ST_pct;
             AsymResults(ai).TX_ASYM_deg     = c.TX_range;
-            AsymResults(ai).TX_ASYM_pct     = c.TX_pct;
             AsymResults(ai).HT_ASYM_max_deg = c.HT_max;
             AsymResults(ai).GH_ASYM_max_deg = c.GH_max;
             AsymResults(ai).ST_ASYM_max_deg = c.ST_max;
             AsymResults(ai).TXlat_ASYM_deg  = c.TXlat_range;
+            AsymResults(ai).Cycle_ASYM      = c.cycleIdx;
+            AsymResults(ai).CycleAlert_ASYM = c.cycleAlert;
+            if ~isempty(c.cycleAlert)
+                fprintf('Alerte cycle (%s) : n°%d %s %s ASYM (%s) : %s\n', 'clinique', d.Numero, c.side, c.task, condition, c.cycleAlert);
+            end
             AsymCurves(ai).PatientID = d.PatientID;
             AsymCurves(ai).Side      = c.side;
             AsymCurves(ai).Task      = c.task;
@@ -346,7 +350,9 @@ end
 % scapulothoracic (ST) and thoracic (TX) sub-contributions, in degrees and
 % in % of HT range. Same DOF/joint convention as the "Clinical analysis
 % (euler)" table in Protocol01/IO/ExportKinematicsSummary.m (Tableau 2) -
-% checked to match exactly, on purpose (same clinical-literature reference).
+% same DOF/joint convention on purpose (same clinical-literature reference) ;
+% the VALUES differ since October 2026 (selected cycle here, BestCycle.m,
+% cycle average in ExportKinematicsSummary).
 %
 % ANALYTIC1 (sagittal elevation) and ANALYTIC2 (coronal elevation) are both
 % uniplanar movements, which ensures a coherent GH/ST/TX decomposition of
@@ -388,9 +394,17 @@ end
 % (max-min). No thorax peak: the thorax flexion crosses zero during the
 % movement, so max |angle| would mix rest flexion and peak extension ;
 % TX_range is max - min of the SIGNED angle (getRangeCycleTH).
+% Selected cycle (BestCycle.select, October 2026) instead of the cycle
+% average : chosen on HG for ANALYTIC1/2, on HT for ANALYTIC3/4. For
+% ANALYTIC3/4, HT is SIGNED in the direction of motion (BestCycle.RotSign)
+% instead of abs() : HT_range = peak - min, HT_max = rotation from the
+% starting position (peak - start, BestCycle.rotation) - same values as the
+% collaborative-paper file (72 patients). GH/ST/TX keep their metric on the
+% same cycle, rotation values not validated for them.
 %
-% HT_curve/GH_curve/ST_curve/TX_curve : mean curve (across cycles) of the
-% angle vs % cycle (0-100%), same number of points as the cycle
+% HT_curve/GH_curve/ST_curve/TX_curve : curve of the angle on the selected
+% cycle (BestCycle.curve, same cycle as the values ; signed HT for
+% ANALYTIC3/4) vs % cycle (0-100%), same number of points as the cycle
 % normalisation done by CutCycles.m. Used for the PRE/POST plot in
 % PlotHTContributionsCurves.m. TX uses getCurveCycleTH (not getCurveCycle)
 % for the same reason TX_range uses getRangeCycleTH : joint 11 (thorax) is
@@ -400,18 +414,19 @@ end
 % Inputs  : Trial (struct array) all trials from runProtocol01/MAIN_Protocol_01
 % Outputs : Contrib (struct array, one row per task found x side 'R'/'L')
 %           with fields task ('ANALYTIC1'-'ANALYTIC4'), side, HT_range,
-%           GH_range, GH_pct, ST_range, ST_pct, TX_range, TX_pct, HT_max,
+%           GH_range, ST_range, TX_range, HT_max,
 %           GH_max, ST_max, HT_curve, GH_curve, ST_curve, TX_curve
 %           Empty (0x0) struct array if neither task is found in Trial.
 function Contrib = ComputeClinicalContributions(Trial)
 
 Contrib = struct('task', {}, 'side', {}, 'HT_range', {}, ...
-                  'GH_range', {}, 'GH_pct', {}, 'ST_range', {}, 'ST_pct', {}, ...
-                  'TX_range', {}, 'TX_pct', {}, 'TXlat_range', {}, ...
+                  'GH_range', {}, 'ST_range', {}, ...
+                  'TX_range', {}, 'TXlat_range', {}, ...
                   'HT_max', {}, 'GH_max', {}, 'ST_max', {}, ...
                   'HT_curve', {}, 'GH_curve', {}, 'ST_curve', {}, 'TX_curve', {}, ...
                   'ST_raw', {}, 'ST_rangeRaw', {}, 'ST_peakExc', {}, 'ST_excSign', {}, ...
-                  'TX_raw', {}, 'TX_rangeRaw', {}, 'TX_peakExc', {}, 'TX_excSign', {});
+                  'TX_raw', {}, 'TX_rangeRaw', {}, 'TX_peakExc', {}, 'TX_excSign', {}, ...
+                  'cycleIdx', {}, 'cycleAlert', {});
 
 % DOF task-dependant pour HT/GH (voir commentaire ci-dessus) ; ST et TX
 % restent identiques quelle que soit la tache (sequences non conditionnees
@@ -442,10 +457,22 @@ for iT = 1:numel(taskDOF)
 
     for iS = 1:length(sideDef)
         s  = sideDef(iS);
-        ht = getRangeCycle(t, s.jiHT, dofHT, s.cycField);
-        gh = getRangeCycle(t, s.jiGH, dofGH, s.cycField);
-        st = getRangeCycle(t, s.jiST, dofST, s.cycField);
-        tx = getRangeCycleTH(t, 11, dofTX, s.cycField);
+        % Cycle retenu (meilleur des cycles valides, voir BestCycle.m),
+        % le même pour tous les joints, en pic comme en amplitude
+        sel = BestCycle.select(t, task, s.side);
+        ht = getRangeCycle(t, s.jiHT, dofHT, s.cycField, sel.idx);
+        htMax = getPeakCycle(t, s.jiHT, dofHT, s.cycField, sel.idx);
+        if ~isnan(sel.sign)
+            % Rotations : HT signé dans le sens du mouvement (pas abs) ;
+            % amplitude = pic moins minimum, pic = rotation depuis la
+            % position de départ (BestCycle.rotation)
+            xht = sel.sign * BestCycle.raw(t, s.jiHT, dofHT, s.cycField, false);
+            ht = BestCycle.range(xht, sel.idx);
+            htMax = BestCycle.rotation(xht, sel.idx);
+        end
+        gh = getRangeCycle(t, s.jiGH, dofGH, s.cycField, sel.idx);
+        st = getRangeCycle(t, s.jiST, dofST, s.cycField, sel.idx);
+        tx = getRangeCycleTH(t, 11, dofTX, s.cycField, sel.idx);
 
         i = length(Contrib) + 1;
         % task = nom canonique de la boucle (pas t.task, qui contient le
@@ -453,28 +480,28 @@ for iT = 1:numel(taskDOF)
         % ce qui casserait la fusion PRE/POST par cle Numero+Side+Task).
         Contrib(i).task     = task;
         Contrib(i).side     = s.side;
+        Contrib(i).cycleIdx   = sel.idx;
+        Contrib(i).cycleAlert = sel.alert;
         Contrib(i).HT_range = ht;
         Contrib(i).GH_range = gh;
-        Contrib(i).GH_pct   = safePct(gh, ht);
         Contrib(i).ST_range = st;
-        Contrib(i).ST_pct   = safePct(st, ht);
         Contrib(i).TX_range = tx;
-        Contrib(i).TX_pct   = safePct(tx, ht);
-        Contrib(i).TXlat_range = getRangeCycleTH(t, 11, taskDOF(iT).dofTXlat, s.cycField);
+        Contrib(i).TXlat_range = getRangeCycleTH(t, 11, taskDOF(iT).dofTXlat, s.cycField, sel.idx);
 
-        Contrib(i).HT_max = getPeakCycle(t, s.jiHT, dofHT, s.cycField);
-        Contrib(i).GH_max = getPeakCycle(t, s.jiGH, dofGH, s.cycField);
-        Contrib(i).ST_max = getPeakCycle(t, s.jiST, dofST, s.cycField);
+        Contrib(i).HT_max = htMax;
+        Contrib(i).GH_max = getPeakCycle(t, s.jiGH, dofGH, s.cycField, sel.idx);
+        Contrib(i).ST_max = getPeakCycle(t, s.jiST, dofST, s.cycField, sel.idx);
 
-        Contrib(i).HT_curve = getCurveCycle(t, s.jiHT, dofHT, s.cycField);
-        Contrib(i).GH_curve = getCurveCycle(t, s.jiGH, dofGH, s.cycField);
-        Contrib(i).ST_curve = getCurveCycle(t, s.jiST, dofST, s.cycField);
-        Contrib(i).TX_curve = getCurveCycleTH(t, 11, dofTX, s.cycField);
+        Contrib(i).HT_curve = getCurveCycle(t, s.jiHT, dofHT, s.cycField, sel.idx);
+        if ~isnan(sel.sign), Contrib(i).HT_curve = BestCycle.curve(xht, sel.idx); end   % rotations : HT signé
+        Contrib(i).GH_curve = getCurveCycle(t, s.jiGH, dofGH, s.cycField, sel.idx);
+        Contrib(i).ST_curve = getCurveCycle(t, s.jiST, dofST, s.cycField, sel.idx);
+        Contrib(i).TX_curve = getCurveCycleTH(t, 11, dofTX, s.cycField, sel.idx);
 
         [Contrib(i).ST_raw, Contrib(i).ST_rangeRaw, Contrib(i).ST_peakExc, Contrib(i).ST_excSign] = ...
-            getRawInfo(t, s.jiST, dofST, s.cycField, false);
+            getRawInfo(t, s.jiST, dofST, s.cycField, false, sel.idx);
         [Contrib(i).TX_raw, Contrib(i).TX_rangeRaw, Contrib(i).TX_peakExc, Contrib(i).TX_excSign] = ...
-            getRawInfo(t, 11, dofTX, s.cycField, true);
+            getRawInfo(t, 11, dofTX, s.cycField, true, sel.idx);
     end
 end
 
@@ -482,15 +509,17 @@ end
 
 % Données brutes signées (sans abs) d'un DOF, pour la correction ST/TX
 % inversées (voir ApplyInversionCorrectionSTTX.m) :
-%   rawMean  : moyenne des cycles du brut signé
-%   rangeRaw : moyenne des cycles de (max - min) du brut (indépendant du signe
-%              et de l'offset)
+%   rawCurve : brut signé du cycle retenu idx (BestCycle.curve ; moyenne
+%              des cycles si idx = NaN)
+%   rangeRaw : amplitude du brut sur le cycle retenu idx, moyenne de 10
+%              points autour du maximum moins minimum (BestCycle.range ;
+%              indépendant de l'offset)
 %   sp       : sens de l'excursion brute par rapport au repos (moyenne
-%              début/fin du cycle), +1/-1
-%   peakExc  : moyenne des cycles de max(sp*(brut - repos))
+%              début/fin du cycle retenu), +1/-1
+%   peakExc  : max(sp*(brut - repos)) sur le cycle retenu (BestCycle.peak)
 % shared = joint 11 (thorax), repli R/L comme getRangeCycleTH.
-function [rawMean, rangeRaw, peakExc, sp] = getRawInfo(t, ji, dof, cycField, shared)
-rawMean = []; rangeRaw = NaN; peakExc = NaN; sp = NaN;
+function [rawCurve, rangeRaw, peakExc, sp] = getRawInfo(t, ji, dof, cycField, shared, idx)
+rawCurve = []; rangeRaw = NaN; peakExc = NaN; sp = NaN;
 if length(t.Joint) < ji, return; end
 cf = cycField;
 if shared && isempty(t.Joint(ji).Euler.(cf))
@@ -499,27 +528,29 @@ end
 if isempty(t.Joint(ji).Euler.(cf)), return; end
 cyc = squeeze(t.Joint(ji).Euler.(cf)(1, dof, :, :));
 if isvector(cyc), cyc = cyc(:); end
+cycAll = cyc;                                  % indices de cycles inchangés (cycle retenu idx)
 cyc = cyc(:, any(~isnan(cyc), 1));
 if isempty(cyc), return; end
-rawMean  = mean(cyc, 2, 'omitnan');
-rangeRaw = mean(max(cyc, [], 1) - min(cyc, [], 1), 'omitnan');
-base     = mean(rawMean([1 end]));
-[~, ip]  = max(abs(rawMean - base));
-sp       = sign(rawMean(ip) - base);
+rawCurve = BestCycle.curve(cycAll, idx);
+rangeRaw = BestCycle.range(cycAll, idx);
+base     = mean(rawCurve([1 end]));
+[~, ip]  = max(abs(rawCurve - base));
+sp       = sign(rawCurve(ip) - base);
 if sp == 0, sp = 1; end
-peakExc  = mean(max(sp * (cyc - base), [], 1), 'omitnan');
+peakExc  = BestCycle.peak(sp * (cycAll - base), idx);
 end
 
-function r = getRangeCycle(t, ji, dof, cycField)
+% Amplitude de |angle| sur le cycle retenu idx : moyenne de 10 points autour
+% du maximum moins minimum brut (BestCycle.range)
+function r = getRangeCycle(t, ji, dof, cycField, idx)
 r = NaN;
 if length(t.Joint) < ji || isempty(t.Joint(ji).Euler.(cycField)), return; end
 data = abs(squeeze(t.Joint(ji).Euler.(cycField)(1, dof, :, :)));
 if isvector(data), data = data(:); end
-ranges = max(data, [], 1) - min(data, [], 1);
-r = mean(ranges, 'omitnan');
+r = BestCycle.range(data, idx);
 end
 
-function r = getRangeCycleTH(t, ji, dof, cycField)
+function r = getRangeCycleTH(t, ji, dof, cycField, idx)
 r = NaN;
 if length(t.Joint) < ji, return; end
 cf = cycField;
@@ -531,35 +562,36 @@ if isempty(t.Joint(ji).Euler.(cf)), return; end
 % flexion du thorax passe souvent par zéro pendant le geste (fléchi au
 % repos, redressé au pic), et abs() replie alors la courbe et sous-estime
 % l'amplitude (ex. -15.5 à +6 deg : 21.5 deg réels, 15.5 deg avec abs).
+% Cycle retenu idx : moyenne de 10 points autour du maximum moins minimum brut (BestCycle.range)
 data = squeeze(t.Joint(ji).Euler.(cf)(1, dof, :, :));
 if isvector(data), data = data(:); end
-ranges = max(data, [], 1) - min(data, [], 1);
-r = mean(ranges, 'omitnan');
+r = BestCycle.range(data, idx);
 end
 
-function r = getPeakCycle(t, ji, dof, cycField)
-% Peak angle reached (mean across cycles of each cycle's max |angle|) -
-% same convention as getRangeCycle, but max instead of max-min.
+function r = getPeakCycle(t, ji, dof, cycField, idx)
+% Peak angle reached on the selected cycle idx (BestCycle.select) : mean of
+% 10 points around the max |angle| (BestCycle.peak) - same cycle as
+% getRangeCycle.
 r = NaN;
 if length(t.Joint) < ji || isempty(t.Joint(ji).Euler.(cycField)), return; end
 data = abs(squeeze(t.Joint(ji).Euler.(cycField)(1, dof, :, :)));
 if isvector(data), data = data(:); end
-peaks = max(data, [], 1);
-r = mean(peaks, 'omitnan');
+r = BestCycle.peak(data, idx);
 end
 
 
-function c = getCurveCycle(t, ji, dof, cycField)
-% Mean curve (across cycles) of the angle, already normalised to % cycle
-% by CutCycles.m (same number of points across all cycles/patients).
+function c = getCurveCycle(t, ji, dof, cycField, idx)
+% Curve of the angle on the selected cycle idx (BestCycle.curve ; mean
+% across cycles if idx = NaN), already normalised to % cycle by CutCycles.m
+% (same number of points across all cycles/patients).
 c = [];
 if length(t.Joint) < ji || isempty(t.Joint(ji).Euler.(cycField)), return; end
 data = abs(squeeze(t.Joint(ji).Euler.(cycField)(1, dof, :, :)));
 if isvector(data), data = data(:); end
-c = mean(data, 2, 'omitnan');
+c = BestCycle.curve(data, idx);
 end
 
-function c = getCurveCycleTH(t, ji, dof, cycField)
+function c = getCurveCycleTH(t, ji, dof, cycField, idx)
 % Same as getCurveCycle, with the R/L cycField fallback also used by
 % getRangeCycleTH (joint 11 = thorax, single shared joint, not duplicated
 % per side like HT/GH/ST).
@@ -572,15 +604,7 @@ end
 if isempty(t.Joint(ji).Euler.(cf)), return; end
 data = abs(squeeze(t.Joint(ji).Euler.(cf)(1, dof, :, :)));
 if isvector(data), data = data(:); end
-c = mean(data, 2, 'omitnan');
-end
-
-function p = safePct(num, den)
-if isnan(num) || isnan(den) || den == 0
-    p = NaN;
-else
-    p = num / den * 100;
-end
+c = BestCycle.curve(data, idx);
 end
 
 % =========================================================================

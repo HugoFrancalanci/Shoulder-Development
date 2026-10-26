@@ -285,7 +285,10 @@ PostureOutputFile = fullfile(ResultsFolder, 'Posture_Summary.xlsx');
 % PostureSecondaryAnalyses (une feuille par analyse)
 PostureDataFile          = fullfile(getenv('USERPROFILE'), 'OneDrive - Université de Genève', 'PhD Hugo', ...
     '01_Etude', '02_Sub-projects 2', 'E02_Classification_rTSA', 'E02_01 Posture rTSA', 'Results', ...
-    '02_Pre-article_posture', 'Data_posture.xlsx');
+    'Data_posture.xlsx');
+% (octobre 2026 : élévations sur le meilleur des 3 cycles, voir BestCycle.m ;
+% l'ancienne version, moyenne des 3 cycles, est archivée dans
+% Results/02_Pre-article_posture/Preliminary_data_posture.xlsx)
 CorrelationROMOutputFile = fullfile(Folder.toolbox, 'Multi', 'Results', 'Correlation_Posture_ROM.xlsx');
 % InclinationOutputFile : sortie de InclinationClassification (stratification
 % de l'inclinaison et seuil critique)

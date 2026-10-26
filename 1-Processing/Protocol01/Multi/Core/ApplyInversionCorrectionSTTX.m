@@ -18,7 +18,8 @@
 %                ne traverse pas zéro ; la courbe et le max, si.
 %
 %                Détection (par tâche et par métrique, PRE/POST/côtés
-%                confondus) : la courbe (abs, moyenne des cycles, 101 points)
+%                confondus) : la courbe (abs, cycle retenu par BestCycle,
+%                101 points)
 %                est corrélée (Pearson signé) à la courbe moyenne du groupe,
 %                recalculée sans les courbes inversées (2 passes). Corrélation
 %                < CorrThresh (0 par défaut) = 'inversée'. Même règle que
@@ -27,12 +28,12 @@
 %
 %                Correction, uniquement pour les courbes inversées :
 %                  courbe   = sp * (brut - repos) + repos_cohorte
-%                  range    = moyenne des cycles de (max - min) du BRUT
-%                             (indépendant du signe et de l'offset)
-%                  max      = moyenne des cycles de max(sp*(brut - repos))
+%                  range    = max - min du BRUT sur le cycle retenu
+%                             (BestCycle ; indépendant du signe et de
+%                             l'offset)
+%                  max      = max(sp*(brut - repos)) sur le cycle retenu
 %                             (ST seulement : pas de pic pour le thorax)
 %                             + repos_cohorte
-%                  pct      = range corrigé / range de la référence (HT ou HG)
 %                repos = moyenne du début et de la fin du cycle du patient ;
 %                sp = sens propre de l'excursion brute du patient (+1/-1) ;
 %                repos_cohorte = repos de la courbe moyenne du groupe. Une
@@ -46,12 +47,13 @@
 %
 % Inputs  : Results   (struct array) tel que construit par les fonctions
 %                     Compute*ContributionsFromDatabase (champs
-%                     <M>_<PRE|POST>_deg/_pct, M = ST, TX ; _max_deg pour ST)
+%                     <M>_<PRE|POST>_deg, M = ST, TX ; _max_deg pour ST)
 %           Curves    (struct array, même indexation que Results) champs
 %                     <M>_<C> (courbe abs) et <M>_<C>_raw, _rangeRaw,
 %                     _peakExc, _excSign (M = ST, TX ; C = PRE, POST)
-%           refPrefix (char) 'HT' (clinical) ou 'HG' (functional) :
-%                     dénominateur des pourcentages
+%           refPrefix (char) 'HT' (clinical) ou 'HG' (functional) : inutilisé
+%                     depuis le retrait des colonnes _pct (octobre 2026),
+%                     gardé pour ne pas changer les appels
 %           CorrThresh (double) seuil de corrélation (0)
 %           conds     (cell, optionnel) conditions à traiter ({'PRE','POST'}
 %                     par défaut ; {'ASYM'} pour les épaules asymptomatiques)
@@ -66,7 +68,7 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function [Results, Curves] = ApplyInversionCorrectionSTTX(Results, Curves, refPrefix, CorrThresh, conds)
+function [Results, Curves] = ApplyInversionCorrectionSTTX(Results, Curves, ~, CorrThresh, conds)
 
 if isempty(Results), return; end
 if nargin < 4 || isempty(CorrThresh), CorrThresh = 0; end
@@ -127,7 +129,6 @@ for it = 1:numel(tasks)
 
             Curves(i).(f)                = sp * (raw - base) + rest;
             Results(i).([f, '_deg'])     = rangeRaw;
-            Results(i).([f, '_pct'])     = safePct(rangeRaw, Results(i).([refPrefix, '_', cn, '_deg']));
             if isfield(Results, [f, '_max_deg'])   % pas de pic pour le thorax (TX)
                 Results(i).([f, '_max_deg']) = Curves(i).([f, '_peakExc']) + rest;
             end
@@ -150,14 +151,6 @@ c = c(v); t = t(v);
 if std(c) == 0 || std(t) == 0, return; end
 cc = corrcoef(c, t);
 r = cc(1, 2);
-end
-
-function p = safePct(num, den)
-if isnan(num) || isnan(den) || den == 0
-    p = NaN;
-else
-    p = num / den * 100;
-end
 end
 
 function c = resample101(curve)

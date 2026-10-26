@@ -128,6 +128,38 @@ CV7). Les C3D ne sont pas modifiés ; la décision est affichée en console
 362 sessions : 53 corrigées (47 par STY05, 6 par l'ancien stylet). Même
 contrôle dans `MAIN_Protocol_01.m` (solo).
 
+## Cycle retenu : meilleur des 3 cycles (`Multi/Core/BestCycle.m`)
+
+Depuis octobre 2026 (règle validée avec le superviseur), les valeurs ne sont
+plus des moyennes des cycles mais sont lues sur **un cycle retenu**, le même
+pour toutes les articulations d'une épaule et d'une tâche
+(`BestCycle.select`) :
+
+* pic d'un cycle = moyenne de 10 points (sur 101) autour du maximum ;
+* cycle non valide : saut > 90° entre deux points consécutifs, ou pic à plus
+  de 20° de la médiane des cycles (si au moins 3 cycles) ;
+* cycle retenu = cycle valide au pic le plus haut (sinon le plus haut, avec
+  alerte) ;
+* élévations (ANALYTIC1/2) : cycle choisi sur |HG|, sauts contrôlés sur HG,
+  HT, ST et thorax ;
+* rotations (ANALYTIC3/4) : cycle choisi sur HT signé dans le sens du
+  mouvement (HG en blocage de cardan bras le long du corps), valeur = rotation
+  réalisée depuis la position de départ (`BestCycle.rotation`, pic moins
+  moyenne des 3 premiers points) ;
+* contrôles de forme, en alerte seulement : sens opposé au groupe, courbe
+  décalée (départ du cycle retenu au-delà de 90°).
+
+Amplitude = pic lissé moins minimum brut du cycle (le minimum, au bord du
+cycle, n'est pas lissé). Le cycle retenu et les alertes sont exportés
+(`Cycle_<C>`, `CycleAlert_<C>`) et affichés en console. Utilisé par
+`ComputeClinicalContributionsFromDatabase`, `ComputeFunctionalContributionsFromDatabase`
+(valeurs, courbes, correction ST/TX) et `ComputePostureFromDatabase` (thorax
+au pic HG, feuilles `TXflex`/`TXlat`). Restent volontairement sur la moyenne
+des cycles : `ComputeContralateralEligibilityFromDatabase` (sélection des
+épaules asymptomatiques, inchangée), `ComputeCurveQualityFromDatabase` et
+`CheckCurvesFromDatabase` (contrôle qualité), et le script solo
+(`IO/ExportKinematicsSummary.m`).
+
 ## Reporting actuel : contributions cliniques humérothoraciques (GH/ST/TX)
 
 `Multi/Core/ComputeClinicalContributionsFromDatabase.m` recharge `PatientDatabase.mat` et
@@ -151,9 +183,14 @@ Le résultat est accumulé dans le struct `Results` (une ligne par
 patient/côté/tâche — ANALYTIC1 à ANALYTIC4 sur des lignes séparées), avec
 les colonnes PRE et POST côte à côte, plus le pic d'angle atteint
 (`*_max_deg`, distinct du range) pour HT, GH et ST :
-`PatientID, Side, Task, HT_PRE_deg, GH_PRE_deg, GH_PRE_pct, ST_PRE_deg,
-ST_PRE_pct, TX_PRE_deg, TX_PRE_pct, HT_POST_deg, GH_POST_deg, ...,
-HT_PRE_max_deg, GH_PRE_max_deg, ST_PRE_max_deg, HT_POST_max_deg, ...`
+`PatientID, Side, Task, HT_PRE_deg, GH_PRE_deg, ST_PRE_deg, TX_PRE_deg,
+HT_POST_deg, GH_POST_deg, ..., HT_PRE_max_deg, GH_PRE_max_deg, ST_PRE_max_deg,
+HT_POST_max_deg, ..., Cycle_PRE, CycleAlert_PRE, ...` (plus de colonnes `_pct`
+depuis octobre 2026 : sans objet en rotation, et recalculables depuis les
+`_deg` en élévation). Valeurs lues sur le cycle retenu par `BestCycle.m`
+(choisi sur HG en élévation, sur HT en rotation) ; en rotation (ANALYTIC3/4),
+`HT_*_deg` est l'amplitude du signal signé et `HT_*_max_deg` la rotation
+réalisée depuis la position de départ.
 
 **Thorax (TX)** : le range est `max - min` de l'angle **signé** (pas de
 `abs()`), car la flexion du thorax passe souvent par zéro pendant le geste
@@ -200,9 +237,9 @@ joints et DOF que dans la version HT (y compris DOF2 Y pour ANALYTIC3/4).
 séquence YXY est proche du gimbal lock, Y1 et Y2 sont mal séparés —
 vérifier `HG_*_deg` contre `HT_*_deg` avant de s'y fier.
 
-Colonnes : `PatientID, Side, Task, HG_PRE_deg, GH_PRE_deg, GH_PRE_pct,
-ST_PRE_deg, ST_PRE_pct, TX_PRE_deg, TX_PRE_pct, HG_POST_deg, ..., HG_PRE_max_deg,
-GH_PRE_max_deg, ST_PRE_max_deg, HG_POST_max_deg, ...`
+Colonnes : `PatientID, Side, Task, HG_PRE_deg, GH_PRE_deg, ST_PRE_deg,
+TX_PRE_deg, HG_POST_deg, ..., HG_PRE_max_deg, GH_PRE_max_deg, ST_PRE_max_deg,
+HG_POST_max_deg, ..., Cycle_PRE, CycleAlert_PRE, ...` (plus de colonnes `_pct`)
 (export Excel, feuille `Functional_Contributions` ; thorax : range signé, pas
 de pic, comme ci-dessus).
 
@@ -234,10 +271,9 @@ la fin du cycle du patient, `sp` = sens de l'excursion brute du patient (+1/-1),
 `repos_cohorte` = repos de la courbe moyenne du groupe :
 
 * courbe : `sp * (brut - repos) + repos_cohorte`
-* `_deg` (range) : moyenne des cycles de (max - min) du brut (indépendant du
-  signe et de l'offset)
-* `_max_deg` : moyenne des cycles de `max(sp * (brut - repos))` + `repos_cohorte`
-* `_pct` : range corrigé / range HT (clinical) ou HG (functional)
+* `_deg` (range) : max - min du brut sur le cycle retenu (`BestCycle.m` ;
+  indépendant du signe et de l'offset)
+* `_max_deg` : `max(sp * (brut - repos))` sur le cycle retenu + `repos_cohorte`
 
 Colonnes `ST_PRE_corrected`, `ST_POST_corrected`, `TX_PRE_corrected`,
 `TX_POST_corrected` (0/1) dans l'Excel : valeurs corrigées. Compte par tâche
@@ -292,7 +328,7 @@ référence ni les résultats des patients.
 **Export.** Feuille séparée dans chaque Excel (`Clinical_Asymptomatic`,
 `Functional_Asymptomatic`), une ligne par épaule/tâche pour la seule condition
 retenue : `Numero, PatientID, Side, Task, Condition, HT_ASYM_deg` (ou
-`HG_ASYM_deg`), `GH/ST/TX_ASYM_deg`, `GH/ST/TX_ASYM_pct`, `*_ASYM_max_deg` (sauf
+`HG_ASYM_deg`), `GH/ST/TX_ASYM_deg`, `*_ASYM_max_deg` (sauf
 thorax), et
 `ST/TX_ASYM_corrected` (0/1) si la correction est active. Les feuilles
 principales (`Clinical_Contributions`, `Functional_Contributions`) sont
@@ -356,7 +392,8 @@ dans le titre. L'Excel, lui, garde toutes les valeurs telles quelles.
 `ComputePostureFromDatabase`, 3e sortie `ThxFlex`) : lecture seule des cycles
 déjà stockés (thorax `Joint(11).Euler` DOF3 Z, négatif = flexion, positif =
 extension ; pic d'élévation repéré sur HG `Joint(12/13)` DOF1), ANALYTIC1/2,
-PRE et POST. Par cycle puis moyenne : `Start` (3 premières frames), `AtPeak`
+PRE et POST. Sur le cycle retenu par `BestCycle.select` (le même que les
+valeurs HG/HT ; moyenne des cycles si aucun cycle retenu) : `Start` (3 premières frames), `AtPeak`
 (frame du pic HG), `Change` = AtPeak moins Start (> 0 = le tronc se redresse
 pendant l'élévation), `Min`/`Max`. Feuille `Thorax_Flexion_Signed` de
 `Posture_Summary.xlsx`, une ligne par patient/côté, colonnes au format de
@@ -371,6 +408,18 @@ signe ramené au bras mesuré (> 0 = le tronc penche du côté opposé au bras).
 Ces colonnes, et `<tâche>_ROM_ThoraciqueLateral_<Pre|Post|Asym>`, sont aussi
 dans `Data_posture.xlsx` (feuilles `Cinematique`, `Cinematique_thorax` et leurs
 versions `_Asym`).
+
+**Reconstruction de `Data_posture.xlsx`** (script Python + openpyxl
+`build_data_posture.py`, rangé hors du dépôt, à côté de `Data_posture.xlsx`
+dans le dossier OneDrive `E02_01 Posture rTSA/Results`) : remplit les feuilles `Cinematique`, `Cinematique_pics`,
+`Cinematique_thorax` (et `_Asym`) à partir de `ClinicalContributions_Summary`,
+`FunctionalContributions_Summary` et `Posture_Summary` (dossier
+`Results/Data/Symptomatic`), écrit `Controle_cycles` (cycle retenu et alertes)
+et `Cote_retenu` (côté retenu par patient pour les patients opérés des deux
+côtés). Les feuilles `Posture` et `Posture_Asym` (tri à la main) ne sont pas
+touchées. `python build_data_posture.py --check` compare sans rien écrire ;
+sans option, sauvegarde datée de l'ancien fichier puis écriture. À relancer
+après chaque nouveau calcul des trois Excels.
 
 **Épaules asymptomatiques vs rTSA** (`Multi/Core/AsymptomaticComparison.m`,
 section dédiée de `MAIN`, sortie `AsymptomaticOutputFile`) : lit les feuilles

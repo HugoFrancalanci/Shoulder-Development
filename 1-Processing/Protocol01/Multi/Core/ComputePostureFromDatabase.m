@@ -666,13 +666,16 @@ end
 % négatif = flexion, positif = extension) ; pic d'élévation repéré sur HG
 % (Joint 12 côté R / 13 côté L, DOF1 = élévation). Cycles du côté du
 % patient (rcycle / lcycle ; thorax partagé : repli sur l'autre côté si
-% vide). Par cycle, puis moyenne des cycles :
+% vide). Sur le cycle retenu par BestCycle.select (octobre 2026 : même
+% cycle que les valeurs de Compute*ContributionsFromDatabase ; moyenne des
+% cycles si aucun cycle retenu) :
 %   Start  : thorax au début du cycle (moyenne des 3 premières frames,
 %            bras le long du corps)
 %   AtPeak : thorax à la frame du pic d'élévation HG
 %   Change : AtPeak moins Start (> 0 = le tronc se redresse pendant
 %            l'élévation, < 0 = il s'enroule)
 %   Min / Max : extrêmes signés du thorax sur le cycle
+%   nCycles : nombre de cycles disponibles (pas seulement le cycle retenu)
 % Vide si pas de cycle thorax.
 % dof, sgn (optionnels) : DOF du thorax résumé (3 = flexion par défaut,
 % 1 = inclinaison latérale) et signe appliqué au signal (1 par défaut).
@@ -699,11 +702,14 @@ for c = 1:nc
         pk(c) = z(ip);
     end
 end
-s.Start   = mean(st, 'omitnan');
-s.AtPeak  = mean(pk, 'omitnan');
-s.Change  = mean(pk - st, 'omitnan');
-s.Min     = mean(mn, 'omitnan');
-s.Max     = mean(mx, 'omitnan');
+sel = BestCycle.select(t, t.task, side);
+use = 1:nc;
+if ~isnan(sel.idx) && sel.idx <= nc && ~isnan(st(sel.idx)), use = sel.idx; end
+s.Start   = mean(st(use), 'omitnan');
+s.AtPeak  = mean(pk(use), 'omitnan');
+s.Change  = mean(pk(use) - st(use), 'omitnan');
+s.Min     = mean(mn(use), 'omitnan');
+s.Max     = mean(mx(use), 'omitnan');
 s.nCycles = sum(~isnan(st));
 end
 
