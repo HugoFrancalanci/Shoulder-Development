@@ -288,7 +288,7 @@ Summary = cell2table(sumRows, 'VariableNames', {'Task', 'Condition', 'Family', '
 %   Spearman : rho entre la méthode et la référence rest–individual max de
 %     la même famille, sur les mêmes sessions, par condition (descriptif,
 %     sans p) ; pas de référence pour C
-tst = cell(0, 14);
+tst = cell(0, 21);
 for iT = 1:numel(tasks)
     S  = SHR(strcmp(SHR.Task, taskLabel{iT}), :);
     pr = S(strcmp(S.Condition, 'PRE'), :); po = S(strcmp(S.Condition, 'POST'), :);
@@ -308,19 +308,46 @@ for iT = 1:numel(tasks)
             nr(iC) = sum(okr); rho(iC) = spearmanRho(u(okr), v(okr));
         end
         tst(end + 1, :) = {taskLabel{iT}, f, sum(ok), median(y(ok) - x(ok)), W, z, p, meth, NaN, ...
-            rho(1), nr(1), rho(2), nr(2), ~isempty(ref) && strcmp(f, ref)}; %#ok<AGROW>
+            rho(1), nr(1), rho(2), nr(2), ~isempty(ref) && strcmp(f, ref), 0, NaN, NaN, NaN, NaN, '', NaN}; %#ok<AGROW>
     end
     ph = holm(pv);
     for iF = 1:numel(famCol), tst{first + iF, 9} = ph(iF); end
+
+    % Méthode vs référence (rest–individual max de la même famille), statut
+    % ignoré : différence méthode - référence par session, moyennée par
+    % patient sur ses sessions disponibles (PRE et POST ne sont pas
+    % indépendantes) ; différence moyenne [IC 95 %] et Wilcoxon sur les
+    % valeurs par patient ; Holm sur toutes les comparaisons de la tâche
+    pr2 = NaN(numel(famCol), 1);
+    for iF = 1:numel(famCol)
+        f = famCol{iF}; ref = refColumn(f);
+        vals = {0, NaN, NaN, NaN, NaN, ''};
+        if ~isempty(ref) && ~strcmp(f, ref)
+            dd = S.(f) - S.(ref); ok = ~isnan(dd);
+            if any(ok)
+                g = findgroups(S.Numero(ok));
+                P = splitapply(@mean, dd(ok), g);
+                ci = mean(P) + [-1 1] * tq975(numel(P) - 1) * std(P) / sqrt(numel(P));
+                [p2, ~, ~, m2] = wilcoxonSigned(P);
+                vals = {numel(P), mean(P), ci(1), ci(2), p2, m2};
+                pr2(iF) = p2;
+            end
+        end
+        tst(first + iF, 15:20) = vals;
+    end
+    ph2 = holm(pr2);
+    for iF = 1:numel(famCol), tst{first + iF, 21} = ph2(iF); end
 end
 Tests = cell2table(tst, 'VariableNames', {'Task', 'Family', 'n_pairs', 'Median_diff_POST_PRE', 'W', 'z', ...
-    'p', 'p_method', 'p_Holm', 'rho_PRE', 'n_rho_PRE', 'rho_POST', 'n_rho_POST', 'is_reference'});
+    'p', 'p_method', 'p_Holm', 'rho_PRE', 'n_rho_PRE', 'rho_POST', 'n_rho_POST', 'is_reference', ...
+    'n_patients_vs_ref', 'Diff_vs_ref_mean', 'Diff_vs_ref_CI95_low', 'Diff_vs_ref_CI95_high', ...
+    'p_vs_ref', 'p_vs_ref_method', 'p_vs_ref_Holm'});
 
 % Tableau de l'abstract : une ligne par famille et plage, moyenne [IC 95 %]
 % et n en PRE et en POST (toutes les sessions disponibles de la condition),
 % p de Holm (PRE vs POST) et rho de Spearman avec la référence
 [famNames, rngNames] = famLabels(famCol, allSfx, allLbl);
-tab = cell(0, 10);
+tab = cell(0, 12);
 for iT = 1:numel(tasks)
     for iF = 1:numel(famCol)
         r = {taskLabel{iT}, famNames{iF}, rngNames{iF}};
@@ -335,11 +362,19 @@ for iT = 1:numel(tasks)
         if t.is_reference, r{end + 1} = 'référence'; %#ok<AGROW>
         elseif isnan(t.rho_PRE) && isnan(t.rho_POST), r{end + 1} = '—'; %#ok<AGROW>
         else, r{end + 1} = sprintf('%.2f / %.2f', t.rho_PRE, t.rho_POST); end %#ok<AGROW>
+        % Méthode vs référence (statut ignoré, une valeur par patient)
+        if t.is_reference, r(end + 1:end + 2) = {'référence', '—'}; %#ok<AGROW>
+        elseif t.n_patients_vs_ref == 0, r(end + 1:end + 2) = {'—', '—'}; %#ok<AGROW>
+        else
+            r(end + 1:end + 2) = {sprintf('%+.2f [%+.2f ; %+.2f] (%d)', t.Diff_vs_ref_mean, t.Diff_vs_ref_CI95_low, ...
+                t.Diff_vs_ref_CI95_high, t.n_patients_vs_ref), fmtP(t.p_vs_ref_Holm)}; %#ok<AGROW>
+        end
         tab(end + 1, :) = r; %#ok<AGROW>
     end
 end
 Table = cell2table(tab, 'VariableNames', {'Tache', 'Famille', 'Plage', 'PRE_moyenne_IC95', 'PRE_n', ...
-    'POST_moyenne_IC95', 'POST_n', 'n_apparie', 'p_Holm_PRE_POST', 'Spearman_rho_PRE_POST'});
+    'POST_moyenne_IC95', 'POST_n', 'n_apparie', 'p_Holm_PRE_POST', 'Spearman_rho_PRE_POST', ...
+    'Diff_vs_reference_IC95_n', 'p_Holm_vs_reference'});
 fprintf('\nTableau (moyenne [IC 95 %%]) :\n'); disp(Table);
 
 % -------------------------------------------------------------------------
