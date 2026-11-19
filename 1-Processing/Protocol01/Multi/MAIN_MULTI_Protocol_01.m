@@ -524,5 +524,5 @@ SHRCurves = ExportSHRCurvesFromDatabase(DatabaseFile, PostureDataFile, SHRCurves
 % Formules de SHR (familles A GH:ST, B TH:ST, C TH:GH au pic) sur les courbes
 % validées, lues dans le dossier de l'abstract (SHR_Curves.xlsx) ; scaption
 % seule par défaut, Excel + figure écrits dans ce dossier
-SHRFormulas = TestSHRFormulas(SHRAbstractFolder);
+SHRFormulas = TestSHRFormulas(SHRAbstractFolder, struct('FigureFolder', SHRFigureFolder));
 

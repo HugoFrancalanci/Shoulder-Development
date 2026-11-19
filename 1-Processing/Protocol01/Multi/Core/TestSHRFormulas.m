@@ -63,7 +63,9 @@
 %           figure A, B, C exportée en PNG et PDF à côté de l'Excel), Tasks
 %           ({'analytic2'} : scaption seule, choix de l'abstract ;
 %           {'analytic1', 'analytic2'} pour ajouter la flexion), MinElevation
-%           (15 deg), Ranges ([NaN NaN; NaN 90; NaN 120; 20 90; 20 120])
+%           (15 deg), Ranges ([NaN NaN; NaN 90; NaN 120; 20 90; 20 120;
+%           30 90]), FigureFolder (dossier des figures ; DataFolder par
+%           défaut, Abstract 3/Figures depuis MAIN)
 % Outputs : SHR (table) une ligne par patient, tâche et condition : repos et
 %           pic de HT, GH (signé orienté), ST, GH en abs (contrôle), sens
 %           GH, exclusion, ratios A, B, C
@@ -89,12 +91,22 @@ if ~isfield(Opts, 'MinDelta')   || isempty(Opts.MinDelta),   Opts.MinDelta   = 1
 if ~isfield(Opts, 'Plot')       || isempty(Opts.Plot),       Opts.Plot       = true;                end
 if ~isfield(Opts, 'Tasks')      || isempty(Opts.Tasks),      Opts.Tasks      = {'analytic2'};       end
 if ~isfield(Opts, 'MinElevation') || isempty(Opts.MinElevation), Opts.MinElevation = 15;            end
+if ~isfield(Opts, 'FigureFolder') || isempty(Opts.FigureFolder), Opts.FigureFolder = DataFolder;    end
 % Plages d'élévation [début fin] en HT : début NaN = repos, fin NaN =
 % maximum individuel
 if ~isfield(Opts, 'Ranges') || isempty(Opts.Ranges)
-    Opts.Ranges = [NaN NaN; NaN 90; NaN 120; 20 90; 20 120];
+    Opts.Ranges = [NaN NaN; NaN 90; NaN 120; 20 90; 20 120; 30 90];   % 30–90 = fixed window
 end
+% Intervalles d'analyse sur la montée complète (rest–individual max)
+if ~isfield(Opts, 'IncEdges')  || isempty(Opts.IncEdges),  Opts.IncEdges  = 20:10:170;           end
+if ~isfield(Opts, 'Brackets')  || isempty(Opts.Brackets),  Opts.Brackets  = [30 60 90 120 150];  end
+if ~isfield(Opts, 'Grid')      || isempty(Opts.Grid),      Opts.Grid      = 30:10:170;           end
+if ~isfield(Opts, 'ContDegree')   || isempty(Opts.ContDegree),   Opts.ContDegree   = 3;          end
+if ~isfield(Opts, 'ContMinSlope') || isempty(Opts.ContMinSlope), Opts.ContMinSlope = 0.1;        end
 [rngSfx, rngLbl] = rangeNames(Opts.Ranges);
+% Colonnes A / B : plages, puis intervalles à une valeur par patient
+allSfx = [rngSfx, {'_reg', '_incmean'}];
+allLbl = [rngLbl, {'regression slope', 'increments 10° (mean)'}];
 angles = unique(Opts.Ranges(~isnan(Opts.Ranges)))';   % angles HT où lire GH et ST
 
 inFile  = fullfile(DataFolder, Opts.InputFile);
@@ -112,7 +124,7 @@ conds      = {'Pre', 'Post'};
 % Familles x plages : A et B pour chaque plage (suffixe _<début>_<fin>,
 % ex. _rest_max, _20_90) ; C au pic seulement (« at peak »)
 angLbl     = arrayfun(@(a) sprintf('_%d', a), angles, 'UniformOutput', false);
-famCol     = [strcat('A_GHST', rngSfx), strcat('B_THST', rngSfx), {'C_THGH'}];
+famCol     = [strcat('A_GHST', allSfx), strcat('B_THST', allSfx), {'C_THGH'}];
 nPts       = 101;
 
 % Côté de chaque patient (sens du GH signé propre au côté)
@@ -124,6 +136,7 @@ cyc = readtable(inFile, 'Sheet', 'Cycle_retenu');
 % 1) Repos et pic de chaque session (HT, ST : abs comme Data_posture ; GH :
 %    signé, orienté ensuite)
 rows = {};
+asc  = {};   % courbes de la montée {HT, GH signé, ST signé} (1 à pic), même ordre que rows
 for iT = 1:numel(tasks)
     D = struct();
     for iJ = 1:numel(joints)
@@ -158,6 +171,7 @@ for iT = 1:numel(tasks)
                 va(2 * a)     = atAngle(ht, sts, angles(a), ip);
             end
             rows(end + 1, :) = [{numeros(k), s{1}, taskLabel{iT}, upper(conds{iC}), ip}, num2cell([v, va])]; %#ok<AGROW>
+            asc{end + 1, 1} = {ht(1:ip), ghs(1:ip), sts(1:ip)}; %#ok<AGROW>
         end
     end
 end
@@ -210,6 +224,35 @@ for i = find(cellfun(@isempty, SHR.Exclu))'
     end
 end
 
+% 4) Intervalles d'analyse sur la montée complète (rest–individual max) :
+%    une valeur par patient (pente de régression, moyenne des incréments)
+%    et des valeurs par angle (incréments, brackets, cumulatif, continu)
+disc = cell(0, 7);
+for i = find(cellfun(@isempty, SHR.Exclu))'
+    h = asc{i}{1}; g = SHR.GH_sign(i) * asc{i}{2}; s = SHR.ST_sign(i) * asc{i}{3};
+    I = shrIntervals(h, g, s, SHR.HT_rest(i), SHR.GH_rest(i), SHR.ST_rest(i), Opts);
+    SHR.A_GHST_reg(i) = I.Areg;     SHR.B_THST_reg(i) = I.Breg;
+    SHR.A_GHST_incmean(i) = I.Ainc; SHR.B_THST_incmean(i) = I.Binc;
+    if ~isempty(I.rows)
+        disc = [disc; [repmat({SHR.Numero(i), SHR.Condition{i}}, size(I.rows, 1), 1), I.rows]]; %#ok<AGROW>
+    end
+end
+Disc = cell2table(disc, 'VariableNames', {'Numero', 'Condition', 'Interval', 'Family', 'From', 'To', 'Value'});
+
+% Résumé par intervalle, famille, angle et condition
+fr = Disc.From; fr(isnan(fr)) = -1;   % -1 = repos (findgroups ignore les NaN)
+[gk, gI, gF, gFr, gTo, gC] = findgroups(Disc.Interval, Disc.Family, fr, Disc.To, Disc.Condition);
+gFr(gFr == -1) = NaN;
+ds = cell(max(gk), 12);
+for k = 1:max(gk)
+    x = Disc.Value(gk == k); x = x(~isnan(x));
+    if isempty(x), ci = [NaN NaN]; q = NaN(1, 3); else
+        ci = mean(x) + [-1 1] * tq975(numel(x) - 1) * std(x) / sqrt(numel(x)); q = quantile7(x, [0.25 0.5 0.75]); end
+    ds(k, :) = {gI{k}, gF{k}, gFr(k), gTo(k), gC{k}, numel(x), mean(x), ci(1), ci(2), q(2), q(1), q(3)};
+end
+DiscSum = cell2table(ds, 'VariableNames', {'Interval', 'Family', 'From', 'To', 'Condition', 'n', ...
+    'Mean', 'CI95_low', 'CI95_high', 'Median', 'Q1', 'Q3'});
+
 % -------------------------------------------------------------------------
 % RESUME (console + feuille)
 % -------------------------------------------------------------------------
@@ -237,10 +280,47 @@ end
 Summary = cell2table(sumRows, 'VariableNames', {'Task', 'Condition', 'Family', 'n', 'n_apparie', 'n_exclu', 'n_vide', ...
     'Median', 'Q1', 'Q3', 'Mean', 'SD', 'CI95_low', 'CI95_high', 'n_negatif'});
 
+% Tests (une ligne par tâche et colonne de ratio) :
+%   PRE vs POST : Wilcoxon signé apparié (patients avec PRE et POST),
+%     exact si n <= 50 sans ex aequo, sinon approximation normale avec
+%     correction des ex aequo (comme scipy.stats.wilcoxon par défaut) ;
+%     correction de Holm sur toutes les colonnes de la tâche ;
+%   Spearman : rho entre la méthode et la référence rest–individual max de
+%     la même famille, sur les mêmes sessions, par condition (descriptif,
+%     sans p) ; pas de référence pour C
+tst = cell(0, 14);
+for iT = 1:numel(tasks)
+    S  = SHR(strcmp(SHR.Task, taskLabel{iT}), :);
+    pr = S(strcmp(S.Condition, 'PRE'), :); po = S(strcmp(S.Condition, 'POST'), :);
+    [~, ia, ib] = intersect(pr.Numero, po.Numero);
+    pv = NaN(numel(famCol), 1); first = size(tst, 1);
+    for iF = 1:numel(famCol)
+        f = famCol{iF};
+        x = pr.(f)(ia); y = po.(f)(ib); ok = ~isnan(x) & ~isnan(y);
+        [p, W, z, meth] = wilcoxonSigned(y(ok) - x(ok));
+        pv(iF) = p;
+        ref = refColumn(f);
+        rho = NaN(1, 2); nr = zeros(1, 2);
+        for iC = 1:2
+            C = S(strcmp(S.Condition, upper(conds{iC})), :);
+            if isempty(ref), continue; end
+            u = C.(f); v = C.(ref); okr = ~isnan(u) & ~isnan(v);
+            nr(iC) = sum(okr); rho(iC) = spearmanRho(u(okr), v(okr));
+        end
+        tst(end + 1, :) = {taskLabel{iT}, f, sum(ok), median(y(ok) - x(ok)), W, z, p, meth, NaN, ...
+            rho(1), nr(1), rho(2), nr(2), ~isempty(ref) && strcmp(f, ref)}; %#ok<AGROW>
+    end
+    ph = holm(pv);
+    for iF = 1:numel(famCol), tst{first + iF, 9} = ph(iF); end
+end
+Tests = cell2table(tst, 'VariableNames', {'Task', 'Family', 'n_pairs', 'Median_diff_POST_PRE', 'W', 'z', ...
+    'p', 'p_method', 'p_Holm', 'rho_PRE', 'n_rho_PRE', 'rho_POST', 'n_rho_POST', 'is_reference'});
+
 % Tableau de l'abstract : une ligne par famille et plage, moyenne [IC 95 %]
-% et n en PRE et en POST (toutes les sessions disponibles de la condition)
-[famNames, rngNames] = famLabels(famCol, rngSfx, rngLbl);
-tab = cell(0, 8);
+% et n en PRE et en POST (toutes les sessions disponibles de la condition),
+% p de Holm (PRE vs POST) et rho de Spearman avec la référence
+[famNames, rngNames] = famLabels(famCol, allSfx, allLbl);
+tab = cell(0, 10);
 for iT = 1:numel(tasks)
     for iF = 1:numel(famCol)
         r = {taskLabel{iT}, famNames{iF}, rngNames{iF}};
@@ -250,11 +330,16 @@ for iT = 1:numel(tasks)
             r = [r, {sprintf('%.2f [%.2f ; %.2f]', s.Mean, s.CI95_low, s.CI95_high), s.n}]; %#ok<AGROW>
         end
         r{end + 1} = nPaired(SHR, taskLabel{iT}, famCol{iF}); %#ok<AGROW>
+        t = Tests(strcmp(Tests.Task, taskLabel{iT}) & strcmp(Tests.Family, famCol{iF}), :);
+        r{end + 1} = fmtP(t.p_Holm); %#ok<AGROW>
+        if t.is_reference, r{end + 1} = 'référence'; %#ok<AGROW>
+        elseif isnan(t.rho_PRE) && isnan(t.rho_POST), r{end + 1} = '—'; %#ok<AGROW>
+        else, r{end + 1} = sprintf('%.2f / %.2f', t.rho_PRE, t.rho_POST); end %#ok<AGROW>
         tab(end + 1, :) = r; %#ok<AGROW>
     end
 end
 Table = cell2table(tab, 'VariableNames', {'Tache', 'Famille', 'Plage', 'PRE_moyenne_IC95', 'PRE_n', ...
-    'POST_moyenne_IC95', 'POST_n', 'n_apparie'});
+    'POST_moyenne_IC95', 'POST_n', 'n_apparie', 'p_Holm_PRE_POST', 'Spearman_rho_PRE_POST'});
 fprintf('\nTableau (moyenne [IC 95 %%]) :\n'); disp(Table);
 
 % -------------------------------------------------------------------------
@@ -292,12 +377,17 @@ writecell(W, outFile, 'Sheet', 'SHR');
 writetable(SHR, outFile, 'Sheet', 'Composantes');
 writetable(Summary, outFile, 'Sheet', 'Resume');
 writetable(Table, outFile, 'Sheet', 'Tableau_abstract');
+writetable(Tests, outFile, 'Sheet', 'Tests');
+writetable(DiscSum, outFile, 'Sheet', 'Intervalles_resume');
+writetable(Disc, outFile, 'Sheet', 'Intervalles');
 fprintf('Excel exporté : %s\n', outFile);
 
 if Opts.Plot
     [~, base] = fileparts(Opts.OutputFile);
-    plotSHR(SHR, fullfile(DataFolder, base), taskLabel, Opts.MinElevation, rngSfx, rngLbl);
-    plotSHRMeanCI(Summary, fullfile(DataFolder, [base, '_moyenne_IC']), taskLabel, famCol, rngSfx, rngLbl);
+    if ~isfolder(Opts.FigureFolder), mkdir(Opts.FigureFolder); end
+    plotSHR(SHR, fullfile(Opts.FigureFolder, base), taskLabel, Opts.MinElevation, allSfx, allLbl);
+    plotSHRMeanCI(Summary, fullfile(Opts.FigureFolder, [base, '_moyenne_IC']), taskLabel, famCol, allSfx, allLbl);
+    plotSHRIntervals(DiscSum, fullfile(Opts.FigureFolder, [base, '_intervalles']));
 end
 
 end
@@ -462,6 +552,124 @@ for iT = 1:numel(taskLabel)
 end
 end
 
+% Intervalles d'analyse d'une session sur la montée (h : HT, g : GH et s :
+% ST signés orientés, du repos au pic ; h0, g0, s0 : valeurs au repos) :
+%   regression : pente de g sur s (A) et de h sur s (B), toute la montée ;
+%   increments : ratio dans chaque tranche [e(k) e(k+1)] de IncEdges (A :
+%     ΔGH/ΔST, B : ΔHT/ΔST), + moyenne des tranches du patient (Ainc, Binc) ;
+%   brackets   : idem sur les tranches de Brackets ;
+%   cumulative : ratio du repos jusqu'à chaque angle de Grid ;
+%   continuous : rapport des dérivées de GH(HT) et ST(HT) (polynômes de degré
+%     ContDegree ajustés sur la montée) à chaque angle de Grid ; vide si
+%     |dST/dHT| < ContMinSlope.
+% Angles lus là où HT franchit l'angle sur la montée (atAngle, règle
+% stricte). rows : {Interval, Family, From, To, Value} (From NaN = repos).
+function I = shrIntervals(h, g, s, h0, g0, s0, Opts)
+I = struct('Areg', NaN, 'Breg', NaN, 'Ainc', NaN, 'Binc', NaN, 'rows', {cell(0, 5)});
+ip = numel(h);
+if max(s) - min(s) >= Opts.MinDelta
+    pA = polyfit(s, g, 1); pB = polyfit(s, h, 1);
+    I.Areg = pA(1); I.Breg = pB(1);
+end
+allAng = unique([Opts.IncEdges, Opts.Brackets, Opts.Grid]);
+G = arrayfun(@(a) atAngle(h, g, a, ip), allAng);
+S = arrayfun(@(a) atAngle(h, s, a, ip), allAng);
+at = @(a) find(allAng == a, 1);
+R = cell(0, 5);
+% Incréments et brackets
+specs = {'increments', Opts.IncEdges; 'brackets', Opts.Brackets};
+inc = NaN(0, 2);
+for sp = 1:size(specs, 1)
+    e = specs{sp, 2};
+    for k = 1:numel(e) - 1
+        i0 = at(e(k)); i1 = at(e(k + 1));
+        if isnan(S(i0)) || isnan(S(i1)), continue; end
+        dS = S(i1) - S(i0);
+        a = ratio(G(i1) - G(i0), dS, Opts.MinDelta); b = ratio(e(k + 1) - e(k), dS, Opts.MinDelta);
+        R(end + 1, :) = {specs{sp, 1}, 'A', e(k), e(k + 1), a}; %#ok<AGROW>
+        R(end + 1, :) = {specs{sp, 1}, 'B', e(k), e(k + 1), b}; %#ok<AGROW>
+        if sp == 1, inc(end + 1, :) = [a b]; end %#ok<AGROW>
+    end
+end
+if ~isempty(inc), I.Ainc = mean(inc(:, 1), 'omitnan'); I.Binc = mean(inc(:, 2), 'omitnan'); end
+% Cumulatif depuis le repos
+for a = Opts.Grid
+    ia = at(a);
+    if isnan(S(ia)), continue; end
+    R(end + 1, :) = {'cumulative', 'A', NaN, a, ratio(G(ia) - g0, S(ia) - s0, Opts.MinDelta)}; %#ok<AGROW>
+    R(end + 1, :) = {'cumulative', 'B', NaN, a, ratio(a - h0, S(ia) - s0, Opts.MinDelta)}; %#ok<AGROW>
+end
+% Continu : dérivées des polynômes GH(HT) et ST(HT)
+if ip >= Opts.ContDegree + 2 && max(h) - min(h) >= 10
+    [pg, ~, mu] = polyfit(h, g, Opts.ContDegree);
+    [ps, ~, ~]  = polyfit(h, s, Opts.ContDegree);   % même centrage mu (même h)
+    for a = Opts.Grid
+        if a <= h(1) || a > max(h), continue; end
+        z  = (a - mu(1)) / mu(2);
+        dg = polyval(polyder(pg), z) / mu(2);
+        dsv = polyval(polyder(ps), z) / mu(2);
+        if abs(dsv) < Opts.ContMinSlope, va = NaN; vb = NaN; else, va = dg / dsv; vb = 1 / dsv; end
+        R(end + 1, :) = {'continuous', 'A', a, a, va}; %#ok<AGROW>
+        R(end + 1, :) = {'continuous', 'B', a, a, vb}; %#ok<AGROW>
+    end
+end
+I.rows = R;
+end
+
+% Figure des intervalles par angle (pour le diapo) : lignes A (GH:ST) et B
+% (TH:ST), colonnes increments, brackets, cumulative, continuous ; moyenne
+% et IC 95 % en fonction de HT (centre de la tranche, ou angle), PRE orange
+% et POST bleu ; points avec n >= 10 seulement ; pointillé = repère d'Inman
+function plotSHRIntervals(DiscSum, outBase)
+ints   = {'increments', 'brackets', 'cumulative', 'continuous'};
+iLbl   = {'Increments 10°', 'Brackets 30°', 'Cumulative from rest', 'Continuous curve'};
+fams   = {'A', 'B'}; fLbl = {'A  GH:ST', 'B  TH:ST'}; ref = [2 3];
+col    = [0.90 0.62 0.00; 0.00 0.45 0.70];
+ink    = [0.25 0.25 0.25];
+conds  = {'PRE', 'POST'};
+fig = figure('Color', 'w', 'Position', [50 50 1600 750], 'Name', 'SHR - intervalles d''analyse');
+if exist('theme', 'file'), theme(fig, 'light'); end
+tl = tiledlayout(fig, 2, 4, 'TileSpacing', 'compact', 'Padding', 'compact');
+for f = 1:2
+    for k = 1:numel(ints)
+        ax = nexttile(tl); hold(ax, 'on');
+        yline(ax, ref(f), ':', sprintf('%g:1', ref(f)), 'Color', [0.55 0.55 0.55], 'LabelHorizontalAlignment', 'left', ...
+            'FontSize', 8, 'HandleVisibility', 'off');
+        for iC = 1:2
+            D = DiscSum(strcmp(DiscSum.Interval, ints{k}) & strcmp(DiscSum.Family, fams{f}) & ...
+                strcmp(DiscSum.Condition, conds{iC}) & DiscSum.n >= 10, :);
+            if isempty(D), continue; end
+            x = D.To; if ismember(ints{k}, {'increments', 'brackets'}), x = (D.From + D.To) / 2; end
+            [x, o] = sort(x); D = D(o, :);
+            x = x + (iC - 1.5) * 1.5;   % léger décalage PRE / POST
+            errorbar(ax, x, D.Mean, D.Mean - D.CI95_low, D.CI95_high - D.Mean, 'o-', 'Color', col(iC, :), ...
+                'MarkerFaceColor', col(iC, :), 'MarkerEdgeColor', 'w', 'MarkerSize', 5, 'LineWidth', 1.3, 'CapSize', 3);
+        end
+        xlim(ax, [15 175]);
+        set(ax, 'XTick', 20:20:160, 'XTickLabel', arrayfun(@num2str, 20:20:160, 'UniformOutput', false), ...
+            'TickLabelInterpreter', 'none', 'FontName', 'Arial', 'TickDir', 'out', 'XColor', ink, 'YColor', ink, 'FontSize', 9, 'Box', 'off', 'YGrid', 'on', ...
+            'GridColor', [0.9 0.9 0.9], 'GridAlpha', 1);
+        if f == 1, title(ax, iLbl{k}, 'FontWeight', 'bold', 'FontSize', 10, 'Color', ink); end
+        if k == 1, ylabel(ax, sprintf('%s (moyenne, IC 95 %%)', fLbl{f}), 'FontWeight', 'bold'); end
+        if f == 2, xlabel(ax, 'HT (°)'); end
+        if f == 1 && k == 1
+            lg = legend(ax, {'PRE', 'POST'}, 'Orientation', 'horizontal', 'Box', 'off', 'FontSize', 10);
+            lg.Layout.Tile = 'north';
+        end
+    end
+end
+title(tl, {'SHR en scaption par intervalle d''analyse (montée rest–individual max ; GH et ST signés orientés)', ...
+    'Increments / brackets : centre de la tranche ; cumulative : du repos à l''angle ; continuous : à l''angle ; n \geq 10'}, ...
+    'FontSize', 11, 'Color', ink);
+% Note : MATLAB R2026a superpose parfois les chiffres d'un libellé d'axe
+% dans le PNG selon sa position en pixels (« 60 » rendu « 6 », objets
+% corrects ; reproduit hors de ce code, dépend de la largeur et de la
+% résolution) : préférer le PDF vectoriel pour le diapo
+exportgraphics(fig, [outBase, '.png'], 'Resolution', 300);
+exportgraphics(fig, [outBase, '.pdf'], 'ContentType', 'vector');
+fprintf('Figure exportée : %s (.png, .pdf)\n', outBase);
+end
+
 % Libellés famille et plage de chaque colonne de ratio
 % (A_GHST_20_90 -> 'A GH:ST', '20–90°' ; C_THGH -> 'C TH:GH au pic', 'peak')
 function [famNames, rngNames] = famLabels(famCol, rngSfx, rngLbl)
@@ -501,6 +709,72 @@ else
     a = sprintf('_%d', theta);
     p = [theta, SHR.(['GH_at', a])(i), SHR.(['ST_at', a])(i)];
 end
+end
+
+% Test de Wilcoxon signé (deux côtés) sur les différences appariées d (zéros
+% retirés). Exact si n <= 50 sans ex aequo (distribution de W+ par
+% dénombrement), sinon approximation normale avec correction des ex aequo,
+% sans correction de continuité (comme scipy.stats.wilcoxon par défaut).
+% W = somme des rangs des différences positives.
+function [p, W, z, meth] = wilcoxonSigned(d)
+p = NaN; W = NaN; z = NaN; meth = '';
+d = d(d ~= 0 & ~isnan(d)); n = numel(d);
+if n < 2, return; end
+r  = avgRank(abs(d));
+W  = sum(r(d > 0));
+mu = n * (n + 1) / 4;
+[~, ~, g] = unique(abs(d)); t = accumarray(g, 1);
+sd = sqrt(n * (n + 1) * (2 * n + 1) / 24 - sum(t .^ 3 - t) / 48);
+z  = (W - mu) / sd;
+if n <= 50 && all(t == 1)
+    N = n * (n + 1) / 2; c = zeros(1, N + 1); c(1) = 1;
+    for k = 1:n, c(k + 1:end) = c(k + 1:end) + c(1:end - k); end   % sous-ensembles de {1..n}
+    P = c / 2 ^ n; w = round(W);
+    p = min(1, 2 * min(sum(P(1:w + 1)), sum(P(w + 1:end))));
+    meth = 'exact';
+else
+    p = erfc(abs(z) / sqrt(2));
+    meth = 'normal';
+end
+end
+
+% Rangs moyens (ex aequo : moyenne des rangs), sans Statistics Toolbox
+function r = avgRank(x)
+x = x(:); [s, o] = sort(x); r = zeros(size(x)); n = numel(x); i = 1;
+while i <= n
+    j = i; while j < n && s(j + 1) == s(i), j = j + 1; end
+    r(o(i:j)) = (i + j) / 2; i = j + 1;
+end
+end
+
+% Rho de Spearman = corrélation de Pearson des rangs moyens
+function rho = spearmanRho(a, b)
+rho = NaN;
+if numel(a) < 3, return; end
+ra = avgRank(a); rb = avgRank(b);
+c = corrcoef(ra, rb); rho = c(1, 2);
+end
+
+% Correction de Holm (p ajustées, NaN ignorés)
+function ph = holm(p)
+ph = NaN(size(p)); ok = find(~isnan(p)); m = numel(ok);
+[ps, o] = sort(p(ok)); adj = min(1, (m - (1:m)' + 1) .* ps(:));
+adj = cummax(adj);
+ph(ok(o)) = adj;
+end
+
+% Référence de la famille d'une colonne (rest–individual max) ; '' pour C
+function ref = refColumn(f)
+switch f(1)
+    case 'A', ref = 'A_GHST_rest_max';
+    case 'B', ref = 'B_THST_rest_max';
+    otherwise, ref = '';
+end
+end
+
+% p formatée pour le tableau
+function s = fmtP(p)
+if isnan(p), s = '—'; elseif p < 0.001, s = '< 0.001'; else, s = sprintf('%.3f', p); end
 end
 
 % Quantile 0.975 de la loi de Student à df degrés de liberté (IC 95 %

@@ -282,6 +282,10 @@ SHRCurvesOutputFile = fullfile(ResultsFolder, 'SHR_Curves.xlsx');
 SHRAbstractFolder = fullfile(getenv('USERPROFILE'), 'OneDrive - Université de Genève', 'PhD Hugo', ...
     '04_Outputs', '02_Conferences', 'Congress', '2027_International Society of Biomechanics', ...
     'Abstract', 'Abstract 3', 'Data');
+% SHRFigureFolder / SHRTableFolder : figures (PNG, PDF) et tableaux Word de
+% l'abstract, à côté de Data
+SHRFigureFolder = fullfile(fileparts(SHRAbstractFolder), 'Figures');
+SHRTableFolder  = fullfile(fileparts(SHRAbstractFolder), 'Tables');
 
 % PostureOutputFile : fichier Excel de sortie (inclinaison thoracique + Moroder)
 PostureOutputFile = fullfile(ResultsFolder, 'Posture_Summary.xlsx');
