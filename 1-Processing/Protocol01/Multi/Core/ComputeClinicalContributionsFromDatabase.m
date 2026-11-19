@@ -49,9 +49,17 @@
 %                         date} (voir userCommands_Multi.m), tracées en vert
 %                         sur la figure des courbes et exportées dans la
 %                         feuille 'Clinical_Asymptomatic' (une ligne par
-%                         épaule/tâche, colonnes <M>_ASYM_deg/_max_deg)
+%                         épaule/tâche, colonnes <M>_ASYM_deg/_max_deg),
+%                         Export (true : écrit OutputFile), Plot (true :
+%                         figure des courbes) ; Export = Plot = false pour
+%                         ne récupérer que les sorties (ExportSHRCurvesFromDatabase)
 % Outputs : Results (struct array) une ligne par patient/côté - aussi
 %           retourné pour exploitation directe sans repasser par l'Excel
+%           AsymResults (struct array) épaules asymptomatiques
+%           Curves (struct array, même indexation que Results) courbes
+%           HT/GH/ST/TX_<PRE|POST> du cycle retenu (101 points, après
+%           correction ST/TX inversées) et GH_<PRE|POST>_signed (GH sans
+%           abs, même cycle)
 %           Fichier Excel écrit sur disque + figure des courbes PRE/POST
 % -------------------------------------------------------------------------
 % Dependencies : None
@@ -62,13 +70,15 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function [Results, AsymResults] = ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
+function [Results, AsymResults, Curves] = ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
 
 if nargin < 3, ResultsFolder = ''; end
 if nargin < 4, Opts = struct(); end
 if ~isfield(Opts, 'ApplyInvCorr') || isempty(Opts.ApplyInvCorr), Opts.ApplyInvCorr = true; end
 if ~isfield(Opts, 'CorrThresh')   || isempty(Opts.CorrThresh),   Opts.CorrThresh   = 0;    end
 if ~isfield(Opts, 'AsymptomaticSelection'), Opts.AsymptomaticSelection = {}; end
+if ~isfield(Opts, 'Export') || isempty(Opts.Export), Opts.Export = true; end
+if ~isfield(Opts, 'Plot')   || isempty(Opts.Plot),   Opts.Plot   = true; end
 
 % La base peut être répartie sur plusieurs fichiers .mat (voir
 % NumDatabaseParts dans userCommands_Multi.m, DatabaseFile_partXofY.mat) -
@@ -195,6 +205,7 @@ for iP = 1:nInFile
             Curves(ri).(['GH_', condition]) = c.GH_curve;
             Curves(ri).(['ST_', condition]) = c.ST_curve;
             Curves(ri).(['TX_', condition]) = c.TX_curve;
+            Curves(ri).(['GH_', condition, '_signed']) = c.GH_signed;   % GH sans abs (SHR)
 
             % Données brutes signées pour la correction ST/TX inversées
             % (voir ApplyInversionCorrectionSTTX.m)
@@ -271,7 +282,9 @@ end
 % -------------------------------------------------------------------------
 % EXPORT EXCEL
 % -------------------------------------------------------------------------
-if ~isempty(Results)
+if ~Opts.Export
+    % Pas d'export (sorties seulement)
+elseif ~isempty(Results)
     T = struct2table(Results);
     if isfile(OutputFile), delete(OutputFile); end
     writetable(T, OutputFile, 'Sheet', 'Clinical_Contributions');
@@ -285,7 +298,9 @@ else
     disp('Aucune donnée à exporter.');
 end
 
-PlotHTContributionsCurves(Curves, AsymCurves);
+if Opts.Plot
+    PlotHTContributionsCurves(Curves, AsymCurves);
+end
 
 if ~isempty(ResultsFolder) && isfolder(ResultsFolder)
     cd(ResultsFolder);
@@ -423,7 +438,7 @@ Contrib = struct('task', {}, 'side', {}, 'HT_range', {}, ...
                   'GH_range', {}, 'ST_range', {}, ...
                   'TX_range', {}, 'TXlat_range', {}, ...
                   'HT_max', {}, 'GH_max', {}, 'ST_max', {}, ...
-                  'HT_curve', {}, 'GH_curve', {}, 'ST_curve', {}, 'TX_curve', {}, ...
+                  'HT_curve', {}, 'GH_curve', {}, 'ST_curve', {}, 'TX_curve', {}, 'GH_signed', {}, ...
                   'ST_raw', {}, 'ST_rangeRaw', {}, 'ST_peakExc', {}, 'ST_excSign', {}, ...
                   'TX_raw', {}, 'TX_rangeRaw', {}, 'TX_peakExc', {}, 'TX_excSign', {}, ...
                   'cycleIdx', {}, 'cycleAlert', {});
@@ -497,6 +512,10 @@ for iT = 1:numel(taskDOF)
         Contrib(i).GH_curve = getCurveCycle(t, s.jiGH, dofGH, s.cycField, sel.idx);
         Contrib(i).ST_curve = getCurveCycle(t, s.jiST, dofST, s.cycField, sel.idx);
         Contrib(i).TX_curve = getCurveCycleTH(t, 11, dofTX, s.cycField, sel.idx);
+        % GH signé (sans abs) sur le même cycle : abs() replie la courbe quand
+        % l'angle de repos est du côté de zéro opposé au mouvement (SHR,
+        % ExportSHRCurvesFromDatabase / TestSHRFormulas) ; non utilisé ici
+        Contrib(i).GH_signed = BestCycle.curve(BestCycle.raw(t, s.jiGH, dofGH, s.cycField, false), sel.idx);
 
         [Contrib(i).ST_raw, Contrib(i).ST_rangeRaw, Contrib(i).ST_peakExc, Contrib(i).ST_excSign] = ...
             getRawInfo(t, s.jiST, dofST, s.cycField, false, sel.idx);

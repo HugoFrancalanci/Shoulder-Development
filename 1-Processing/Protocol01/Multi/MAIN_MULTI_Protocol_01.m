@@ -511,7 +511,18 @@ Folder.deps = fullfile(fileparts(Folder.toolbox), 'dependencies');
 IllustrationInfo = PlotMeasureIllustrations(Folder, PatientSelection, DataFolder, PostureDataFile, ...
     fullfile(fileparts(PostureDataFile), 'Illustrations'), 152);
 
-%% Final figures
+% Figures
 % Figures de l'article (format JSES, une par fichier, flexion et scaption) ;
 % toutes les comparaisons sur l'amplitude (max moins min)
 [ArticleFigures, ThoracicShare, ThoracicDecomp] = PlotArticleFigures(PostureDataFile, ArticleFigureFolder);
+
+%% SHR methodology analysis
+% Courbes HT, GH, ST point par point (PRE et POST, cycle retenu, 101 points)
+% pour les patients de PostureDataFile : base des formules de SHR
+SHRCurves = ExportSHRCurvesFromDatabase(DatabaseFile, PostureDataFile, SHRCurvesOutputFile);
+
+% Formules de SHR (familles A GH:ST, B TH:ST, C TH:GH au pic) sur les courbes
+% validées, lues dans le dossier de l'abstract (SHR_Curves.xlsx) ; scaption
+% seule par défaut, Excel + figure écrits dans ce dossier
+SHRFormulas = TestSHRFormulas(SHRAbstractFolder);
+

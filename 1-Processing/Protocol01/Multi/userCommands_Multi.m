@@ -273,6 +273,16 @@ CoRQualityOutputFile = fullfile(ResultsFolder, 'CoRQuality_Summary.xlsx');
 % CurveQualityOutputFile : fichier Excel de sortie (validité des courbes HT/HG/GH/ST/TX)
 CurveQualityOutputFile = fullfile(ResultsFolder, 'CurveQuality_Summary.xlsx');
 
+% SHRCurvesOutputFile : fichier Excel de sortie (courbes HT/GH/ST point par
+% point PRE/POST, ExportSHRCurvesFromDatabase)
+SHRCurvesOutputFile = fullfile(ResultsFolder, 'SHR_Curves.xlsx');
+% SHRAbstractFolder : dossier de l'abstract ISB 2027 (SHR_Curves.xlsx validé
+% copié ici ; TestSHRFormulas y lit les courbes et écrit SHR_Formulas.xlsx).
+% Chemin relatif au profil Windows pour fonctionner sur les deux machines
+SHRAbstractFolder = fullfile(getenv('USERPROFILE'), 'OneDrive - Université de Genève', 'PhD Hugo', ...
+    '04_Outputs', '02_Conferences', 'Congress', '2027_International Society of Biomechanics', ...
+    'Abstract', 'Abstract 3', 'Data');
+
 % PostureOutputFile : fichier Excel de sortie (inclinaison thoracique + Moroder)
 PostureOutputFile = fullfile(ResultsFolder, 'Posture_Summary.xlsx');
 
