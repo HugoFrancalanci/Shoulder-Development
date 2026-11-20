@@ -367,7 +367,7 @@ end
 % Dossier de session PRE (col = 3) ou POST (col = 4) du patient Numero
 function s = sessionFolder(PatientSelection, DataFolder, Numero, col)
 id = num2str(PatientSelection{Numero, 1}); key = num2str(PatientSelection{Numero, col});
-pd = dir(DataFolder); pd = pd([pd.isdir] & contains({pd.name}, id));
+pd = dir(DataFolder); pd = pd([pd.isdir] & endsWith({pd.name}, ['_' id]));
 if isempty(pd), error('PlotMeasureIllustrations:noPatient', 'Dossier patient introuvable (n°%d).', Numero); end
 sd = dir(fullfile(DataFolder, pd(1).name)); sd = sd([sd.isdir] & startsWith({sd.name}, key));
 if isempty(sd), error('PlotMeasureIllustrations:noSession', 'Session introuvable (n°%d).', Numero); end

@@ -63,7 +63,7 @@ fprintf('%s\n', repmat('-', 1, 70));
 
 for i = 1:nRows
     patientID = num2str(PatientSelection{i, 1});
-    matchIdx  = find(contains({dataDirList.name}, patientID));
+    matchIdx  = find(endsWith({dataDirList.name}, ['_' patientID])); % même règle que MAIN_MULTI_Protocol_01
     if isempty(matchIdx)
         fprintf('%4d %-12s %-40s %6s\n', i, patientID, '(dossier introuvable)', '-');
         continue;

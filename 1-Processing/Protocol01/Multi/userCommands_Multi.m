@@ -33,7 +33,7 @@ end
 %                de session dont le nom commence par cette valeur.
 PatientSelection = { ...
     '18792', 'L', '2022', '2023'; ... % 1
-    '23370', 'L', '20220523', '20221213'; ... % 2
+    '26370', 'L', '20220523', '20221213'; ... % 2
     '75042', 'R', '2022', '2023'; ... % 3
     '30432', 'R', '2022', '2025'; ... % 4
     '356971', 'R', '2022', '2023'; ... % 5
@@ -183,7 +183,7 @@ PatientSelection = { ...
     '270331', 'L', '2024', '2025'; ... % 149
     '869743', 'R', '2024', '2026'; ... % 150
     '408670', 'R', '2024', '2025'; ... % 151
-    '567097', 'R', '2024', '2026'; ... % 152
+    '567097', 'R', '20241210', '20260120'; ... % 152
     '86669', 'L', '2024', '2026'; ... % 153
     '501057', 'R', '2024', '2026'; ... % 154
     '4895', 'L', '2024', '2026'; ... % 155
@@ -214,6 +214,30 @@ PatientSelection = { ...
     '307818', 'L', '2025', '2026'; ... % 180
     '66072', 'R', '2025', '2026'; ... % 181
     '762166', 'R', '2025', '2026'; ... % 182
+    '102356', 'L', '2025', '2026'; ... % 183
+    '97138429', 'R', '2025', '2026'; ... % 184
+    '80941', 'R', '2025', '2026'; ... % 185
+    '869980', 'R', '2025', '2026'; ... % 186
+    '570037', 'R', '2025', '2026'; ... % 187
+    '99007140', 'L', '2025', '2026'; ... % 188
+    '226091', 'R', '2025', '2026'; ... % 189
+    '97718970', 'R', '20250429', '20260908'; ... % 190
+    '97718970', 'L', '20250923', '20260908'; ... % 191
+    '97026904', 'R', '2025', '2026'; ... % 192
+    '260554', 'R', '2025', '2026'; ... % 193
+    '97209231', 'L', '20250710', '20261006'; ... % 194
+    '196956', 'R', '2025', '2026'; ... % 195
+    '533941', 'R', '2025', '2026'; ... % 196
+    '98034326', 'R', '2025', '2026'; ... % 197
+    '161464', 'L', '2025', '2026'; ... % 198
+    '131995', 'R', '2024', '2026'; ... % 199
+    '589478', 'R', '20251007', '20261020'; ... % 200
+    '400634', 'L', '2025', '2026'; ... % 201
+    '43746', 'R', '2025', '2026'; ... % 202
+    '461957', 'R', '2025', '2026'; ... % 203
+    '97050204', 'R', '2025', '2026'; ... % 204
+    '36535', 'L', '2025', '2026'; ... % 205
+    '2269', 'R', '2025', '2026'; ... % 206
     };
 
 % AsymptomaticSelection : épaules asymptomatiques (côté controlatéral)
@@ -328,16 +352,16 @@ ContralateralEligibilityFile = fullfile(ResultsFolder, 'ContralateralEligibility
 
 % SaveDatabase : true pour sauvegarder .mat
 SaveDatabase = true;
-DatabaseFile = fullfile(ResultsFolder, 'Database_182_E02_01_Posture_rTSA.mat');
+DatabaseFile = fullfile(ResultsFolder, sprintf('Database_%d_E02_01_Posture_rTSA.mat', size(PatientSelection, 1)));
 
 % NumDatabaseParts : nombre de fichiers .mat sur lesquels repartir la
 % cohorte. 37 -> BatchSize=5 (PC portable --> moins puissant (25 minutes)). Tour CD-8K18T74 : 16 ->
 % BatchSize=12 (Tour --> plus rapide (16 minutes)).
 switch getenv('COMPUTERNAME')
     case 'CD-8K18T74'
-        NumDatabaseParts = 16;
+        NumDatabaseParts = 18; % 206 patients -> BatchSize = 12
     otherwise
-        NumDatabaseParts = 37;
+        NumDatabaseParts = 42; % 206 patients -> BatchSize = 5
 end
 
 % BatchSize : nombre de patients traités en parallele (parfor) avant

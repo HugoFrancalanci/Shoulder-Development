@@ -17,7 +17,12 @@
 %                initial (e.g. "Jean-Pierre Dupont" -> "JD").
 %                Gender: 1 = Female, 0 = Male, NaN if not recognised.
 %                Laterality: 1 = Left, 0 = Right, NaN if Bilateral/not
-%                recognised (affected/operated side, Pathology.Diagnosis.side).
+%                recognised. Side analysed in PatientSelection (sideCode)
+%                when given, otherwise Pathology.Diagnosis.side. Session.xlsx
+%                gives only ONE affected side per session: a session shared
+%                between the POST of one shoulder and the PRE of the other
+%                (e.g. n°163, n°190) lists the shoulder about to be operated,
+%                not the one analysed here.
 %                ASA is not available in Session.xlsx: left empty.
 %
 %                Age/Height/Mass/BMI are specific to THE SESSION passed as
@@ -44,6 +49,9 @@
 %           examDate (datetime, optional) exam date to use for Age instead
 %           of Session.date (see below); falls back to Session.date if
 %           omitted or invalid.
+%           sideCode (char, optional) side analysed, 'L' or 'R' (column 2
+%           of PatientSelection); Pathology.Diagnosis.side is used if
+%           omitted or not 'L'/'R' (e.g. 'RL').
 % Outputs : Info (struct) with fields ID, Age, Gender, Height, Mass, BMI,
 %           ASA, Laterality, EVA_formula, EVA_fallback, Diagnostic,
 %           PreviousSurgery
@@ -56,10 +64,13 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function Info = ComputePatientInfos(Patient, Session, Pathology, examDate)
+function Info = ComputePatientInfos(Patient, Session, Pathology, examDate, sideCode)
 
 if nargin < 4 || isempty(examDate)
     examDate = Session.date;
+end
+if nargin < 5
+    sideCode = '';
 end
 
 Info.ID = initialsID(Patient.firstname, Patient.lastname);
@@ -85,7 +96,11 @@ else
 end
 
 Info.ASA        = '';
-Info.Laterality = sideToBinary(Pathology.Diagnosis.side);
+% Side analysed (PatientSelection) first, Session.xlsx only as a fallback
+Info.Laterality = sideToBinary(sideCode);
+if isnan(Info.Laterality)
+    Info.Laterality = sideToBinary(Pathology.Diagnosis.side);
+end
 
 % Diagnostic/PreviousSurgery: Session.xlsx allows up to 5 entries each
 % (Diagnosis.d1-d5 / PreviousSurgery.i1-i5) - only the first (d1/i1) is

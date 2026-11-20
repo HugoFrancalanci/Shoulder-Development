@@ -171,7 +171,9 @@ for iBatch = 1:nBatches
         patientID     = num2str(PatientSelection{iP, 1});
         sidesToReport = parseSides(PatientSelection{iP, 2});
 
-        matchIdx = find(contains({dataDirList.name}, patientID));
+        % Dossier "Nom_Prenom_ID" : l'ID doit terminer le nom (sinon '423'
+        % trouverait aussi les dossiers ..._399423 ou ..._364239)
+        matchIdx = find(endsWith({dataDirList.name}, ['_' patientID]));
         if isempty(matchIdx)
             warning('Dossier introuvable pour l''ID %s', patientID);
             localErrors{end+1} = sprintf('%s | dossier introuvable', patientID); %#ok<AGROW>
@@ -227,7 +229,10 @@ for iBatch = 1:nBatches
                     end
                 end
 
-                info = ComputePatientInfos(Patient, Session, Pathology, examDate);
+                % Côté de PatientSelection ('L'/'R') : Session.xlsx ne donne
+                % qu'un côté par séance, faux pour une séance partagée
+                % (post d'une épaule + pré de l'autre, ex. n°163 et n°190)
+                info = ComputePatientInfos(Patient, Session, Pathology, examDate, strjoin(sidesToReport, ''));
 
                 if isempty(BatchPatientInfos(k).PatientID)
                     BatchPatientInfos(k).PatientID  = patientID;
