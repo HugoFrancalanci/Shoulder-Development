@@ -24,6 +24,12 @@ switch getenv('COMPUTERNAME')
         DataFolder = ''; % machine inconnue : demandé via fenêtre au lancement
 end
 
+% RegistreURL : adresse du registre local (Registre_Epaule, python serve.py).
+% Il fournit la cohorte (PatientSelection ci-dessous lue sur le site) et
+% reçoit les résultats en fin de run (ExportRegistre). '' pour s'en passer ;
+% s'il ne répond pas (fermé, autre machine), la liste écrite ci-dessous sert.
+RegistreURL = 'http://127.0.0.1:8765';
+
 % PatientSelection : {ID patient, côté à traiter, date PRE, date POST}
 %   ID patient : identifiant retrouvé comme sous-chaîne du nom du dossier
 %                patient 
@@ -240,6 +246,25 @@ PatientSelection = { ...
     '2269', 'R', '2025', '2026'; ... % 206
     };
 
+% Cohorte à jour lue sur le registre (nouvelles épaules comprises). Si le
+% registre ne répond pas ou refuse (numérotation non continue), la liste
+% ci-dessus est gardée.
+if ~isempty(RegistreURL)
+    try
+        Reg = webread([RegistreURL, '/api/matlab/patient_selection'], weboptions('Timeout', 3));
+        if isstruct(Reg) && all(isfield(Reg, {'numero', 'id', 'cote', 'pre', 'post'}))
+            if ~isequal([Reg.numero], 1:numel(Reg)), error('numérotation'); end
+            PatientSelection = [{Reg.id}', {Reg.cote}', {Reg.pre}', {Reg.post}'];
+            fprintf('PatientSelection lue sur le registre : %d épaules\n', size(PatientSelection, 1));
+        else
+            fprintf('Registre : cohorte refusée (%s), liste de userCommands_Multi.m gardée\n', ...
+                char(string(struct2cell(Reg))));
+        end
+    catch
+        fprintf('Registre injoignable : liste de userCommands_Multi.m gardée (%d épaules)\n', size(PatientSelection, 1));
+    end
+end
+
 % AsymptomaticSelection : épaules asymptomatiques (côté controlatéral)
 % retenues parmi les 182 patients de PatientSelection.
 %   {ID patient, côté asymptomatique, condition retenue, date de session}
@@ -349,6 +374,10 @@ DataAvailabilityFile = fullfile(ResultsFolder, 'DataAvailability_Summary.xlsx');
 
 % ContralateralEligibilityFile : fichier Excel de sortie
 ContralateralEligibilityFile = fullfile(ResultsFolder, 'ContralateralEligibility_Summary.xlsx');
+
+% RegistreFolder : export des résultats par épaule pour le registre local
+% (resultats.csv, courbes.csv, run.json, voir IO/ExportRegistre.m)
+RegistreFolder = fullfile(ResultsFolder, 'Registre');
 
 % SaveDatabase : true pour sauvegarder .mat
 SaveDatabase = true;

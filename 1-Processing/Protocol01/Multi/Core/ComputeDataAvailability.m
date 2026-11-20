@@ -68,7 +68,7 @@
 %                  markerIsMoving) is reported; H wins the tie-break if
 %                  both happen to show movement.
 %                - Cluster FA/Type: forearm cluster. "Current" markers
-%                  Cluster_{R/L}F_01/02/03 (type 'F'); otherwise legacy
+%                  Cluster_{R/L}F_01..05 (type 'F'); otherwise legacy
 %                  base '{R/L}F' (type 'F').
 %                - Scapula/Humerus: at least one marker from the clusters
 %                  above (current OR legacy) valid, for at least one of
@@ -234,8 +234,10 @@ legacyGroups = detectLegacyGroups(t);
 [Row.ClusterA, Row.ClusterA_Type] = clusterStatusHumerus(t, legacyGroups, sidesToReport);
 
 % --- Cluster FA (forearm): current 'Cluster_{s}F_0N' (type F) vs legacy base '{s}F' ---
+% The forearm cluster has 5 markers (01..05): searching only 01..03 capped
+% the reported count at "F (3)"
 [Row.ClusterFA, Row.ClusterFA_Type] = clusterStatus(t, legacyGroups, sidesToReport, ...
-    @(s) arrayfun(@(n) sprintf('Cluster_%sF_0%d', s, n), 1:3, 'UniformOutput', false), 'F', 'F');
+    @(s) arrayfun(@(n) sprintf('Cluster_%sF_0%d', s, n), 1:5, 'UniformOutput', false), 'F', 'F');
 
 % --- Segments usable for kinematics (OR across requested sides) ---
 Row.Kin_Scapula = segmentUsable(t, legacyGroups, sidesToReport, 'Cluster_%sS_0%d', 3, 'ACM');

@@ -57,6 +57,10 @@
 %                         épaule/tâche, colonnes <M>_ASYM_deg/_max_deg)
 % Outputs : Results (struct array) une ligne par patient/côté/tâche - aussi
 %           retourné pour exploitation directe sans repasser par l'Excel
+%           AsymResults (struct array) épaules asymptomatiques
+%           Curves (struct array, même indexation que Results) courbes
+%           HG/GH/ST/TX_<PRE|POST> du cycle retenu (101 points), pour
+%           ExportRegistre
 %           Fichier Excel écrit sur disque + une figure par tâche (courbes
 %           PRE/POST)
 % -------------------------------------------------------------------------
@@ -68,7 +72,7 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function [Results, AsymResults] = ComputeFunctionalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
+function [Results, AsymResults, Curves] = ComputeFunctionalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
 
 if nargin < 3, ResultsFolder = ''; end
 if nargin < 4, Opts = struct(); end

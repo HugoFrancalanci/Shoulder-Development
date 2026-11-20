@@ -171,8 +171,7 @@ for iBatch = 1:nBatches
         patientID     = num2str(PatientSelection{iP, 1});
         sidesToReport = parseSides(PatientSelection{iP, 2});
 
-        % Dossier "Nom_Prenom_ID" : l'ID doit terminer le nom (sinon '423'
-        % trouverait aussi les dossiers ..._399423 ou ..._364239)
+        % Dossier "Nom_Prenom_ID" : l'ID doit terminer le nom
         matchIdx = find(endsWith({dataDirList.name}, ['_' patientID]));
         if isempty(matchIdx)
             warning('Dossier introuvable pour l''ID %s', patientID);
@@ -461,11 +460,11 @@ run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DatabaseFile, 
 
 %% Metric validation
 % CoR residual validation
-ComputeCoRQualityFromDatabase(DatabaseFile, CoRQualityOutputFile, ResultsFolder, 30, ...
+CoRRes = ComputeCoRQualityFromDatabase(DatabaseFile, CoRQualityOutputFile, ResultsFolder, 30, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
-% Curve validity diagnostic 
-ComputeCurveQualityFromDatabase(DatabaseFile, CurveQualityOutputFile, ResultsFolder, ...
+% Curve validity diagnostic
+CurveQualRes = ComputeCurveQualityFromDatabase(DatabaseFile, CurveQualityOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 % Contrôle des courbes patient par patient : sauts ±180°, forme, élévation 3D
@@ -480,17 +479,34 @@ ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibili
 % Valeurs et courbes lues sur le cycle retenu (meilleur des 3 cycles, alertes
 % en console et colonnes Cycle_* / CycleAlert_*), voir Core/BestCycle.m
 % Clinical movement decomposition : HT, GH, ST, TX
-[ClinRes, ClinAsym] = ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, ...
+[ClinRes, ClinAsym, ClinCurves] = ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 % Functional decomposition : HG, GH, ST, TX
-[FuncRes, FuncAsym] = ComputeFunctionalContributionsFromDatabase(DatabaseFile, FunctionalOutputFile, ResultsFolder, ...
+[FuncRes, FuncAsym, FuncCurves] = ComputeFunctionalContributionsFromDatabase(DatabaseFile, FunctionalOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 %% Posture analysis
 % Posture : inclinaison thoracique et classification de Moroder
 [PostRes, PostAsym] = ComputePostureFromDatabase(DatabaseFile, PostureOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
+
+%% Registre : export des résultats par épaule et mise à jour du site
+% Résultats et courbes des sections ci-dessus déjà lancées (une section non
+% lancée est simplement absente de l'export) ; voir IO/ExportRegistre.m
+% Valeurs par défaut si userCommands_Multi.m a été lu avant leur ajout
+if ~exist('RegistreFolder', 'var'), RegistreFolder = fullfile(ResultsFolder, 'Registre'); end
+if ~exist('RegistreURL', 'var'),    RegistreURL    = 'http://127.0.0.1:8765';              end
+RegTables = struct(); RegCourbes = struct();
+if exist('ClinRes', 'var'),      RegTables.Clinique       = ClinRes;      end
+if exist('FuncRes', 'var'),      RegTables.Fonctionnel    = FuncRes;      end
+if exist('PostRes', 'var'),      RegTables.Posture        = PostRes;      end
+if exist('CoRRes', 'var'),       RegTables.QualiteCoR     = CoRRes;       end
+if exist('CurveQualRes', 'var'), RegTables.QualiteCourbes = CurveQualRes; end
+if exist('ClinCurves', 'var'),   RegCourbes.Clinique      = ClinCurves;   end
+if exist('FuncCurves', 'var'),   RegCourbes.Fonctionnel   = FuncCurves;   end
+ExportRegistre(RegistreFolder, RegTables, RegCourbes, ...
+    struct('URL', RegistreURL, 'NbEpaules', size(PatientSelection, 1), 'CodeFolder', Folder.toolbox));
 
 %% Article E02_01_Posture
 % H2 : posture PRE x élévation (HT, HG), 48 corrélations
