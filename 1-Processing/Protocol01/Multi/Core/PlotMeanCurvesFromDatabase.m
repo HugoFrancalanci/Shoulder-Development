@@ -288,6 +288,14 @@ end
 
 % Fichiers de la base : parties _partXofY triées, sinon DatabaseFile seul
 function fileList = discoverDatabaseFiles(DatabaseFile)
+% Stockage par projet : DatabaseFile est le dossier Patients\ du projet, un
+% .mat par épaule dans Patients\<n°>_<ID>_<côté>\ (ordre des numéros)
+if isfolder(DatabaseFile)
+    f = dir(fullfile(DatabaseFile, '*', '*.mat'));
+    fileList = {};
+    if ~isempty(f), fileList = sort(fullfile({f.folder}, {f.name})); end
+    return;
+end
 [dbFolder, dbName, dbExt] = fileparts(DatabaseFile);
 parts = dir(fullfile(dbFolder, [dbName, '_part*of*', dbExt]));
 if isempty(parts)

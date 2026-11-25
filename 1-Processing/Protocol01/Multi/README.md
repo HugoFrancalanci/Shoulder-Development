@@ -73,6 +73,38 @@ sans jamais écrire dans les données patients (lecture seule).
   se croit à jour alors que `PatientDatabase.mat` a été effacé). Les scripts
   s'y terminent (`cd`) une fois le run fini, pour les retrouver facilement.
 
+## Stockage par projet (novembre 2026)
+
+`StockageProjet = true` (défaut, `userCommands_Multi.m`) : un dossier par projet
+sur le bureau, hors OneDrive, qui devient la référence du projet une fois
+terminé. `ProjectsRoot` = `Bureau\Projets_epaule`, `ProjectCode` = code du
+projet dans le registre (ou la variable d'environnement `EPAULE_PROJET`) : le
+registre renvoie les épaules retenues par ce projet avec leur numéro
+(`PatientNumbers`), gardé comme `Numero` et dans les noms de dossiers (trous
+possibles). `COHORTE` = toutes les épaules ; un autre code exige le registre
+(sinon le run s'arrête). La page du projet dans le registre lit ce dossier :
+
+```
+Projets_epaule\<CODE>\
+  Patients\<n°>_<ID>_<côté>\   <ID>_<côté>.mat (une base par épaule)
+                               PRE\, POST\ : copie des C3D de Processed\ et de
+                               Session.xlsx utilisés (IO/CopySessionInputs.m)
+  Valeurs\                     tous les Excels de sortie du projet
+  Valeurs\Cache\               sorties des fonctions ...FromDatabase
+  Valeurs\Controle_courbes\    CheckCurvesFromDatabase (CurveCheckFolder)
+  projet.json                  date, commit du code, réglages du centre de
+                               rotation, replis sur Rab, épaules, erreurs
+                               (IO/WriteProjectSummary.m)
+  progress.mat                 reprise automatique
+```
+
+Les fonctions `...FromDatabase` acceptent le dossier `Patients\` comme
+`DatabaseFile`. Dans les sections de résultats de MAIN, `Core/CachedCompute.m`
+calcule une fois puis relit `Valeurs\Cache\<Nom>.mat` tant qu'aucun .mat (ni la
+référence figée) n'est plus récent ; `RecomputeValues = true` force le recalcul.
+`EPAULE_LIGNES` (ex. `1:3`) limite le run à quelques lignes de PatientSelection
+pour un essai. `StockageProjet = false` : ancien stockage en parties.
+
 ## Comment le script accède aux patients
 
 1. `DataFolder` (défini dans `userCommands_Multi.m`, ou choisi via une
@@ -288,6 +320,23 @@ information (le range est conservé). À interpréter avec précaution.
 Cinquième argument optionnel de `ApplyInversionCorrectionSTTX` : les
 conditions à traiter (`{'PRE','POST'}` par défaut ; `{'ASYM'}` pour les
 épaules asymptomatiques, voir section suivante).
+
+**Référence figée (novembre 2026).** La courbe moyenne et `repos_cohorte`
+dépendent des épaules présentes dans le run : un `_max_deg` corrigé vaut
+l'excursion propre de l'épaule plus le repos de la cohorte, donc il changeait
+quand la cohorte changeait (11 pics ST de Data_posture décalés de −0,181° en
+ANALYTIC1 et −0,196° en ANALYTIC2 entre 182 et 206 épaules) et il aurait été
+différent dans chaque projet. La référence est donc calculée une fois sur la
+cohorte complète et gardée dans `Multi/InversionReference_STTX.csv` (une ligne
+par analyse Clinique/Fonctionnel, population Operees/Asymptomatiques, tâche et
+métrique : N, repos, 101 points), lue par `Core/InversionReference.m`. Sixième
+argument de `ApplyInversionCorrectionSTTX` : cette référence (une seule passe,
+plus de minimum de 3 courbes) ; troisième sortie : la référence utilisée. Les
+deux fonctions lisent le fichier par défaut (`Opts.InversionReference`, `''`
+ou fichier absent = référence du groupe comme avant). Pour la recalculer :
+`BuildInversionReference = true` dans `userCommands_Multi.m`, sur un run de la
+cohorte complète uniquement. Sur la cohorte qui a servi à la figer, les deux
+modes donnent les mêmes valeurs.
 
 ## Épaules asymptomatiques (courbes vertes, clinical + functional)
 

@@ -30,6 +30,14 @@ end
 % s'il ne répond pas (fermé, autre machine), la liste écrite ci-dessous sert.
 RegistreURL = 'http://127.0.0.1:8765';
 
+% ProjectCode : code du projet du registre (page Projets). Le registre donne
+% les épaules retenues par ce projet (critères et exclusions) avec leur
+% numéro ; le run est rangé dans ProjectsRoot\<ProjectCode> (plus bas).
+% 'COHORTE' = toutes les épaules du registre (run de référence lu par le
+% site). EPAULE_PROJET (variable d'environnement) le remplace pour un essai.
+ProjectCode = 'COHORTE';
+if ~isempty(getenv('EPAULE_PROJET')), ProjectCode = getenv('EPAULE_PROJET'); end
+
 % PatientSelection : {ID patient, côté à traiter, date PRE, date POST}
 %   ID patient : identifiant retrouvé comme sous-chaîne du nom du dossier
 %                patient 
@@ -246,23 +254,42 @@ PatientSelection = { ...
     '2269', 'R', '2025', '2026'; ... % 206
     };
 
-% Cohorte à jour lue sur le registre (nouvelles épaules comprises). Si le
-% registre ne répond pas ou refuse (numérotation non continue), la liste
-% ci-dessus est gardée.
+% PatientNumbers : numéro du registre de chaque ligne de PatientSelection
+% (dossiers Patients\<n°>_<ID>_<côté> et colonne Numero des résultats). La
+% liste ci-dessus est la cohorte complète dans l'ordre des numéros.
+PatientNumbers = (1:size(PatientSelection, 1))';
+
+% Épaules du projet lues sur le registre (nouvelles épaules comprises). Si le
+% registre ne répond pas, la liste ci-dessus sert, pour COHORTE seulement :
+% un autre projet a besoin du registre pour connaître ses épaules.
 if ~isempty(RegistreURL)
     try
-        Reg = webread([RegistreURL, '/api/matlab/patient_selection'], weboptions('Timeout', 3));
-        if isstruct(Reg) && all(isfield(Reg, {'numero', 'id', 'cote', 'pre', 'post'}))
-            if ~isequal([Reg.numero], 1:numel(Reg)), error('numérotation'); end
-            PatientSelection = [{Reg.id}', {Reg.cote}', {Reg.pre}', {Reg.post}'];
-            fprintf('PatientSelection lue sur le registre : %d épaules\n', size(PatientSelection, 1));
-        else
-            fprintf('Registre : cohorte refusée (%s), liste de userCommands_Multi.m gardée\n', ...
-                char(string(struct2cell(Reg))));
-        end
-    catch
-        fprintf('Registre injoignable : liste de userCommands_Multi.m gardée (%d épaules)\n', size(PatientSelection, 1));
+        Reg = webread([RegistreURL, '/api/matlab/patient_selection'], 'projet', ProjectCode, weboptions('Timeout', 3));
+        ok = isstruct(Reg) && all(isfield(Reg, {'numero', 'id', 'cote', 'pre', 'post'}));
+    catch ME
+        Reg = struct('erreur', ['registre injoignable (', ME.message, ')']); ok = false;
     end
+    if ok
+        PatientSelection = [{Reg.id}', {Reg.cote}', {Reg.pre}', {Reg.post}'];
+        PatientNumbers   = [Reg.numero]';
+        fprintf('Projet %s : %d épaules lues sur le registre\n', ProjectCode, size(PatientSelection, 1));
+    elseif strcmpi(ProjectCode, 'COHORTE')
+        fprintf('Registre : %s, liste de userCommands_Multi.m gardée (%d épaules)\n', ...
+            char(strjoin(string(struct2cell(Reg)), ' ')), size(PatientSelection, 1));
+    else
+        error('Projet %s : épaules non lues sur le registre (%s). Lancer le registre ou choisir ProjectCode = ''COHORTE''.', ...
+            ProjectCode, char(strjoin(string(struct2cell(Reg)), ' ')));
+    end
+end
+
+% EPAULE_LIGNES (variable d'environnement, ex. '1:3') : essai sur quelques
+% lignes de PatientSelection (chaque épaule garde son numéro du registre)
+if ~isempty(getenv('EPAULE_LIGNES'))
+    lignesEssai      = str2num(getenv('EPAULE_LIGNES')); %#ok<ST2NM>
+    PatientSelection = PatientSelection(lignesEssai, :);
+    PatientNumbers   = PatientNumbers(lignesEssai);
+    fprintf('Essai : %d épaules (EPAULE_LIGNES = %s, n° %s)\n', size(PatientSelection, 1), ...
+        getenv('EPAULE_LIGNES'), mat2str(PatientNumbers'));
 end
 
 % AsymptomaticSelection : épaules asymptomatiques (côté controlatéral)
@@ -309,6 +336,40 @@ switch getenv('COMPUTERNAME')
     otherwise
         ResultsFolder = ''; % machine inconnue : demandé via fenêtre au lancement
 end
+
+% STOCKAGE PAR PROJET (décision du 25.11.2026) : un dossier par projet sur le
+% bureau du PC, hors OneDrive, qui devient la référence du projet une fois
+% terminé (tous les Excels sources du projet au même endroit, Valeurs\) :
+%   ProjectsRoot\<ProjectCode>\
+%     Patients\<n°>_<ID>_<côté>\   PRE\ et POST\ : copie des C3D de Processed\
+%                                  et de Session.xlsx utilisés ; <ID>_<côté>.mat
+%                                  (un .mat par épaule au lieu des parties)
+%     Valeurs\                     Excels de sortie (ResultsFolder) et, dans
+%                                  Valeurs\Cache, les valeurs calculées une fois
+%                                  et relues par les sections de résultats
+%     projet.json                  réglages du run, commit du code, replis sur Rab
+% StockageProjet = false : ancien stockage (ResultsFolder ci-dessus, base en
+% parties). ProjectCode : voir plus haut (projet du registre). Le registre
+% lit le dossier du même nom (page du projet).
+StockageProjet = true;
+ProjectsRoot   = fullfile(getenv('USERPROFILE'), 'Desktop', 'Projets_epaule');
+ProjectFolder  = fullfile(ProjectsRoot, ProjectCode);
+if StockageProjet
+    ResultsFolder = fullfile(ProjectFolder, 'Valeurs');
+end
+% CopyInputFiles : copie des C3D de Processed\ et de Session.xlsx dans le projet
+CopyInputFiles = StockageProjet;
+% RecomputeValues : true pour recalculer depuis les .mat même si Valeurs\Cache
+% est à jour (sinon recalcul seulement quand un .mat est plus récent)
+RecomputeValues = false;
+CacheFolder     = fullfile(ResultsFolder, 'Cache');
+% InversionReferenceFile : référence figée de la correction des courbes ST et
+% TX inversées (Core/InversionReference.m) : courbes moyennes et repos de la
+% cohorte complète, pour que la valeur corrigée d'une épaule ne dépende pas
+% des autres épaules du projet. BuildInversionReference = true la recalcule
+% sur le run (cohorte complète uniquement) et réécrit le fichier.
+InversionReferenceFile  = fullfile(Folder.toolbox, 'Multi', 'InversionReference_STTX.csv');
+BuildInversionReference = false;
 
 % OutputFile : fichier Excel de sortie (contributions cliniques HT/GH/ST/TX)
 OutputFile = fullfile(ResultsFolder, 'ClinicalContributions_Summary.xlsx');
@@ -365,6 +426,8 @@ ArticleFigureFolder      = fullfile(fileparts(PostureDataFile), 'Figures_article
 % CurveCheckFolder : sorties de CheckCurvesFromDatabase (QC_courbes.xlsx,
 % figures), à côté de PostureDataFile (OneDrive)
 CurveCheckFolder         = fullfile(fileparts(PostureDataFile), 'Controle_courbes');
+% Stockage par projet : dans Valeurs\ du projet, avec les autres sorties
+if StockageProjet, CurveCheckFolder = fullfile(ResultsFolder, 'Controle_courbes'); end
 
 % PatientInfosFile : fichier Excel de sortie (infos démographiques patients)
 PatientInfosFile = fullfile(ResultsFolder, 'PatientInfos_Summary.xlsx');
@@ -381,7 +444,11 @@ RegistreFolder = fullfile(ResultsFolder, 'Registre');
 
 % SaveDatabase : true pour sauvegarder .mat
 SaveDatabase = true;
-DatabaseFile = fullfile(ResultsFolder, sprintf('Database_%d_E02_01_Posture_rTSA.mat', size(PatientSelection, 1)));
+if StockageProjet
+    DatabaseFile = fullfile(ProjectFolder, 'Patients'); % dossier : un .mat par épaule
+else
+    DatabaseFile = fullfile(ResultsFolder, sprintf('Database_%d_E02_01_Posture_rTSA.mat', size(PatientSelection, 1)));
+end
 
 % NumDatabaseParts : nombre de fichiers .mat sur lesquels repartir la
 % cohorte. 37 -> BatchSize=5 (PC portable --> moins puissant (25 minutes)). Tour CD-8K18T74 : 16 ->
@@ -396,5 +463,6 @@ end
 % BatchSize : nombre de patients traités en parallele (parfor) avant
 % d'ecrire sur disque et de vider la RAM.
 BatchSize = ceil(size(PatientSelection, 1) / NumDatabaseParts);
+if ~isempty(getenv('EPAULE_LIGNES')), BatchSize = size(PatientSelection, 1); end % essai : un seul paquet
 
 

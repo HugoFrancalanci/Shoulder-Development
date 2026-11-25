@@ -40,6 +40,18 @@
 %                colonne <Metrique>_<PRE|POST>_corrected (0/1) indique les
 %                valeurs corrigées.
 %
+%                Référence figée (novembre 2026) : la courbe moyenne du
+%                groupe et repos_cohorte dépendent des épaules présentes
+%                dans le run (un projet de 3 épaules ne donne pas les mêmes
+%                ST max qu'une cohorte de 206). Si Reference contient la
+%                tâche et la métrique, la détection et la correction se
+%                font sur cette courbe et ce repos figés (une seule passe,
+%                plus de minimum de 3 courbes) : la valeur d'une épaule ne
+%                dépend plus du projet. Sinon, référence du groupe comme
+%                avant, renvoyée dans RefOut pour pouvoir la figer (voir
+%                InversionReference.m). Sur la cohorte qui a servi à la
+%                figer, les deux modes donnent exactement les mêmes valeurs.
+%
 %                Attention TX : l'angle du thorax reflète en partie la
 %                posture réelle du patient ; remplacer son niveau de repos
 %                par celui de la cohorte efface cette information (le range
@@ -57,8 +69,13 @@
 %           CorrThresh (double) seuil de corrélation (0)
 %           conds     (cell, optionnel) conditions à traiter ({'PRE','POST'}
 %                     par défaut ; {'ASYM'} pour les épaules asymptomatiques)
+%           Reference (struct array, optionnel) référence figée : Task,
+%                     Metric, N, Repos, Modele (1 x 101) ; vide = référence
+%                     du groupe
 % Outputs : Results, Curves mis à jour (courbes inversées corrigées) + champs
 %           <M>_<C>_corrected dans Results
+%           RefOut    (struct array) référence utilisée, par tâche et
+%                     métrique (mêmes champs que Reference)
 % -------------------------------------------------------------------------
 % Dependencies : None
 % -------------------------------------------------------------------------
@@ -68,11 +85,13 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function [Results, Curves] = ApplyInversionCorrectionSTTX(Results, Curves, ~, CorrThresh, conds)
+function [Results, Curves, RefOut] = ApplyInversionCorrectionSTTX(Results, Curves, ~, CorrThresh, conds, Reference)
 
+RefOut = struct('Task', {}, 'Metric', {}, 'N', {}, 'Repos', {}, 'Modele', {});
 if isempty(Results), return; end
 if nargin < 4 || isempty(CorrThresh), CorrThresh = 0; end
 if nargin < 5 || isempty(conds), conds = {'PRE', 'POST'}; end
+if nargin < 6 || isempty(Reference), Reference = RefOut; end
 
 metrics = {'ST', 'TX'};
 
@@ -102,18 +121,35 @@ for it = 1:numel(tasks)
                 C(end+1, :)       = r;      %#ok<AGROW>
             end
         end
-        if size(C, 1) < 3, continue; end
+        if isempty(C), continue; end
 
-        keep = true(size(C, 1), 1);
+        iRef = find(strcmp({Reference.Task}, tasks{it}) & strcmp({Reference.Metric}, metric), 1);
         rc   = NaN(size(C, 1), 1);
-        for pass = 1:2
-            tmpl = mean(C(keep, :), 1, 'omitnan');
+        if ~isempty(iRef)
+            % Référence figée : une passe sur la courbe moyenne gardée
+            tmpl = Reference(iRef).Modele(:)';
+            rest = Reference(iRef).Repos;
+            nRef = Reference(iRef).N;
             for k = 1:size(C, 1)
                 rc(k) = pearsonR(C(k, :), tmpl);
             end
-            keep = ~(rc < CorrThresh);
+            source = sprintf('référence figée, %d courbes', nRef);
+        else
+            % Référence du groupe (2 passes, au moins 3 courbes)
+            if size(C, 1) < 3, continue; end
+            keep = true(size(C, 1), 1);
+            for pass = 1:2
+                tmpl = mean(C(keep, :), 1, 'omitnan');
+                for k = 1:size(C, 1)
+                    rc(k) = pearsonR(C(k, :), tmpl);
+                end
+                keep = ~(rc < CorrThresh);
+            end
+            rest = mean(tmpl([1 end]));
+            nRef = size(C, 1);
+            source = 'référence du groupe';
         end
-        rest = mean(tmpl([1 end]));
+        RefOut(end+1) = struct('Task', tasks{it}, 'Metric', metric, 'N', nRef, 'Repos', rest, 'Modele', tmpl); %#ok<AGROW>
 
         nFix = 0;
         for k = find(rc < CorrThresh)'
@@ -137,7 +173,7 @@ for it = 1:numel(tasks)
         end
         disp(['  Correction inversée ', metric, ' - ', tasks{it}, ' : ', num2str(nFix), ' / ', ...
               num2str(size(C, 1)), ' courbe(s) ', strjoin(conds, '+'), ' corrigée(s) (', ...
-              num2str(100 * nFix / size(C, 1), '%.1f'), ' %)']);
+              num2str(100 * nFix / size(C, 1), '%.1f'), ' %, ', source, ')']);
     end
 end
 

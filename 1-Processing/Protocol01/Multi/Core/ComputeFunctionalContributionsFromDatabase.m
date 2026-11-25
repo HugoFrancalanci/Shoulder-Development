@@ -54,7 +54,13 @@
 %                         date} (voir userCommands_Multi.m), tracées en vert
 %                         sur la figure des courbes et exportées dans la
 %                         feuille 'Functional_Asymptomatic' (une ligne par
-%                         épaule/tâche, colonnes <M>_ASYM_deg/_max_deg)
+%                         épaule/tâche, colonnes <M>_ASYM_deg/_max_deg),
+%                         InversionReference (char, CSV de la référence
+%                         figée de la correction inversée, défaut
+%                         Multi\InversionReference_STTX.csv ; '' ou
+%                         fichier absent = référence du groupe),
+%                         BuildInversionReference (false ; true
+%                         : recalcule la référence sur ce run et l'écrit)
 % Outputs : Results (struct array) une ligne par patient/côté/tâche - aussi
 %           retourné pour exploitation directe sans repasser par l'Excel
 %           AsymResults (struct array) épaules asymptomatiques
@@ -82,6 +88,10 @@ if nargin < 4, Opts = struct(); end
 if ~isfield(Opts, 'ApplyInvCorr') || isempty(Opts.ApplyInvCorr), Opts.ApplyInvCorr = true; end
 if ~isfield(Opts, 'CorrThresh')   || isempty(Opts.CorrThresh),   Opts.CorrThresh   = 0;    end
 if ~isfield(Opts, 'AsymptomaticSelection'), Opts.AsymptomaticSelection = {}; end
+if ~isfield(Opts, 'InversionReference') % défaut : Multi\InversionReference_STTX.csv
+    Opts.InversionReference = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'InversionReference_STTX.csv');
+end
+if ~isfield(Opts, 'BuildInversionReference') || isempty(Opts.BuildInversionReference), Opts.BuildInversionReference = false; end
 
 % La base peut être répartie sur plusieurs fichiers .mat (voir
 % NumDatabaseParts dans userCommands_Multi.m, DatabaseFile_partXofY.mat) -
@@ -278,9 +288,19 @@ end
 % Opts.ApplyInvCorr = false pour retrouver les valeurs non corrigées.
 % Asymptomatiques corrigées à part (référence = moyenne des asymptomatiques),
 % pour ne pas modifier la référence ni les résultats des patients.
+% Référence figée (Opts.InversionReference, voir InversionReference.m) :
+% valeurs indépendantes des autres épaules du run ; BuildInversionReference
+% = true la recalcule sur le groupe du run et l'écrit (cohorte complète).
 if Opts.ApplyInvCorr
-    [Results, Curves] = ApplyInversionCorrectionSTTX(Results, Curves, 'HG', Opts.CorrThresh);
-    [AsymResults, AsymCurves] = ApplyInversionCorrectionSTTX(AsymResults, AsymCurves, 'HG', Opts.CorrThresh, {'ASYM'});
+    [Ref, RefAsym] = deal([]);
+    if ~Opts.BuildInversionReference
+        [Ref, RefAsym] = InversionReference('lire', Opts.InversionReference, 'Fonctionnel');
+    end
+    [Results, Curves, RefOut] = ApplyInversionCorrectionSTTX(Results, Curves, 'HG', Opts.CorrThresh, {'PRE', 'POST'}, Ref);
+    [AsymResults, AsymCurves, RefAsymOut] = ApplyInversionCorrectionSTTX(AsymResults, AsymCurves, 'HG', Opts.CorrThresh, {'ASYM'}, RefAsym);
+    if Opts.BuildInversionReference
+        InversionReference('ecrire', Opts.InversionReference, 'Fonctionnel', RefOut, RefAsymOut);
+    end
 end
 
 % -------------------------------------------------------------------------
@@ -331,6 +351,14 @@ end
 %  userCommands_Multi.m / MAIN_MULTI_Protocol_01.m)
 % =========================================================================
 function fileList = discoverDatabaseFiles(DatabaseFile)
+% Stockage par projet : DatabaseFile est le dossier Patients\ du projet, un
+% .mat par épaule dans Patients\<n°>_<ID>_<côté>\ (ordre des numéros)
+if isfolder(DatabaseFile)
+    f = dir(fullfile(DatabaseFile, '*', '*.mat'));
+    fileList = {};
+    if ~isempty(f), fileList = sort(fullfile({f.folder}, {f.name})); end
+    return;
+end
 [dbFolder, dbName, dbExt] = fileparts(DatabaseFile);
 parts = dir(fullfile(dbFolder, [dbName, '_part*of*', dbExt]));
 if isempty(parts)

@@ -80,12 +80,23 @@ disp(['Patients à traiter : ', num2str(size(PatientSelection, 1))]);
 % -------------------------------------------------------------------------
 % Infos démographiques/cliniques
 nPatientRows = size(PatientSelection, 1);
+% Numéro du registre de chaque ligne (userCommands_Multi.m) ; à défaut, le
+% numéro de ligne (cohorte complète dans l'ordre des numéros)
+if ~exist('PatientNumbers', 'var') || numel(PatientNumbers) ~= nPatientRows
+    PatientNumbers = (1:nPatientRows)';
+end
 PatientInfos = newPatientInfosStruct(nPatientRows);
 
 ErrorLogPerPatient  = cell(nPatientRows, 1);
 DataAvailPerPatient = cell(nPatientRows, 1);
 
 nBatches = ceil(nPatientRows / BatchSize);
+
+% Stockage par projet (userCommands_Multi.m) : valeurs par défaut si absentes
+if ~exist('StockageProjet', 'var'), StockageProjet = false; end
+if ~exist('CopyInputFiles', 'var'), CopyInputFiles = false; end
+RabFallbackPerPatient = cell(nPatientRows, 1); % côtés sans calibration SCoRE (repli sur Rab)
+if StockageProjet && ~isfolder(ResultsFolder), mkdir(ResultsFolder); end
 
 % Base de données patient complète
 PartDone = false(nBatches, 1);
@@ -95,8 +106,14 @@ if SaveDatabase
             'seront vides dans PatientDatabase.mat (calcul cinematique saute).']);
     end
 
-    [dbFolder, dbName, dbExt] = fileparts(DatabaseFile);
-    ProgressFile = strrep(DatabaseFile, '.mat', '_progress.mat');
+    if StockageProjet
+        % Un .mat par épaule dans ProjectFolder\Patients\, progression dans le projet
+        ProgressFile = fullfile(ProjectFolder, 'progress.mat');
+        if ~isfolder(DatabaseFile), mkdir(DatabaseFile); end
+    else
+        [dbFolder, dbName, dbExt] = fileparts(DatabaseFile);
+        ProgressFile = strrep(DatabaseFile, '.mat', '_progress.mat');
+    end
     if isfile(ProgressFile)
         try
             prog    = load(ProgressFile, 'PartDone', 'PatientInfos', 'DataAvailPerPatient');
@@ -105,6 +122,10 @@ if SaveDatabase
             PartDone(1:nPCommon)            = prog.PartDone(1:nPCommon);
             PatientInfos(1:nCommon)         = prog.PatientInfos(1:nCommon);
             DataAvailPerPatient(1:nCommon)  = prog.DataAvailPerPatient(1:nCommon);
+            if ismember('RabFallbackPerPatient', who('-file', ProgressFile))
+                prog2 = load(ProgressFile, 'RabFallbackPerPatient');
+                RabFallbackPerPatient(1:nCommon) = prog2.RabFallbackPerPatient(1:nCommon);
+            end
             disp(['Reprise : ', num2str(sum(PartDone)), '/', num2str(nBatches), ...
                   ' parties déjà traitées (', ProgressFile, '), non retraitées.']);
             clear prog
@@ -163,6 +184,7 @@ for iBatch = 1:nBatches
     ticBatchProcessing = tic;
     parfor k = 1:nBatchPatients
         iP = batchIdx(k);
+        numero = PatientNumbers(iP); % numéro du registre de l'épaule
         warning off;
         localErrors = {};
         localAvail  = struct([]);
@@ -207,7 +229,7 @@ for iBatch = 1:nBatches
                 [Trial, Patient, Session, Pathology, c3dFiles] = runProtocol01(FolderLocal);
 
                 if SaveDatabase
-                    BatchDatabase(k).Numero    = iP;
+                    BatchDatabase(k).Numero    = numero;
                     BatchDatabase(k).PatientID = patientID;
                     BatchDatabase(k).Side      = sidesToReport;
                     BatchDatabase(k).(condition).Trial     = StripBtkFromTrial(FilterTrialForDatabase(Trial));
@@ -215,6 +237,12 @@ for iBatch = 1:nBatches
                     BatchDatabase(k).(condition).Session   = Session;
                     BatchDatabase(k).(condition).Pathology = Pathology;
                     BatchDatabase(k).(condition).Date      = sessionPath;
+                end
+                % Stockage par projet : copie des C3D de Processed\ et de
+                % Session.xlsx de la séance, tels qu'ils ont servi au calcul
+                if SaveDatabase && CopyInputFiles
+                    CopySessionInputs(sessionPath, fullfile(DatabaseFile, ...
+                        shoulderFolderName(numero, patientID, sidesToReport), condition));
                 end
 
                 [~, sessionFolderName] = fileparts(sessionPath);
@@ -263,7 +291,7 @@ for iBatch = 1:nBatches
                 avail.ID       = '';
                 avail.IDRedCap = '';
                 if ~numeroWrittenForThisRow
-                    avail.Numero = iP;
+                    avail.Numero = numero;
                     avail.ID     = patientID;
                     numeroWrittenForThisRow = true;
                 end
@@ -301,13 +329,27 @@ for iBatch = 1:nBatches
 
     if SaveDatabase
         ticBatchSave = tic;
-        Database = BatchDatabase; %#ok<NASGU>
-        partFile = fullfile(dbFolder, sprintf('%s_part%dof%d%s', dbName, iBatch, nBatches, dbExt));
-        save(partFile, 'Database', '-v7.3', '-nocompression');
+        if StockageProjet
+            % Un .mat par épaule (même struct Database, 1x1), écrit en une
+            % seule fois comme les parties : Patients\<n°>_<ID>_<côté>\<ID>_<côté>.mat
+            for k = 1:nBatchPatients
+                Database = BatchDatabase(k);
+                if isempty(Database.Numero), continue; end % patient introuvable ou en erreur aux deux séances
+                dossierEpaule = fullfile(DatabaseFile, shoulderFolderName(Database.Numero, Database.PatientID, Database.Side));
+                if ~isfolder(dossierEpaule), mkdir(dossierEpaule); end
+                save(fullfile(dossierEpaule, sprintf('%s_%s.mat', Database.PatientID, strjoin(Database.Side, ''))), ...
+                    'Database', '-v7.3', '-nocompression');
+                RabFallbackPerPatient{batchIdx(k)} = rabFallbackSides(Database);
+            end
+        else
+            Database = BatchDatabase; %#ok<NASGU>
+            partFile = fullfile(dbFolder, sprintf('%s_part%dof%d%s', dbName, iBatch, nBatches, dbExt));
+            save(partFile, 'Database', '-v7.3', '-nocompression');
+        end
         clear Database BatchDatabase
 
         PartDone(iBatch) = true;
-        save(ProgressFile, 'PartDone', 'PatientInfos', 'DataAvailPerPatient');
+        save(ProgressFile, 'PartDone', 'PatientInfos', 'DataAvailPerPatient', 'RabFallbackPerPatient');
         tSave = toc(ticBatchSave);
         disp(['  Temps sauvegarde (partie) : ', num2str(tSave, '%.1f'), ' s']);
     end
@@ -337,6 +379,23 @@ ExportDataAvailability(DataAvail, DataAvailabilityFile);
 tTotal = toc(ticTotal);
 disp(' ');
 disp(['Temps total du run : ', num2str(tTotal, '%.1f'), ' s (', num2str(tTotal/60, '%.1f'), ' min)']);
+
+% Stockage par projet : résumé du run (projet.json), pour savoir plus tard
+% comment les .mat ont été calculés
+if StockageProjet
+    texte = @(x) strtrim(num2str(x));
+    Epaules = struct('Numero', num2cell(PatientNumbers(:)), ...
+        'ID', cellfun(texte, PatientSelection(:, 1), 'UniformOutput', false), ...
+        'Cote', cellfun(texte, PatientSelection(:, 2), 'UniformOutput', false), ...
+        'Pre', cellfun(texte, PatientSelection(:, 3), 'UniformOutput', false), ...
+        'Post', cellfun(texte, PatientSelection(:, 4), 'UniformOutput', false));
+    for iP = 1:nPatientRows
+        Epaules(iP).Dossier = shoulderFolderName(PatientNumbers(iP), Epaules(iP).ID, parseSides(PatientSelection{iP, 2}));
+    end
+    WriteProjectSummary(ProjectFolder, struct('Projet', ProjectCode, 'Toolbox', Folder.toolbox, ...
+        'DataFolder', longDataFolder, 'Epaules', Epaules, ...
+        'ReplisRab', {[RabFallbackPerPatient{:}]}, 'Erreurs', {ErrorLog}, 'DureeMinutes', tTotal / 60));
+end
 
 if isfolder(ResultsFolder)
     cd(ResultsFolder);
@@ -447,6 +506,36 @@ switch upper(strtrim(sideCode))
 end
 end
 
+function nom = shoulderFolderName(numero, patientID, sides)
+% Dossier d'une épaule dans ProjectFolder\Patients\ : <n°>_<ID>_<côté>,
+% numéro sur 3 chiffres pour garder l'ordre de la cohorte
+nom = sprintf('%03d_%s_%s', numero, strtrim(num2str(patientID)), strjoin(sides, ''));
+end
+
+function replis = rabFallbackSides(d)
+% Séances et côtés où la calibration SCoRE manque (cluster scapula ou humérus
+% absent : rCsi / rCsj à NaN, voir Core/CoR/ComputeSCoRE.m) ; selon
+% Processing.GJC.view, Core/DefineSegments.m y prend alors Rab
+% (WriteProjectSummary garde le cas qui correspond à la vue du run)
+replis = struct('Numero', {}, 'ID', {}, 'Cote', {}, 'Examen', {}, 'ScapulaAbsente', {}, 'HumerusAbsent', {});
+for c = {'PRE', 'POST'}
+    if ~isfield(d, c{1}) || ~isstruct(d.(c{1})) || ~isfield(d.(c{1}), 'Session') || ...
+            ~isfield(d.(c{1}).Session, 'SCoRE') || ~isstruct(d.(c{1}).Session.SCoRE)
+        continue;
+    end
+    S = d.(c{1}).Session.SCoRE;
+    for s = d.Side
+        if ~isfield(S, s{1}), continue; end
+        scap = isfield(S.(s{1}), 'rCsi') && any(isnan(S.(s{1}).rCsi(:)));
+        hum  = isfield(S.(s{1}), 'rCsj') && any(isnan(S.(s{1}).rCsj(:)));
+        if scap || hum
+            replis(end+1) = struct('Numero', d.Numero, 'ID', d.PatientID, 'Cote', s{1}, 'Examen', c{1}, ...
+                'ScapulaAbsente', scap, 'HumerusAbsent', hum); %#ok<AGROW>
+        end
+    end
+end
+end
+
 
 %% ========================================================================
 %  Results extraction from.mat
@@ -457,41 +546,60 @@ addpath(fullfile(Folder.toolbox, 'Multi'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'Core'));
 addpath(fullfile(Folder.toolbox, 'Multi', 'IO'));
 run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DatabaseFile, OutputFile, FunctionalOutputFile, CoRQualityOutputFile, CurveQualityOutputFile, ResultsFolder
+% Calcul une fois, puis relecture (Core/CachedCompute.m) : chaque fonction
+% ...FromDatabase relit toute la base ; ses sorties sont gardées dans
+% CacheFolder (Valeurs\Cache du projet) et relues tant qu'aucun .mat n'a
+% changé. RecomputeValues = true (userCommands_Multi.m) force le recalcul.
+if ~exist('RecomputeValues', 'var'), RecomputeValues = false; end
+if ~exist('CacheFolder', 'var'),     CacheFolder = fullfile(ResultsFolder, 'Cache'); end
+% Référence figée de la correction ST/TX inversée (Core/InversionReference.m)
+if ~exist('InversionReferenceFile', 'var'),  InversionReferenceFile = fullfile(Folder.toolbox, 'Multi', 'InversionReference_STTX.csv'); end
+if ~exist('BuildInversionReference', 'var'), BuildInversionReference = false; end
+OptsContrib = struct('AsymptomaticSelection', {AsymptomaticSelection}, ...
+    'InversionReference', InversionReferenceFile, 'BuildInversionReference', BuildInversionReference);
 
 %% Metric validation
 % CoR residual validation
-[CoRRes, CoRAsym] = ComputeCoRQualityFromDatabase(DatabaseFile, CoRQualityOutputFile, ResultsFolder, 30, ...
+[CoRRes, CoRAsym] = CachedCompute('QualiteCoR', CacheFolder, RecomputeValues, DatabaseFile, ...
+    @ComputeCoRQualityFromDatabase, DatabaseFile, CoRQualityOutputFile, ResultsFolder, 30, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 % Curve validity diagnostic
-[CurveQualRes, CurveQualAsym] = ComputeCurveQualityFromDatabase(DatabaseFile, CurveQualityOutputFile, ResultsFolder, ...
+[CurveQualRes, CurveQualAsym] = CachedCompute('QualiteCourbes', CacheFolder, RecomputeValues, DatabaseFile, ...
+    @ComputeCurveQualityFromDatabase, DatabaseFile, CurveQualityOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 % Contrôle des courbes patient par patient : sauts ±180°, forme, élévation 3D
-[CurveQC, CurveQCSummary, CurveCycles] = CheckCurvesFromDatabase(DatabaseFile, PostureDataFile, ...
-    CurveCheckFolder, CurveQualityOutputFile);
+[CurveQC, CurveQCSummary, CurveCycles] = CachedCompute('ControleCourbes', CacheFolder, RecomputeValues, DatabaseFile, ...
+    @CheckCurvesFromDatabase, DatabaseFile, PostureDataFile, CurveCheckFolder, CurveQualityOutputFile);
 
 %% Asymptomatic selection
 % Asymptomatic shoulder classification
-EligRes = ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibilityFile, ResultsFolder);
+EligRes = CachedCompute('Eligibilite', CacheFolder, RecomputeValues, DatabaseFile, ...
+    @ComputeContralateralEligibilityFromDatabase, DatabaseFile, ContralateralEligibilityFile, ResultsFolder);
 
 %% Curve analysis
 % Valeurs et courbes lues sur le cycle retenu (meilleur des 3 cycles, alertes
 % en console et colonnes Cycle_* / CycleAlert_*), voir Core/BestCycle.m
 % Clinical movement decomposition : HT, GH, ST, TX
-[ClinRes, ClinAsym, ClinCurves, ClinAsymCurves] = ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, ...
-    struct('AsymptomaticSelection', {AsymptomaticSelection}));
+% (recalcul aussi quand la référence figée est plus récente que le cache)
+[ClinRes, ClinAsym, ClinCurves, ClinAsymCurves] = CachedCompute('Clinique', CacheFolder, ...
+    RecomputeValues || BuildInversionReference, {DatabaseFile, InversionReferenceFile}, ...
+    @ComputeClinicalContributionsFromDatabase, DatabaseFile, OutputFile, ResultsFolder, OptsContrib);
 
 % Functional decomposition : HG, GH, ST, TX
-[FuncRes, FuncAsym, FuncCurves, FuncAsymCurves] = ComputeFunctionalContributionsFromDatabase(DatabaseFile, FunctionalOutputFile, ResultsFolder, ...
-    struct('AsymptomaticSelection', {AsymptomaticSelection}));
+[FuncRes, FuncAsym, FuncCurves, FuncAsymCurves] = CachedCompute('Fonctionnel', CacheFolder, ...
+    RecomputeValues || BuildInversionReference, {DatabaseFile, InversionReferenceFile}, ...
+    @ComputeFunctionalContributionsFromDatabase, DatabaseFile, FunctionalOutputFile, ResultsFolder, OptsContrib);
 
 % Données brutes : angles d'Euler X, Y, Z de HT, GH, ST et thorax, cycle retenu (registre)
-RawCurves = ComputeRawCurvesFromDatabase(DatabaseFile);
+RawCurves = CachedCompute('Brut', CacheFolder, RecomputeValues, DatabaseFile, ...
+    @ComputeRawCurvesFromDatabase, DatabaseFile);
 
 %% Posture analysis
 % Posture : inclinaison thoracique et classification de Moroder
-[PostRes, PostAsym] = ComputePostureFromDatabase(DatabaseFile, PostureOutputFile, ResultsFolder, ...
+[PostRes, PostAsym] = CachedCompute('Posture', CacheFolder, RecomputeValues, DatabaseFile, ...
+    @ComputePostureFromDatabase, DatabaseFile, PostureOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 %% Registre : export des résultats par épaule et mise à jour du site
