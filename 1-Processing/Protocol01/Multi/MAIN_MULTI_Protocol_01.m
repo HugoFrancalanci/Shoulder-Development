@@ -460,11 +460,11 @@ run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DatabaseFile, 
 
 %% Metric validation
 % CoR residual validation
-CoRRes = ComputeCoRQualityFromDatabase(DatabaseFile, CoRQualityOutputFile, ResultsFolder, 30, ...
+[CoRRes, CoRAsym] = ComputeCoRQualityFromDatabase(DatabaseFile, CoRQualityOutputFile, ResultsFolder, 30, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 % Curve validity diagnostic
-CurveQualRes = ComputeCurveQualityFromDatabase(DatabaseFile, CurveQualityOutputFile, ResultsFolder, ...
+[CurveQualRes, CurveQualAsym] = ComputeCurveQualityFromDatabase(DatabaseFile, CurveQualityOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 % Contrôle des courbes patient par patient : sauts ±180°, forme, élévation 3D
@@ -473,18 +473,21 @@ CurveQualRes = ComputeCurveQualityFromDatabase(DatabaseFile, CurveQualityOutputF
 
 %% Asymptomatic selection
 % Asymptomatic shoulder classification
-ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibilityFile, ResultsFolder);
+EligRes = ComputeContralateralEligibilityFromDatabase(DatabaseFile, ContralateralEligibilityFile, ResultsFolder);
 
 %% Curve analysis
 % Valeurs et courbes lues sur le cycle retenu (meilleur des 3 cycles, alertes
 % en console et colonnes Cycle_* / CycleAlert_*), voir Core/BestCycle.m
 % Clinical movement decomposition : HT, GH, ST, TX
-[ClinRes, ClinAsym, ClinCurves] = ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, ...
+[ClinRes, ClinAsym, ClinCurves, ClinAsymCurves] = ComputeClinicalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 % Functional decomposition : HG, GH, ST, TX
-[FuncRes, FuncAsym, FuncCurves] = ComputeFunctionalContributionsFromDatabase(DatabaseFile, FunctionalOutputFile, ResultsFolder, ...
+[FuncRes, FuncAsym, FuncCurves, FuncAsymCurves] = ComputeFunctionalContributionsFromDatabase(DatabaseFile, FunctionalOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
+
+% Données brutes : angles d'Euler X, Y, Z de HT, GH, ST et thorax, cycle retenu (registre)
+RawCurves = ComputeRawCurvesFromDatabase(DatabaseFile);
 
 %% Posture analysis
 % Posture : inclinaison thoracique et classification de Moroder
@@ -503,8 +506,18 @@ if exist('FuncRes', 'var'),      RegTables.Fonctionnel    = FuncRes;      end
 if exist('PostRes', 'var'),      RegTables.Posture        = PostRes;      end
 if exist('CoRRes', 'var'),       RegTables.QualiteCoR     = CoRRes;       end
 if exist('CurveQualRes', 'var'), RegTables.QualiteCourbes = CurveQualRes; end
-if exist('ClinCurves', 'var'),   RegCourbes.Clinique      = ClinCurves;   end
-if exist('FuncCurves', 'var'),   RegCourbes.Fonctionnel   = FuncCurves;   end
+% Épaules asymptomatiques et éligibilité controlatérale (rattachées à l'épaule opérée)
+if exist('ClinAsym', 'var'),      RegTables.CliniqueAsym       = ClinAsym;      end
+if exist('FuncAsym', 'var'),      RegTables.FonctionnelAsym    = FuncAsym;      end
+if exist('PostAsym', 'var'),      RegTables.PostureAsym        = PostAsym;      end
+if exist('CoRAsym', 'var'),       RegTables.QualiteCoRAsym     = CoRAsym;       end
+if exist('CurveQualAsym', 'var'), RegTables.QualiteCourbesAsym = CurveQualAsym; end
+if exist('EligRes', 'var'),       RegTables.Eligibilite        = EligRes;       end
+if exist('ClinCurves', 'var'),     RegCourbes.Clinique        = ClinCurves;     end
+if exist('FuncCurves', 'var'),     RegCourbes.Fonctionnel     = FuncCurves;     end
+if exist('ClinAsymCurves', 'var'), RegCourbes.CliniqueAsym    = ClinAsymCurves; end
+if exist('FuncAsymCurves', 'var'), RegCourbes.FonctionnelAsym = FuncAsymCurves; end
+if exist('RawCurves', 'var'),      RegCourbes.Brut            = RawCurves;      end
 ExportRegistre(RegistreFolder, RegTables, RegCourbes, ...
     struct('URL', RegistreURL, 'NbEpaules', size(PatientSelection, 1), 'CodeFolder', Folder.toolbox));
 

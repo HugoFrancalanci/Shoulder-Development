@@ -61,6 +61,9 @@
 %           Curves (struct array, même indexation que Results) courbes
 %           HG/GH/ST/TX_<PRE|POST> du cycle retenu (101 points), pour
 %           ExportRegistre
+%           AsymCurves (struct array, même indexation que AsymResults)
+%           courbes HG/GH/ST/TX_ASYM des épaules asymptomatiques, avec
+%           Numero et Condition (export vers le registre)
 %           Fichier Excel écrit sur disque + une figure par tâche (courbes
 %           PRE/POST)
 % -------------------------------------------------------------------------
@@ -72,7 +75,7 @@
 % Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 % -------------------------------------------------------------------------
 
-function [Results, AsymResults, Curves] = ComputeFunctionalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
+function [Results, AsymResults, Curves, AsymCurves] = ComputeFunctionalContributionsFromDatabase(DatabaseFile, OutputFile, ResultsFolder, Opts)
 
 if nargin < 3, ResultsFolder = ''; end
 if nargin < 4, Opts = struct(); end
@@ -245,6 +248,8 @@ for iP = 1:nInFile
             AsymCurves(ai).PatientID = d.PatientID;
             AsymCurves(ai).Side      = c.side;
             AsymCurves(ai).Task      = c.task;
+            AsymCurves(ai).Numero    = d.Numero;
+            AsymCurves(ai).Condition = condition;
             AsymCurves(ai).HG_ASYM   = c.HG_curve;
             AsymCurves(ai).GH_ASYM   = c.GH_curve;
             AsymCurves(ai).ST_ASYM   = c.ST_curve;

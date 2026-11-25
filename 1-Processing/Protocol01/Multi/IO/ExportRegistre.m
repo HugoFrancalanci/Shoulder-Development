@@ -20,7 +20,14 @@
 %                  - courbes.csv : une ligne par courbe de 101 points
 %                    (source, numero, patient_id, cote, tache, moment,
 %                    articulation, p0..p100), lue dans les champs
-%                    <ARTICULATION>_<PRE|POST>.
+%                    <ARTICULATION>_<PRE|POST>, ou <ARTICULATION>_ASYM
+%                    pour les épaules asymptomatiques (moment lu dans le
+%                    champ Condition). Données brutes (source « Brut »,
+%                    ComputeRawCurvesFromDatabase) : articulation et axe
+%                    dans le nom, HTX_PRE -> articulation HTX.
+%                  Les sources « ...Asym » et « Eligibilite » concernent
+%                  l'épaule controlatérale : le registre les rattache à
+%                  l'épaule opérée par numéro et ID patient.
 %                  - run.json : date, machine, commit Git du code, taille
 %                    de la cohorte, sources exportées.
 %                Puis prévient le site (POST <URL>/api/matlab/run). Si le
@@ -106,11 +113,13 @@ for is = 1:numel(sources)
     for k = 1:numel(C)
         [num, pid, cote, tache] = cle(C(k));
         for ic = 1:numel(champs)
-            tok = regexp(champs{ic}, '^([A-Za-z]+)_(PRE|POST)$', 'tokens', 'once');
+            tok = regexp(champs{ic}, '^([A-Za-z]+)_(PRE|POST|ASYM)$', 'tokens', 'once');
             if isempty(tok), continue; end
             y = C(k).(champs{ic});
             if ~isnumeric(y) || numel(y) ~= 101 || all(isnan(y(:))), continue; end
-            fprintf(fid, '%s,%s,%s,%s,%s,%s,%s%s\n', sources{is}, num, csv(pid), cote, csv(tache), lower(tok{2}), ...
+            moment = lower(tok{2});
+            if strcmp(tok{2}, 'ASYM') && isfield(C, 'Condition'), moment = lower(texte(C(k).Condition)); end
+            fprintf(fid, '%s,%s,%s,%s,%s,%s,%s%s\n', sources{is}, num, csv(pid), cote, csv(tache), moment, ...
                 tok{1}, sprintf(',%.4f', y(:)'));
             nCourbes = nCourbes + 1;
         end
