@@ -96,7 +96,7 @@ nBatches = ceil(nPatientRows / BatchSize);
 if ~exist('StockageProjet', 'var'), StockageProjet = false; end
 if ~exist('CopyInputFiles', 'var'), CopyInputFiles = false; end
 RabFallbackPerPatient = cell(nPatientRows, 1); % côtés sans calibration SCoRE (repli sur Rab)
-if StockageProjet && ~isfolder(ResultsFolder), mkdir(ResultsFolder); end
+if ~isfolder(ResultsFolder), mkdir(ResultsFolder); end
 
 % Base de données patient complète
 PartDone = false(nBatches, 1);
@@ -570,7 +570,8 @@ OptsContrib = struct('AsymptomaticSelection', {AsymptomaticSelection}, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 % Contrôle des courbes patient par patient : sauts ±180°, forme, élévation 3D
-[CurveQC, CurveQCSummary, CurveCycles] = CachedCompute('ControleCourbes', CacheFolder, RecomputeValues, DatabaseFile, ...
+% (recalcul aussi quand PostureDataFile, qui donne les épaules, est plus récent que le cache)
+[CurveQC, CurveQCSummary, CurveCycles] = CachedCompute('ControleCourbes', CacheFolder, RecomputeValues, {DatabaseFile, PostureDataFile}, ...
     @CheckCurvesFromDatabase, DatabaseFile, PostureDataFile, CurveCheckFolder, CurveQualityOutputFile);
 
 %% Asymptomatic selection
@@ -651,7 +652,7 @@ AsymptomaticComparison(PostureDataFile, AsymptomaticOutputFile);
 % Illustrations des mesures (inclinaison, SIR, HG et HT) sur un patient réel
 Folder.deps = fullfile(fileparts(Folder.toolbox), 'dependencies');
 IllustrationInfo = PlotMeasureIllustrations(Folder, PatientSelection, DataFolder, PostureDataFile, ...
-    fullfile(fileparts(PostureDataFile), 'Illustrations'), 152);
+    IllustrationFolder, 152);
 
 % Figures
 % Figures de l'article (format JSES, une par fichier, flexion et scaption) ;
@@ -659,12 +660,13 @@ IllustrationInfo = PlotMeasureIllustrations(Folder, PatientSelection, DataFolder
 [ArticleFigures, ThoracicShare, ThoracicDecomp] = PlotArticleFigures(PostureDataFile, ArticleFigureFolder);
 
 %% SHR methodology analysis
-% Courbes HT, GH, ST point par point (PRE et POST, cycle retenu, 101 points)
-% pour les patients de PostureDataFile : base des formules de SHR
-SHRCurves = ExportSHRCurvesFromDatabase(DatabaseFile, PostureDataFile, SHRCurvesOutputFile);
+% Courbes HT, GH, ST point par point (PRE et POST, cycle retenu, 101 points) :
+% SHR_Curves.xlsx écrit par le registre dans SHRDataFolder pour les épaules du
+% projet TPC2_SHR (aucune relecture des .mat). Contrôle depuis les .mat
+% (quelques minutes) : ExportSHRCurvesFromDatabase(DatabaseFile, PostureDataFile, SHRCurvesOutputFile)
 
-% Formules de SHR (familles A GH:ST, B TH:ST, C TH:GH au pic) sur les courbes
-% validées, lues dans le dossier de l'abstract (SHR_Curves.xlsx) ; scaption
-% seule par défaut, Excel + figure écrits dans ce dossier
-SHRFormulas = TestSHRFormulas(SHRAbstractFolder, struct('FigureFolder', SHRFigureFolder));
+% Formules de SHR (familles A GH:ST, B TH:ST, C TH:GH au pic) sur ces courbes ;
+% scaption seule par défaut, SHR_Formulas.xlsx écrit dans SHRDataFolder,
+% figures dans SHRFigureFolder
+SHRFormulas = TestSHRFormulas(SHRDataFolder, struct('FigureFolder', SHRFigureFolder));
 

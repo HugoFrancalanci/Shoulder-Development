@@ -327,16 +327,6 @@ AsymptomaticSelection = { ...
 % SkipKinematics : true pour sauter le calcul cinématique
 SkipKinematics = false;
 
-% ResultsFolder : dossier où sont écrits les Excels de sortie et le PatientDatabase.mat.
-switch getenv('COMPUTERNAME')
-    case 'FRANCALANCIPHD' 
-        ResultsFolder = 'C:\Users\franc\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\01_Etudes\E02_01_Posture_rTSA';
-    case 'CD-8K18T74'
-        ResultsFolder = 'C:\Users\francala\OneDrive - Université de Genève\PhD Hugo\05_Ressources\01_Data\01_Etudes\E02_01_Posture_rTSA\Processing CD-8K18T74';
-    otherwise
-        ResultsFolder = ''; % machine inconnue : demandé via fenêtre au lancement
-end
-
 % STOCKAGE PAR PROJET (décision du 25.11.2026) : un dossier par projet sur le
 % bureau du PC, hors OneDrive, qui devient la référence du projet une fois
 % terminé (tous les Excels sources du projet au même endroit, Valeurs\) :
@@ -348,15 +338,17 @@ end
 %                                  Valeurs\Cache, les valeurs calculées une fois
 %                                  et relues par les sections de résultats
 %     projet.json                  réglages du run, commit du code, replis sur Rab
-% StockageProjet = false : ancien stockage (ResultsFolder ci-dessus, base en
-% parties). ProjectCode : voir plus haut (projet du registre). Le registre
-% lit le dossier du même nom (page du projet).
+% StockageProjet = false : ancienne base en parties (Database_<n>_..._partXofN.mat),
+% rangée elle aussi dans Valeurs\ du projet. ProjectCode : voir plus haut
+% (projet du registre). Le registre lit le dossier du même nom (page du projet).
+% Même emplacement sur les deux PC (bureau du profil Windows, hors OneDrive :
+% 54 Go pour COHORTE). Un run fait sur la tour CD-8K18T74 reste sur son bureau :
+% copier ensuite Projets_epaule\<ProjectCode> sur ce PC pour que le registre le lise.
 StockageProjet = true;
 ProjectsRoot   = fullfile(getenv('USERPROFILE'), 'Desktop', 'Projets_epaule');
 ProjectFolder  = fullfile(ProjectsRoot, ProjectCode);
-if StockageProjet
-    ResultsFolder = fullfile(ProjectFolder, 'Valeurs');
-end
+% ResultsFolder : Excels de sortie du run (et dossiers Cache, Registre, Controle_courbes)
+ResultsFolder  = fullfile(ProjectFolder, 'Valeurs');
 % CopyInputFiles : copie des C3D de Processed\ et de Session.xlsx dans le projet
 CopyInputFiles = StockageProjet;
 % RecomputeValues : true pour recalculer depuis les .mat même si Valeurs\Cache
@@ -383,36 +375,44 @@ CoRQualityOutputFile = fullfile(ResultsFolder, 'CoRQuality_Summary.xlsx');
 % CurveQualityOutputFile : fichier Excel de sortie (validité des courbes HT/HG/GH/ST/TX)
 CurveQualityOutputFile = fullfile(ResultsFolder, 'CurveQuality_Summary.xlsx');
 
-% SHRCurvesOutputFile : fichier Excel de sortie (courbes HT/GH/ST point par
-% point PRE/POST, ExportSHRCurvesFromDatabase)
+% SHRCurvesOutputFile : sortie de ExportSHRCurvesFromDatabase (courbes HT/GH/ST
+% point par point PRE/POST relues dans les .mat, lent) ; plus lancée par MAIN,
+% gardée pour contrôle : le registre écrit le même fichier
 SHRCurvesOutputFile = fullfile(ResultsFolder, 'SHR_Curves.xlsx');
-% SHRAbstractFolder : dossier de l'abstract ISB 2027 (SHR_Curves.xlsx validé
-% copié ici ; TestSHRFormulas y lit les courbes et écrit SHR_Formulas.xlsx).
-% Chemin relatif au profil Windows pour fonctionner sur les deux machines
+% SHRDataFolder : données du projet TPC2_SHR_calculation_rTSA (abstract ISB).
+% SHR_Curves.xlsx y est écrit par le registre (projet TPC2_SHR, bouton
+% « Générer » SHR_Curves.xlsx de la carte Exports : courbes du cycle retenu
+% des épaules retenues, sans relire les .mat) ; TestSHRFormulas y lit les
+% courbes et y écrit SHR_Formulas.xlsx. Chemins relatifs au profil Windows
+% pour fonctionner sur les deux machines
+SHRDataFolder   = fullfile(getenv('USERPROFILE'), 'OneDrive - Université de Genève', 'PhD Hugo', ...
+    '05_Ressources', '01_Data', '01_Etudes', 'TPC2_SHR_calculation_rTSA');
+% SHRFigureFolder / SHRTableFolder : figures (PNG, PDF) et tableaux Word de l'abstract
 SHRAbstractFolder = fullfile(getenv('USERPROFILE'), 'OneDrive - Université de Genève', 'PhD Hugo', ...
-    '04_Outputs', '02_Conferences', 'Congress', '2027_International Society of Biomechanics', ...
-    'Abstract', 'Abstract 3', 'Data');
-% SHRFigureFolder / SHRTableFolder : figures (PNG, PDF) et tableaux Word de
-% l'abstract, à côté de Data
-SHRFigureFolder = fullfile(fileparts(SHRAbstractFolder), 'Figures');
-SHRTableFolder  = fullfile(fileparts(SHRAbstractFolder), 'Tables');
+    '01_Etude', '00_Technical project', 'PT01_Kinematics', 'TPC2_SHR_calculation_rTSA', 'Abstract');
+SHRFigureFolder = fullfile(SHRAbstractFolder, 'Figures');
+SHRTableFolder  = fullfile(SHRAbstractFolder, 'Tables');
 
 % PostureOutputFile : fichier Excel de sortie (inclinaison thoracique + Moroder)
 PostureOutputFile = fullfile(ResultsFolder, 'Posture_Summary.xlsx');
 
-% PostureDataFile : Excel trié à la main (feuilles Posture, Cinematique...
+% PostureDataFile : données de l'article E02_01 (feuilles Posture, Cinematique...
 % et _Asym), entrée de CorrelatePostureROM, InclinationClassification,
-% AsymptomaticComparison et PlotMeanCurvesFromDatabase ; gardé sur OneDrive
-% (hors du dépôt GitHub). Chemin relatif au profil Windows pour fonctionner
-% sur les deux machines. CorrelationROMOutputFile : sortie commune de
-% CorrelatePostureROM (H2), AnalyseThoraxContribution (H1) et
-% PostureSecondaryAnalyses (une feuille par analyse)
+% AsymptomaticComparison, PlotMeanCurvesFromDatabase, CheckCurvesFromDatabase
+% et ExportSHRCurvesFromDatabase. Généré par le registre (projet E02_01,
+% bouton « Générer » de la carte Exports : épaules retenues par les critères
+% du projet) et rangé dans le dossier de données de l'étude sur OneDrive
+% (hors du dépôt GitHub). 26.11.2026 : 189 épaules (prothèse primaire, SCoRE
+% OK et sans saut de cardan en pré et en post), remplace l'ancien fichier
+% à 173 épaules trié à la main. Chemin relatif au profil Windows pour
+% fonctionner sur les deux machines.
 PostureDataFile          = fullfile(getenv('USERPROFILE'), 'OneDrive - Université de Genève', 'PhD Hugo', ...
-    '01_Etude', '02_Sub-projects 2', 'E02_Classification_rTSA', 'E02_01 Posture rTSA', 'Results', ...
-    'Data_posture.xlsx');
-% (octobre 2026 : élévations sur le meilleur des 3 cycles, voir BestCycle.m ;
-% l'ancienne version, moyenne des 3 cycles, est archivée dans
-% Results/02_Pre-article_posture/Preliminary_data_posture.xlsx)
+    '05_Ressources', '01_Data', '01_Etudes', 'E02_01_Posture_rTSA', 'Data_posture.xlsx');
+% ArticleFolder : dossier Results de l'article (figures et illustrations)
+ArticleFolder            = fullfile(getenv('USERPROFILE'), 'OneDrive - Université de Genève', 'PhD Hugo', ...
+    '01_Etude', '02_Sub-projects 2', 'E02_Classification_rTSA', 'E02_01 Posture rTSA', 'Results');
+% CorrelationROMOutputFile : sortie commune de CorrelatePostureROM (H2),
+% AnalyseThoraxContribution (H1) et PostureSecondaryAnalyses (une feuille par analyse)
 CorrelationROMOutputFile = fullfile(Folder.toolbox, 'Multi', 'Results', 'Correlation_Posture_ROM.xlsx');
 % InclinationOutputFile : sortie de InclinationClassification (stratification
 % de l'inclinaison et seuil critique)
@@ -421,13 +421,13 @@ InclinationOutputFile    = fullfile(Folder.toolbox, 'Multi', 'Results', 'Inclina
 % controlatérales, feuilles _Asym de PostureDataFile)
 AsymptomaticOutputFile   = fullfile(Folder.toolbox, 'Multi', 'Results', 'Asymptomatic_Comparison.xlsx');
 % ArticleFigureFolder : figures de l'article (PlotArticleFigures, une par
-% fichier, PDF / SVG / PNG), à côté de PostureDataFile (OneDrive)
-ArticleFigureFolder      = fullfile(fileparts(PostureDataFile), 'Figures_article');
+% fichier, PDF / SVG / PNG) ; IllustrationFolder : illustrations des mesures
+% (PlotMeasureIllustrations), dans le dossier Results de l'article
+ArticleFigureFolder      = fullfile(ArticleFolder, 'Figures_article');
+IllustrationFolder       = fullfile(ArticleFolder, 'Illustrations');
 % CurveCheckFolder : sorties de CheckCurvesFromDatabase (QC_courbes.xlsx,
-% figures), à côté de PostureDataFile (OneDrive)
-CurveCheckFolder         = fullfile(fileparts(PostureDataFile), 'Controle_courbes');
-% Stockage par projet : dans Valeurs\ du projet, avec les autres sorties
-if StockageProjet, CurveCheckFolder = fullfile(ResultsFolder, 'Controle_courbes'); end
+% figures), dans Valeurs\ du projet avec les autres sorties
+CurveCheckFolder         = fullfile(ResultsFolder, 'Controle_courbes');
 
 % PatientInfosFile : fichier Excel de sortie (infos démographiques patients)
 PatientInfosFile = fullfile(ResultsFolder, 'PatientInfos_Summary.xlsx');
