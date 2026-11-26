@@ -18,7 +18,15 @@
 %                  3) un cycle n'est pas valide s'il contient un saut (écart
 %                     entre deux points consécutifs > JumpThresh = 90 deg sur
 %                     le signal signé de HG, HT, ST ou du thorax, typiquement
-%                     un repliement à ±180 deg) ou si son pic HG s'écarte de
+%                     un repliement à ±180 deg ; ou variation > WrapThresh =
+%                     120 deg sur WrapWin = 3 points : repliement étalé sur
+%                     plusieurs points par le rééchantillonnage à 101 points,
+%                     invisible point à point, ajouté le 26.11.2026 après
+%                     n°59 scaption post cycle 3, HT de -144 à +37 deg, 132
+%                     deg sur 3 points pour 77 deg au plus d'un point au
+%                     suivant ; sur toute la cohorte, élévations, 99,9 % des
+%                     cycles sans saut restent sous 91 deg sur 3 points et
+%                     seul ce cycle dépasse 120) ou si son pic HG s'écarte de
 %                     plus de OutlierThresh = 20 deg de la médiane des pics
 %                     (si au moins 3 cycles) ; alerte si le cycle au pic le
 %                     plus haut est écarté, ou si aucun cycle n'est valide (le
@@ -82,6 +90,8 @@ classdef BestCycle
 properties (Constant)
     Win           = 10;   % points moyennés autour d'un extremum (sur 101)
     JumpThresh    = 90;   % deg : saut entre deux points consécutifs
+    WrapThresh    = 120;  % deg : variation sur WrapWin points (repliement étalé)
+    WrapWin       = 3;
     OutlierThresh = 20;   % deg : écart du pic HG à la médiane des pics
     RotSign       = [-1 1];   % sens du mouvement HT : RE (ANALYTIC3), RI (ANALYTIC4)
     ElevSignHT    = [1 -1; -1 -1];   % sens du mouvement HT en élévation : lignes
@@ -112,8 +122,7 @@ if iT > 2
     Sel.sign = BestCycle.RotSign(iT - 2);
     pk = NaN(1, n);
     for c = 1:n, pk(c) = BestCycle.rotation(Sel.sign * ht, c); end
-    d = max(abs(diff(ht, 1, 1)), [], 1, 'omitnan');
-    jump = d > BestCycle.JumpThresh;
+    [jump, d] = BestCycle.jumps(ht);
     why = repmat({''}, 1, n);
     for c = find(jump), why{c} = sprintf('saut %.0f deg HT', d(c)); end
     Sel = BestCycle.pick(Sel, pk, jump, why, 'rotation');
@@ -139,8 +148,7 @@ jump = false(1, n); why = repmat({''}, 1, n);
 for k = 1:numel(sig)
     x = sig{k};
     if isempty(x) || size(x, 2) ~= n, continue; end
-    d = max(abs(diff(x, 1, 1)), [], 1, 'omitnan');
-    j = d > BestCycle.JumpThresh;
+    [j, d] = BestCycle.jumps(x);
     for c = find(j & ~jump), why{c} = sprintf('saut %.0f deg %s', d(c), sigName{k}); end
     jump = jump | j;
 end
@@ -249,6 +257,21 @@ if ~isnan(idx) && idx <= size(data, 2) && any(~isnan(data(:, idx)))
 else
     c = mean(data, 2, 'omitnan');
 end
+end
+
+% Sauts de chaque cycle de x [points x cycles] : écart entre deux points
+% consécutifs > JumpThresh, ou variation sur WrapWin points > WrapThresh
+% (repliement à ±180 deg étalé par le rééchantillonnage). d = plus grand
+% écart d'un point au suivant, ou variation sur WrapWin points si c'est elle
+% qui déclenche (pour l'alerte).
+function [j, d] = jumps(x)
+d = max(abs(diff(x, 1, 1)), [], 1, 'omitnan');
+w = BestCycle.WrapWin;
+dw = zeros(1, size(x, 2));
+if size(x, 1) > w, dw = max(abs(x(1 + w:end, :) - x(1:end - w, :)), [], 1, 'omitnan'); end
+j1 = d > BestCycle.JumpThresh; jw = dw > BestCycle.WrapThresh;
+d(jw & ~j1) = dw(jw & ~j1);
+j = j1 | jw;
 end
 
 % Indices de la fenêtre de Win points autour de l'indice i, bornée au cycle

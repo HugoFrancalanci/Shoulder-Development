@@ -556,6 +556,9 @@ OptsContrib = struct('AsymptomaticSelection', {AsymptomaticSelection});
 % Convention de signe des courbes (Core/Orientation.m) : un changement de la
 % table recalcule les sections qui l'utilisent (dépendance du cache)
 OrientationFile = fullfile(Folder.toolbox, 'Multi', 'Core', 'Orientation.m');
+% Choix du cycle retenu (Core/BestCycle.m) : même dépendance pour les
+% sections qui lisent le cycle retenu
+BestCycleFile = fullfile(Folder.toolbox, 'Multi', 'Core', 'BestCycle.m');
 
 %% Metric validation
 % CoR residual validation
@@ -584,21 +587,26 @@ EligRes = CachedCompute('Eligibilite', CacheFolder, RecomputeValues, {DatabaseFi
 % Clinical movement decomposition : HT, GH, ST, TX
 % Courbes signées sans abs ni correction (Core/Orientation.m)
 [ClinRes, ClinAsym, ClinCurves, ClinAsymCurves] = CachedCompute('Clinique', CacheFolder, ...
-    RecomputeValues, {DatabaseFile, OrientationFile}, ...
+    RecomputeValues, {DatabaseFile, OrientationFile, BestCycleFile}, ...
     @ComputeClinicalContributionsFromDatabase, DatabaseFile, OutputFile, ResultsFolder, OptsContrib);
 
 % Functional decomposition : HG, GH, ST, TX
 [FuncRes, FuncAsym, FuncCurves, FuncAsymCurves] = CachedCompute('Fonctionnel', CacheFolder, ...
-    RecomputeValues, {DatabaseFile, OrientationFile}, ...
+    RecomputeValues, {DatabaseFile, OrientationFile, BestCycleFile}, ...
     @ComputeFunctionalContributionsFromDatabase, DatabaseFile, FunctionalOutputFile, ResultsFolder, OptsContrib);
 
 % Données brutes : angles d'Euler X, Y, Z de HT, GH, ST et thorax, cycle retenu (registre)
-RawCurves = CachedCompute('Brut', CacheFolder, RecomputeValues, DatabaseFile, ...
+RawCurves = CachedCompute('Brut', CacheFolder, RecomputeValues, {DatabaseFile, BestCycleFile}, ...
     @ComputeRawCurvesFromDatabase, DatabaseFile);
+
+% Angles 3D (quaternions) : angle de rotation total de HT, GH, ST, thorax et
+% HG, sans séquence d'Euler, cycle retenu ; amplitude et pic (registre)
+[QuatRes, QuatCurves] = CachedCompute('Quaternion', CacheFolder, RecomputeValues, {DatabaseFile, BestCycleFile}, ...
+    @ComputeQuaternionCurvesFromDatabase, DatabaseFile);
 
 %% Posture analysis
 % Posture : inclinaison thoracique et classification de Moroder
-[PostRes, PostAsym] = CachedCompute('Posture', CacheFolder, RecomputeValues, DatabaseFile, ...
+[PostRes, PostAsym] = CachedCompute('Posture', CacheFolder, RecomputeValues, {DatabaseFile, BestCycleFile}, ...
     @ComputePostureFromDatabase, DatabaseFile, PostureOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
@@ -626,6 +634,8 @@ if exist('FuncCurves', 'var'),     RegCourbes.Fonctionnel     = FuncCurves;     
 if exist('ClinAsymCurves', 'var'), RegCourbes.CliniqueAsym    = ClinAsymCurves; end
 if exist('FuncAsymCurves', 'var'), RegCourbes.FonctionnelAsym = FuncAsymCurves; end
 if exist('RawCurves', 'var'),      RegCourbes.Brut            = RawCurves;      end
+if exist('QuatRes', 'var'),        RegTables.Quaternion       = QuatRes;        end
+if exist('QuatCurves', 'var'),     RegCourbes.Quaternion      = QuatCurves;     end
 ExportRegistre(RegistreFolder, RegTables, RegCourbes, ...
     struct('URL', RegistreURL, 'NbEpaules', size(PatientSelection, 1), 'CodeFolder', Folder.toolbox));
 

@@ -168,8 +168,11 @@ pour toutes les articulations d'une épaule et d'une tâche
 (`BestCycle.select`) :
 
 * pic d'un cycle = moyenne de 10 points (sur 101) autour du maximum ;
-* cycle non valide : saut > 90° entre deux points consécutifs, ou pic à plus
-  de 20° de la médiane des cycles (si au moins 3 cycles) ;
+* cycle non valide : saut > 90° entre deux points consécutifs, ou variation
+  > 120° sur 3 points (repliement à ±180° étalé par le rééchantillonnage,
+  ajouté le 26.11.2026 : n°59 scaption post, seul cycle de la cohorte
+  au-delà de 120°, 99,9 % des cycles sous 91°), ou pic à plus de 20° de la
+  médiane des cycles (si au moins 3 cycles) ;
 * cycle retenu = cycle valide au pic le plus haut (sinon le plus haut, avec
   alerte) ;
 * élévations (ANALYTIC1/2) : cycle choisi sur |HG|, sauts contrôlés sur HG,

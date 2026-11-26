@@ -25,7 +25,9 @@
 %                élévations quasi nulles ou un vrai mouvement inverse du
 %                thorax). Il suffit donc d'un signe fixe :
 %
-%                  courbe anatomique  x = Miroir(côté) * brut
+%                  courbe anatomique  x = Miroir(côté) * brut, chaque cycle
+%                     ramené entre -180 et 180 deg autour de sa médiane
+%                     (Orientation.recentre : tours de 360 deg)
 %                     convention du côté droit (ISB) pour les deux côtés :
 %                     seul HT en flexion (DOF3 Z) a le signe opposé à
 %                     gauche ; signe conservé, jamais replié. Exemples :
@@ -83,7 +85,7 @@ end
 methods (Static)
 
 function x = anat(brut, art, tache, cote)
-x = brut;
+x = Orientation.recentre(brut);
 if isempty(x), return; end
 if strcmp(cote, 'L')
     x = Orientation.MiroirGauche.(art)(Orientation.indice(tache)) * x;
@@ -98,6 +100,15 @@ function y = oriente(brut, art, tache, cote)
 y = Orientation.anat(brut, art, tache, cote);
 s = Orientation.sens(art, tache);
 if ~isnan(s), y = s * y; end
+end
+
+% Cycle décalé d'un tour : chaque colonne (cycle) est ramenée d'un multiple
+% de 360 deg pour que sa médiane soit entre -180 et 180 (GH en rotation
+% interne stocké vers 350 deg au lieu de -10 deg). Forme inchangée, donc
+% amplitude et rotation depuis le départ inchangées.
+function x = recentre(x)
+if isempty(x), return; end
+x = x - 360 * round(median(x, 1, 'omitnan') / 360);
 end
 
 function i = indice(tache)
