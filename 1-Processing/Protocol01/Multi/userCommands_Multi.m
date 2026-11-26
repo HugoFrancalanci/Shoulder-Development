@@ -355,13 +355,9 @@ CopyInputFiles = StockageProjet;
 % est à jour (sinon recalcul seulement quand un .mat est plus récent)
 RecomputeValues = false;
 CacheFolder     = fullfile(ResultsFolder, 'Cache');
-% InversionReferenceFile : référence figée de la correction des courbes ST et
-% TX inversées (Core/InversionReference.m) : courbes moyennes et repos de la
-% cohorte complète, pour que la valeur corrigée d'une épaule ne dépende pas
-% des autres épaules du projet. BuildInversionReference = true la recalcule
-% sur le run (cohorte complète uniquement) et réécrit le fichier.
-InversionReferenceFile  = fullfile(Folder.toolbox, 'Multi', 'InversionReference_STTX.csv');
-BuildInversionReference = false;
+% Signe des courbes : Core/Orientation.m (convention anatomique du côté
+% droit, sans abs ; remplace depuis le 26.11.2026 la correction des courbes
+% ST et TX inversées et sa référence figée InversionReference_STTX.csv)
 
 % OutputFile : fichier Excel de sortie (contributions cliniques HT/GH/ST/TX)
 OutputFile = fullfile(ResultsFolder, 'ClinicalContributions_Summary.xlsx');

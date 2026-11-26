@@ -9,9 +9,10 @@
 %                testée, pas la rugosité). La correction inversée est
 %                appliquée à ST et TX uniquement dans les figures ; ANALYTIC1 et
 %                ANALYTIC2 ; PRE et POST, depuis PatientDatabase.mat. Mêmes
-%                joints/DOF et MÊMES courbes que les sorties clinical/
-%                functional : abs() point par point sur chaque cycle, puis
-%                moyenne des cycles (getRangeCycle/getCurveCycle).
+%                joints/DOF que les sorties clinical/functional ; courbe
+%                orientée dans le sens du mouvement (Orientation.oriente,
+%                sans abs depuis le 26.11.2026) sur chaque cycle, puis
+%                moyenne des cycles.
 %                HT 1/6 DOF3|1, HG 12/13 DOF1, GH 2/7 DOF3|1, ST 3/8 DOF1
 %                (DOF ANALYTIC1|ANALYTIC2).
 %
@@ -174,7 +175,11 @@ for iP = 1:nInFile
                     cyc = cyc(:, any(~isnan(cyc), 1));
                     if isempty(cyc), continue; end
 
-                    cycA  = abs(cyc);
+                    % Courbe orientée dans le sens du mouvement (Orientation.m,
+                    % sans abs) : une courbe qui traverse zéro n'est plus
+                    % repliée, « Inversee » ne relève plus qu'un vrai mouvement
+                    % de sens opposé
+                    cycA  = Orientation.oriente(cyc, md.name, task, side);
                     curve = resample101(mean(cycA, 2, 'omitnan'));
                     if all(isnan(curve)), continue; end
 

@@ -747,9 +747,9 @@ tf = isfield(d, condition) && isstruct(d.(condition)) && isfield(d.(condition), 
     && ~isempty(d.(condition).(fieldName));
 end
 
-% HT Euler range of motion for one task/DOF/side - identical pattern to
-% getRangeCycle in ComputeClinicalContributionsFromDatabase.m /
-% Protocol01/IO/ExportKinematicsSummary.m. dof is task-dependent (see file
+% HT / HG Euler range of motion for one task/DOF/side (mean of the cycles),
+% on the angle oriented in the direction of motion (Orientation.m, no abs
+% since 26.11.2026). dof is task-dependent (see file
 % header) : 3 (Z, flexion/extension) for ANALYTIC1, 1 (X, elevation/
 % abduction) for ANALYTIC2 - same Joint index (1 right / 6 left) for both.
 function r = getEulerRangeCycleTask(Trial, task, ji, dof, cycField)
@@ -767,8 +767,13 @@ if length(t.Joint) < ji || ~isfield(t.Joint(ji), 'Euler') || ~isfield(t.Joint(ji
         || isempty(t.Joint(ji).Euler.(cycField))
     return;
 end
-data = abs(squeeze(t.Joint(ji).Euler.(cycField)(1, dof, :, :)));
+data = squeeze(t.Joint(ji).Euler.(cycField)(1, dof, :, :));
 if isvector(data), data = data(:); end
+% Angle orienté dans le sens du mouvement (Orientation.m, sans abs) :
+% joints 1/6 = HT, 12/13 = HG, droite puis gauche
+arts = {1, 'HT', 'R'; 6, 'HT', 'L'; 12, 'HG', 'R'; 13, 'HG', 'L'};
+k = find([arts{:, 1}] == ji, 1);
+if ~isempty(k), data = Orientation.oriente(data, arts{k, 2}, task, arts{k, 3}); end
 ranges = max(data, [], 1) - min(data, [], 1);
 r = mean(ranges, 'omitnan');
 end

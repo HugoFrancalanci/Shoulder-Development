@@ -15,8 +15,8 @@
 %                sur 101 points), ce qui permet :
 %                  1) des contrôles par épaule x session x tâche x mesure :
 %                     saut > 90° entre deux échantillons d'un cycle (angle
-%                     qui franchit ±180°), repli créé par la valeur absolue,
-%                     forme inversée ou atypique (corrélation avec la courbe
+%                     qui franchit ±180°), excursion de sens opposé au
+%                     mouvement attendu (Orientation.m), forme inversée ou atypique (corrélation avec la courbe
 %                     moyenne du groupe), ROM extrême (z robuste médiane /
 %                     MAD), cycles dispersés, verdict de
 %                     ComputeCurveQualityFromDatabase si fourni (hors verdict
@@ -30,8 +30,9 @@
 %                     proche de 90°) ;
 %                  3) la liste des sauts avec les valeurs correspondantes de
 %                     Data_posture.
-%                Conventions de tracé : HG, HT, GH en valeur absolue ; ST
-%                signé, sens harmonisé entre côtés ; thorax signé.
+%                Convention de tracé (26.11.2026) : toutes les courbes
+%                orientées dans le sens du mouvement (Orientation.oriente,
+%                sans valeur absolue, mêmes signes pour les deux côtés).
 %                Textes des figures sans tiret ni tiret long.
 % -------------------------------------------------------------------------
 % Inputs  : DatabaseFile      (char) chemin vers PatientDatabase.mat (ou ses
@@ -76,14 +77,12 @@ tlbl  = {'flexion', 'scaption'};
 mets  = {'HG', 'HT', 'GH', 'ST', 'TX'};
 mlbl  = {'HG, élévation / gravité', 'HT, élévation / thorax', 'GH, élévation', ...
          'ST, rotation latérale', 'Thorax, flexion signée'};
-isAbs = [true true true false false];
 grps  = {'PRE', 'POST', 'ASYM'};
 glbl  = {'rTSA PRE', 'rTSA POST', 'Épaules saines'};
 cols  = [0.8500 0.3250 0.0980; 0 0.4470 0.7410; 0.4660 0.6740 0.1880];
 
 % Seuils des contrôles
 Th.jump  = 90;    % deg, saut entre deux échantillons d'un cycle
-Th.fold  = 10;    % deg, repli créé par la valeur absolue
 Th.rAtyp = 0.5;   % corrélation avec la moyenne du groupe sous laquelle la forme est atypique
 Th.zROM  = 3.5;   % z robuste du ROM
 Th.sdCyc = 15;    % deg, SD moyen entre cycles
@@ -100,18 +99,8 @@ end
 nR = numel(Cycles);
 fprintf('%d courbes épaule x session x tâche\n', nR);
 
-% Sens de ST harmonisé entre côtés (même règle que PlotMeanCurvesFromDatabase)
-stFlip = false(1, numel(tasks));
-for t = 1:numel(tasks)
-    ex = NaN(nR, 1); sd = {Cycles.side}';
-    for i = find(strcmp({Cycles.task}, tasks{t}))
-        c = Cycles(i).ST;
-        if ~isempty(c), mc = mean(squeeze(c(:, 1, :)), 2, 'omitnan'); ex(i) = mc(51) - mc(1); end
-    end
-    stFlip(t) = sign(median(ex(strcmp(sd, 'R')), 'omitnan')) ~= sign(median(ex(strcmp(sd, 'L')), 'omitnan'));
-end
-
-% Cycles tracés (convention de la vue d'ensemble) et courbe moyenne par épaule
+% Cycles tracés et courbe moyenne par épaule : courbe anatomique (Sgn) et
+% courbe orientée dans le sens du mouvement (Disp), voir Orientation.m
 Disp = cell(nR, numel(mets)); Sgn = Disp; MeanD = NaN(nR, numel(mets), 101);
 for i = 1:nR
     t = find(strcmp(tasks, Cycles(i).task));
@@ -119,9 +108,8 @@ for i = 1:nR
         c = Cycles(i).(mets{m});
         if isempty(c) || size(c, 3) == 0, continue; end
         s = squeeze(c(:, dofOf(mets{m}, t), :)); if isvector(s), s = s(:); end
-        if strcmp(mets{m}, 'ST') && stFlip(t) && strcmp(Cycles(i).side, 'L'), s = -s; end
-        Sgn{i, m} = s;
-        if isAbs(m), Disp{i, m} = abs(s); else, Disp{i, m} = s; end
+        Sgn{i, m}  = Orientation.anat(s, mets{m}, tasks{t}, Cycles(i).side);
+        Disp{i, m} = Orientation.oriente(s, mets{m}, tasks{t}, Cycles(i).side);
         MeanD(i, m, :) = mean(Disp{i, m}, 2, 'omitnan');
     end
 end
@@ -158,12 +146,15 @@ for i = 1:nR
         if r.nCycles == 0
             f{end+1} = 'aucun cycle'; %#ok<AGROW>
         else
-            md = squeeze(MeanD(i, m, :)); ms = mean(sc, 2, 'omitnan');
+            md = squeeze(MeanD(i, m, :));
             gm = squeeze(GM(g, t, m, :));
             r.ROM_deg = max(md) - min(md); r.Peak_deg = max(abs(md)); r.Rest_deg = md(1);
             r.CyclesJump = sum(any(abs(diff(sc, 1, 1)) > Th.jump, 1));
             r.CyclesZeroCross = sum(any(sc > 3, 1) & any(sc < -3, 1));
-            if isAbs(m), r.AbsFold_deg = max(abs(md - abs(ms))); else, r.AbsFold_deg = 0; end
+            % sens opposé au mouvement attendu : la courbe orientée s'éloigne
+            % de son départ vers les valeurs négatives
+            [~, ip] = max(abs(md - md(1)));
+            r.Sens_oppose = double(~isnan(Orientation.sens(mets{m}, tasks{t})) && md(ip) - md(1) < 0);
             if r.nCycles > 1, r.SD_cycles_deg = mean(std(dc, 0, 2, 'omitnan'), 'omitnan'); end
             ok = ~isnan(md) & ~isnan(gm);
             if sum(ok) > 10 && std(md(ok)) > 0
@@ -193,7 +184,7 @@ for i = 1:nR
             end
             % signalements
             if r.CyclesJump > 0, f{end+1} = sprintf('saut > %d° (%d cycle(s))', Th.jump, r.CyclesJump); end %#ok<AGROW>
-            if r.AbsFold_deg > Th.fold, f{end+1} = sprintf('repli valeur absolue %.0f°', r.AbsFold_deg); end %#ok<AGROW>
+            if r.Sens_oppose, f{end+1} = 'sens opposé au mouvement attendu'; end %#ok<AGROW>
             if r.r_shape < 0, f{end+1} = 'forme inversée'; %#ok<AGROW>
             elseif r.r_shape < Th.rAtyp, f{end+1} = sprintf('forme atypique (r %.2f)', r.r_shape); end %#ok<AGROW>
             if abs(r.z_ROM) > Th.zROM, f{end+1} = sprintf('ROM extrême (z %.1f)', r.z_ROM); end %#ok<AGROW>
@@ -442,7 +433,7 @@ end
 function r = emptyRow()
 r = struct('Population', '', 'Numero', NaN, 'Side', '', 'Session', '', 'Task', '', 'Metric', '', ...
     'nCycles', 0, 'ROM_deg', NaN, 'Peak_deg', NaN, 'Rest_deg', NaN, 'CyclesJump', 0, ...
-    'CyclesZeroCross', 0, 'AbsFold_deg', NaN, 'SD_cycles_deg', NaN, 'r_shape', NaN, 'z_ROM', NaN, ...
+    'CyclesZeroCross', 0, 'Sens_oppose', NaN, 'SD_cycles_deg', NaN, 'r_shape', NaN, 'z_ROM', NaN, ...
     'Peak3D_deg', NaN, 'EulerMinus3D_deg', NaN, 'MiddleAngleAtPeak_deg', NaN, ...
     'PipelineVerdict', '', 'PipelineReason', '', 'Flags', '');
 end

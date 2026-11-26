@@ -552,11 +552,10 @@ run(fullfile(Folder.toolbox, 'Multi', 'userCommands_Multi.m')); % DatabaseFile, 
 % changé. RecomputeValues = true (userCommands_Multi.m) force le recalcul.
 if ~exist('RecomputeValues', 'var'), RecomputeValues = false; end
 if ~exist('CacheFolder', 'var'),     CacheFolder = fullfile(ResultsFolder, 'Cache'); end
-% Référence figée de la correction ST/TX inversée (Core/InversionReference.m)
-if ~exist('InversionReferenceFile', 'var'),  InversionReferenceFile = fullfile(Folder.toolbox, 'Multi', 'InversionReference_STTX.csv'); end
-if ~exist('BuildInversionReference', 'var'), BuildInversionReference = false; end
-OptsContrib = struct('AsymptomaticSelection', {AsymptomaticSelection}, ...
-    'InversionReference', InversionReferenceFile, 'BuildInversionReference', BuildInversionReference);
+OptsContrib = struct('AsymptomaticSelection', {AsymptomaticSelection});
+% Convention de signe des courbes (Core/Orientation.m) : un changement de la
+% table recalcule les sections qui l'utilisent (dépendance du cache)
+OrientationFile = fullfile(Folder.toolbox, 'Multi', 'Core', 'Orientation.m');
 
 %% Metric validation
 % CoR residual validation
@@ -565,32 +564,32 @@ OptsContrib = struct('AsymptomaticSelection', {AsymptomaticSelection}, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 % Curve validity diagnostic
-[CurveQualRes, CurveQualAsym] = CachedCompute('QualiteCourbes', CacheFolder, RecomputeValues, DatabaseFile, ...
+[CurveQualRes, CurveQualAsym] = CachedCompute('QualiteCourbes', CacheFolder, RecomputeValues, {DatabaseFile, OrientationFile}, ...
     @ComputeCurveQualityFromDatabase, DatabaseFile, CurveQualityOutputFile, ResultsFolder, ...
     struct('AsymptomaticSelection', {AsymptomaticSelection}));
 
 % Contrôle des courbes patient par patient : sauts ±180°, forme, élévation 3D
 % (recalcul aussi quand PostureDataFile, qui donne les épaules, est plus récent que le cache)
-[CurveQC, CurveQCSummary, CurveCycles] = CachedCompute('ControleCourbes', CacheFolder, RecomputeValues, {DatabaseFile, PostureDataFile}, ...
+[CurveQC, CurveQCSummary, CurveCycles] = CachedCompute('ControleCourbes', CacheFolder, RecomputeValues, {DatabaseFile, PostureDataFile, OrientationFile}, ...
     @CheckCurvesFromDatabase, DatabaseFile, PostureDataFile, CurveCheckFolder, CurveQualityOutputFile);
 
 %% Asymptomatic selection
 % Asymptomatic shoulder classification
-EligRes = CachedCompute('Eligibilite', CacheFolder, RecomputeValues, DatabaseFile, ...
+EligRes = CachedCompute('Eligibilite', CacheFolder, RecomputeValues, {DatabaseFile, OrientationFile}, ...
     @ComputeContralateralEligibilityFromDatabase, DatabaseFile, ContralateralEligibilityFile, ResultsFolder);
 
 %% Curve analysis
 % Valeurs et courbes lues sur le cycle retenu (meilleur des 3 cycles, alertes
 % en console et colonnes Cycle_* / CycleAlert_*), voir Core/BestCycle.m
 % Clinical movement decomposition : HT, GH, ST, TX
-% (recalcul aussi quand la référence figée est plus récente que le cache)
+% Courbes signées sans abs ni correction (Core/Orientation.m)
 [ClinRes, ClinAsym, ClinCurves, ClinAsymCurves] = CachedCompute('Clinique', CacheFolder, ...
-    RecomputeValues || BuildInversionReference, {DatabaseFile, InversionReferenceFile}, ...
+    RecomputeValues, {DatabaseFile, OrientationFile}, ...
     @ComputeClinicalContributionsFromDatabase, DatabaseFile, OutputFile, ResultsFolder, OptsContrib);
 
 % Functional decomposition : HG, GH, ST, TX
 [FuncRes, FuncAsym, FuncCurves, FuncAsymCurves] = CachedCompute('Fonctionnel', CacheFolder, ...
-    RecomputeValues || BuildInversionReference, {DatabaseFile, InversionReferenceFile}, ...
+    RecomputeValues, {DatabaseFile, OrientationFile}, ...
     @ComputeFunctionalContributionsFromDatabase, DatabaseFile, FunctionalOutputFile, ResultsFolder, OptsContrib);
 
 % Données brutes : angles d'Euler X, Y, Z de HT, GH, ST et thorax, cycle retenu (registre)

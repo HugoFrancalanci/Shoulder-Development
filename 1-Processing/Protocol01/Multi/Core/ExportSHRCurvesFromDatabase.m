@@ -12,10 +12,9 @@
 %                Courbes = celles de ComputeClinicalContributionsFromDatabase
 %                (aucun recalcul ici) : cycle retenu par BestCycle (meilleur
 %                des cycles valides), 101 points (0 à 100 % du cycle,
-%                montée puis descente du bras), abs() de l'angle, courbes
-%                ST inversées corrigées (ApplyInversionCorrectionSTTX). Ce
-%                sont donc les courbes dont viennent les amplitudes et pics
-%                de Data_posture.xlsx.
+%                montée puis descente du bras), angle signé (Orientation.m).
+%                Ce sont donc les courbes dont viennent les amplitudes et
+%                pics de Data_posture.xlsx.
 %
 %                DOF (même convention que Clinical) :
 %                  HT Joint(1/6), GH Joint(2/7) : ANALYTIC1 DOF3 Z (flexion,
@@ -24,13 +23,13 @@
 %                GH en flexion (ZXY) : élévation en partie dans l'angle du
 %                milieu (blocage de cardan proche de 90 deg), à interpréter
 %                avec prudence (voir CheckCurvesFromDatabase).
-%                GH et ST sont aussi exportés SANS abs (feuilles
-%                *_Glenohumerale_signe et *_ST_signe, même cycle ; ST signé =
-%                brut non corrigé ST_<C>_raw de Clinical) : abs() replie la
-%                courbe quand l'angle traverse zéro ou part du côté opposé au
-%                mouvement (GH:ST négatifs ; ST en scaption : 77 / 326
-%                sessions passent par zéro) ; TestSHRFormulas les oriente
-%                dans le sens du mouvement.
+%                Signes (Orientation.m, 26.11.2026, plus de abs()) : feuilles
+%                Humerothoracique, Glenohumerale, Scapulothoracique = courbe
+%                orientée dans le sens du mouvement (positive, jamais
+%                repliée) ; feuilles *_Glenohumerale_signe et *_ST_signe =
+%                courbe anatomique signée (convention du côté droit, ST
+%                rotation latérale négative), que TestSHRFormulas oriente
+%                lui-même.
 %
 %                Patients et côtés : ceux de PostureDataFile (feuille
 %                Cinematique pour l'ordre des lignes, Cote_retenu pour le
@@ -53,7 +52,7 @@
 %           ([patients x 101], NaN si absent) - entrée des formules de SHR
 % -------------------------------------------------------------------------
 % Dependencies : ComputeClinicalContributionsFromDatabase, BestCycle,
-%                ApplyInversionCorrectionSTTX
+%                Orientation
 % -------------------------------------------------------------------------
 % This work is licensed under the Creative Commons Attribution -
 % NonCommercial 4.0 International License. To view a copy of this license,
@@ -66,7 +65,9 @@ function SHR = ExportSHRCurvesFromDatabase(DatabaseFile, PostureDataFile, Output
 tasks      = {'ANALYTIC1', 'ANALYTIC2'};
 joints     = {'HT', 'GH', 'ST', 'GHs', 'STs'};
 jointNames = {'Humerothoracique', 'Glenohumerale', 'Scapulothoracique', 'Glenohumerale_signe', 'ST_signe'};
-curveFld   = {'HT_%s', 'GH_%s', 'ST_%s', 'GH_%s_signed', 'ST_%s_raw'};   % champ de Curves (Clinical)
+curveFld   = {'HT_%s', 'GH_%s', 'ST_%s', 'GH_%s', 'ST_%s'};   % champ de Curves (Clinical, anatomique signé)
+artName    = {'HT', 'GH', 'ST', 'GH', 'ST'};
+oriente    = [true true true false false];   % feuilles orientées dans le sens du mouvement
 % (ST_signe et non Scapulothoracique_signe : nom de feuille Excel <= 31 caractères)
 conds      = {'PRE', 'POST'};
 condNames  = {'Pre', 'Post'};
@@ -96,13 +97,12 @@ for iT = 1:numel(tasks)
     end
 end
 
-% Feuille de contrôle : cycle retenu, alerte, correction ST
+% Feuille de contrôle : cycle retenu et alerte
 ctrlHead = {'Numero', 'Side'};
 for iT = 1:numel(tasks)
     for iC = 1:numel(conds)
         p = [lower(tasks{iT}), '_'];
-        ctrlHead = [ctrlHead, {[p, 'Cycle_', condNames{iC}], [p, 'Alerte_', condNames{iC}], ...
-                               [p, 'ST_corrige_', condNames{iC}]}]; %#ok<AGROW>
+        ctrlHead = [ctrlHead, {[p, 'Cycle_', condNames{iC}], [p, 'Alerte_', condNames{iC}]}]; %#ok<AGROW>
     end
 end
 ctrl = cell(numel(numeros), numel(ctrlHead));
@@ -121,7 +121,7 @@ for k = 1:numel(numeros)
         if isempty(ri)
             nMissing = nMissing + 1;
             fprintf('  Absent de la base : n°%d %s %s\n', n, s, tasks{iT});
-            col = col + 3 * numel(conds);
+            col = col + 2 * numel(conds);
             continue;
         end
         for iC = 1:numel(conds)
@@ -130,13 +130,13 @@ for k = 1:numel(numeros)
                 f  = sprintf(curveFld{iJ}, c);
                 fo = [joints{iJ}, '_', c];
                 if ri <= numel(Cur) && isfield(Cur, f) && numel(Cur(ri).(f)) == nPts
-                    SHR.(tasks{iT}).(fo)(k, :) = Cur(ri).(f)(:)';
+                    v = Cur(ri).(f)(:)';
+                    if oriente(iJ), v = Orientation.sens(artName{iJ}, tasks{iT}) * v; end
+                    SHR.(tasks{iT}).(fo)(k, :) = v;
                 end
             end
-            stCorr = NaN;
-            if isfield(Res, ['ST_', c, '_corrected']), stCorr = Res(ri).(['ST_', c, '_corrected']); end
-            ctrl(k, col:col + 2) = {Res(ri).(['Cycle_', c]), Res(ri).(['CycleAlert_', c]), stCorr};
-            col = col + 3;
+            ctrl(k, col:col + 1) = {Res(ri).(['Cycle_', c]), Res(ri).(['CycleAlert_', c])};
+            col = col + 2;
         end
     end
 end

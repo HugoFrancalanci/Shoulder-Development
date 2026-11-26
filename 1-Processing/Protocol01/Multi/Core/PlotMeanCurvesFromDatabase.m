@@ -14,12 +14,11 @@
 %                recalculé), mêmes joints et DOF que
 %                ComputeClinicalContributionsFromDatabase.m :
 %                  HG  Joint(12/13) DOF1, HT Joint(1/6) et GH Joint(2/7)
-%                      DOF de la tâche (ANALYTIC1 : DOF3, ANALYTIC2 : DOF1),
-%                      en valeur absolue ;
-%                  ST  Joint(3/8) DOF1 (rotation latérale), signé, sens
-%                      harmonisé entre côtés droit et gauche (signe de
-%                      l'excursion médiane par côté) ;
+%                      DOF de la tâche (ANALYTIC1 : DOF3, ANALYTIC2 : DOF1) ;
+%                  ST  Joint(3/8) DOF1 (rotation latérale) ;
 %                  thorax Joint(11) DOF3, flexion signée (> 0 = extension).
+%                Tous signés, convention anatomique du côté droit
+%                (Orientation.m, sans valeur absolue depuis le 26.11.2026).
 %                Moyenne des cycles par patient, rééchantillonnée sur 101
 %                points, puis moyenne ± SD par population.
 %                Élévations bilatérales : le thorax des épaules saines est
@@ -134,13 +133,13 @@ for iFile = 1:numel(fileList)
             for t = 1:numel(tasks)
                 k = find(strcmp({T.task}, tasks{t}), 1);
                 if isempty(k), continue; end
-                % {joint, DOF, valeur absolue}
-                spec = {J(1), 1, true; J(2), dofHT(t), true; J(3), dofHT(t), true; J(4), 1, false; 11, 3, false};
+                % {joint, DOF}
+                spec = {J(1), 1; J(2), dofHT(t); J(3), dofHT(t); J(4), 1; 11, 3};
                 for m = 1:numel(mets)
                     cyc = cycles(T(k), spec{m, 1}, spec{m, 2}, cf, m == numel(mets));
                     row = NaN(1, 101);
                     if ~isempty(cyc)
-                        if spec{m, 3}, cyc = abs(cyc); end
+                        cyc = Orientation.anat(cyc, mets{m}, tasks{t}, sd);   % signé, convention du côté droit
                         row = resample101(mean(cyc, 2, 'omitnan'));
                     end
                     Curves.(grp).(tasks{t}).(mets{m})(end+1, :) = row;
@@ -150,19 +149,6 @@ for iFile = 1:numel(fileList)
         end
     end
     clear S
-end
-
-% Sens de ST harmonisé entre côtés droit et gauche (toutes populations)
-for t = 1:numel(tasks)
-    sdAll = [Curves.PRE.(tasks{t}).side, Curves.POST.(tasks{t}).side, Curves.ASYM.(tasks{t}).side];
-    st = [Curves.PRE.(tasks{t}).ST; Curves.POST.(tasks{t}).ST; Curves.ASYM.(tasks{t}).ST];
-    ex = st(:, 51) - st(:, 1);
-    if sign(median(ex(strcmp(sdAll, 'R')), 'omitnan')) ~= sign(median(ex(strcmp(sdAll, 'L')), 'omitnan'))
-        for g = 1:numel(grps)
-            isL = strcmp(Curves.(grps{g}).(tasks{t}).side, 'L');
-            Curves.(grps{g}).(tasks{t}).ST(isL, :) = -Curves.(grps{g}).(tasks{t}).ST(isL, :);
-        end
-    end
 end
 
 plotFigures(Curves, tasks, tlbl, mets(sel), mlbl(sel), grps, glbl, cols);
@@ -248,21 +234,15 @@ end
 % =========================================================================
 % Note de bas de figure : convention de signe des seules mesures tracées
 function s = signNote(mets)
-a = mets(ismember(mets, {'HG', 'HT', 'GH'}));
-b = strrep(mets(ismember(mets, {'ST', 'TX'})), 'TX', 'thorax');
-parts = {};
-if ~isempty(a), parts{end+1} = [strjoin(a, ', '), ' en valeur absolue']; end
-if ~isempty(b)
-    t = [strjoin(b, ' et '), ternary(numel(b) > 1, ' signés', ' signé')];
-    if any(strcmp(mets, 'TX')), t = [t, ' (thorax > 0 = extension)']; end
-    parts{end+1} = t;
-end
+% Courbes signées, convention anatomique du côté droit (Orientation.m)
+parts = {'Angles signés, convention du côté droit'};
+if any(strcmp(mets, 'HG')), parts{end+1} = 'HG < 0 à l''élévation'; end
+if any(strcmp(mets, 'HT')) || any(strcmp(mets, 'GH')), parts{end+1} = 'HT et GH > 0 en flexion, < 0 en scaption'; end
+if any(strcmp(mets, 'ST')), parts{end+1} = 'ST < 0 = rotation latérale'; end
+if any(strcmp(mets, 'TX')), parts{end+1} = 'thorax > 0 = extension'; end
 s = [strjoin(parts, ' ; '), '.'];
 end
 
-function v = ternary(c, a, b)
-if c, v = a; else, v = b; end
-end
 % Cycles [101 x nCycles] d'un DOF de Joint.Euler ; shared = joint unique
 % (thorax) : repli sur l'autre côté si le champ demandé est vide
 function c = cycles(t, ji, dof, cf, shared)

@@ -45,28 +45,20 @@
 %                         fonctionnelles)
 %           ResultsFolder (char, optionnel) dossier où se terminer (cd) une
 %                         fois l'export fait ; omis = pas de cd
-%           Opts          (struct, optionnel) ApplyInvCorr (true : corrige les
-%                         courbes ST et TX inversées, voir
-%                         ApplyInversionCorrectionSTTX.m ; false : valeurs
-%                         non corrigées), CorrThresh (0),
-%                         AsymptomaticSelection (cell, {} par défaut) :
+%           Opts          (struct, optionnel) AsymptomaticSelection (cell, {} par défaut) :
 %                         épaules asymptomatiques {ID, côté, 'PRE'/'POST',
 %                         date} (voir userCommands_Multi.m), tracées en vert
 %                         sur la figure des courbes et exportées dans la
 %                         feuille 'Functional_Asymptomatic' (une ligne par
-%                         épaule/tâche, colonnes <M>_ASYM_deg/_max_deg),
-%                         InversionReference (char, CSV de la référence
-%                         figée de la correction inversée, défaut
-%                         Multi\InversionReference_STTX.csv ; '' ou
-%                         fichier absent = référence du groupe),
-%                         BuildInversionReference (false ; true
-%                         : recalcule la référence sur ce run et l'écrit)
+%                         épaule/tâche, colonnes <M>_ASYM_deg/_max_deg)
 % Outputs : Results (struct array) une ligne par patient/côté/tâche - aussi
 %           retourné pour exploitation directe sans repasser par l'Excel
 %           AsymResults (struct array) épaules asymptomatiques
 %           Curves (struct array, même indexation que Results) courbes
-%           HG/GH/ST/TX_<PRE|POST> du cycle retenu (101 points), pour
-%           ExportRegistre
+%           HG/GH/ST/TX_<PRE|POST> du cycle retenu (101 points), signées
+%           dans la convention anatomique du côté droit (Orientation.m :
+%           jamais repliées par abs ; HG élévation négative, ST rotation
+%           latérale négative), pour ExportRegistre
 %           AsymCurves (struct array, même indexation que AsymResults)
 %           courbes HG/GH/ST/TX_ASYM des épaules asymptomatiques, avec
 %           Numero et Condition (export vers le registre)
@@ -85,13 +77,7 @@ function [Results, AsymResults, Curves, AsymCurves] = ComputeFunctionalContribut
 
 if nargin < 3, ResultsFolder = ''; end
 if nargin < 4, Opts = struct(); end
-if ~isfield(Opts, 'ApplyInvCorr') || isempty(Opts.ApplyInvCorr), Opts.ApplyInvCorr = true; end
-if ~isfield(Opts, 'CorrThresh')   || isempty(Opts.CorrThresh),   Opts.CorrThresh   = 0;    end
 if ~isfield(Opts, 'AsymptomaticSelection'), Opts.AsymptomaticSelection = {}; end
-if ~isfield(Opts, 'InversionReference') % défaut : Multi\InversionReference_STTX.csv
-    Opts.InversionReference = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'InversionReference_STTX.csv');
-end
-if ~isfield(Opts, 'BuildInversionReference') || isempty(Opts.BuildInversionReference), Opts.BuildInversionReference = false; end
 
 % La base peut être répartie sur plusieurs fichiers .mat (voir
 % NumDatabaseParts dans userCommands_Multi.m, DatabaseFile_partXofY.mat) -
@@ -122,9 +108,8 @@ Results = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
 % (ComputePostureFromDatabase.m)
 % TXlat : ROM de l'inclinaison latérale du thorax (Joint 11, DOF1 X), en
 % plus de TX (flexion / extension) : en scaption, c'est surtout par
-% l'inclinaison latérale que le tronc compense. Hors pourcentages et hors
-% correction des courbes inversées (amplitude du signal signé, indépendante
-% du sens).
+% l'inclinaison latérale que le tronc compense. Hors pourcentages
+% (amplitude du signal signé, indépendante du sens).
 
 % Courbes angle vs % cycle
 Curves = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
@@ -133,8 +118,7 @@ Curves = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, ...
 
 % Courbes des épaules asymptomatiques (côté controlatéral, une seule
 % session par épaule - voir AsymptomaticSelection dans userCommands_Multi.m).
-% Condition 'ASYM' : mêmes champs que Curves pour réutiliser
-% ApplyInversionCorrectionSTTX.
+% Condition 'ASYM' : mêmes champs que Curves.
 AsymResults = struct('Numero', {}, 'PatientID', {}, 'Side', {}, 'Task', {}, 'Condition', {});
 AsymCurves  = struct('PatientID', {}, 'Side', {}, 'Task', {});
 
@@ -218,17 +202,6 @@ for iP = 1:nInFile
             Curves(ri).(['GH_', condition]) = c.GH_curve;
             Curves(ri).(['ST_', condition]) = c.ST_curve;
             Curves(ri).(['TX_', condition]) = c.TX_curve;
-
-            % Données brutes signées pour la correction ST/TX inversées
-            % (voir ApplyInversionCorrectionSTTX.m)
-            Curves(ri).(['ST_', condition, '_raw'])      = c.ST_raw;
-            Curves(ri).(['ST_', condition, '_rangeRaw']) = c.ST_rangeRaw;
-            Curves(ri).(['ST_', condition, '_peakExc'])  = c.ST_peakExc;
-            Curves(ri).(['ST_', condition, '_excSign'])  = c.ST_excSign;
-            Curves(ri).(['TX_', condition, '_raw'])      = c.TX_raw;
-            Curves(ri).(['TX_', condition, '_rangeRaw']) = c.TX_rangeRaw;
-            Curves(ri).(['TX_', condition, '_peakExc'])  = c.TX_peakExc;
-            Curves(ri).(['TX_', condition, '_excSign'])  = c.TX_excSign;
         end
 
         % Épaule asymptomatique de ce patient à cette condition ?
@@ -264,14 +237,6 @@ for iP = 1:nInFile
             AsymCurves(ai).GH_ASYM   = c.GH_curve;
             AsymCurves(ai).ST_ASYM   = c.ST_curve;
             AsymCurves(ai).TX_ASYM   = c.TX_curve;
-            AsymCurves(ai).ST_ASYM_raw      = c.ST_raw;
-            AsymCurves(ai).ST_ASYM_rangeRaw = c.ST_rangeRaw;
-            AsymCurves(ai).ST_ASYM_peakExc  = c.ST_peakExc;
-            AsymCurves(ai).ST_ASYM_excSign  = c.ST_excSign;
-            AsymCurves(ai).TX_ASYM_raw      = c.TX_raw;
-            AsymCurves(ai).TX_ASYM_rangeRaw = c.TX_rangeRaw;
-            AsymCurves(ai).TX_ASYM_peakExc  = c.TX_peakExc;
-            AsymCurves(ai).TX_ASYM_excSign  = c.TX_excSign;
         end
     end
 end
@@ -281,26 +246,6 @@ disp(['Patients dans la base : ', num2str(totalPatients)]);
 if ~isempty(Opts.AsymptomaticSelection)
     disp(['Épaules asymptomatiques retrouvées : ', num2str(numel(unique(strcat({AsymCurves.PatientID}, {AsymCurves.Side})))), ...
           ' / ', num2str(size(Opts.AsymptomaticSelection, 1))]);
-end
-
-% Correction des courbes ST et TX inversées (angle de repos de signe opposé
-% que abs() ne rend pas cohérent) - voir ApplyInversionCorrectionSTTX.m.
-% Opts.ApplyInvCorr = false pour retrouver les valeurs non corrigées.
-% Asymptomatiques corrigées à part (référence = moyenne des asymptomatiques),
-% pour ne pas modifier la référence ni les résultats des patients.
-% Référence figée (Opts.InversionReference, voir InversionReference.m) :
-% valeurs indépendantes des autres épaules du run ; BuildInversionReference
-% = true la recalcule sur le groupe du run et l'écrit (cohorte complète).
-if Opts.ApplyInvCorr
-    [Ref, RefAsym] = deal([]);
-    if ~Opts.BuildInversionReference
-        [Ref, RefAsym] = InversionReference('lire', Opts.InversionReference, 'Fonctionnel');
-    end
-    [Results, Curves, RefOut] = ApplyInversionCorrectionSTTX(Results, Curves, 'HG', Opts.CorrThresh, {'PRE', 'POST'}, Ref);
-    [AsymResults, AsymCurves, RefAsymOut] = ApplyInversionCorrectionSTTX(AsymResults, AsymCurves, 'HG', Opts.CorrThresh, {'ASYM'}, RefAsym);
-    if Opts.BuildInversionReference
-        InversionReference('ecrire', Opts.InversionReference, 'Fonctionnel', RefOut, RefAsymOut);
-    end
 end
 
 % -------------------------------------------------------------------------
@@ -418,24 +363,21 @@ end
 %   TX Joint(11)    ANALYTIC1/2: DOF3 Z — flexion     | ANALYTIC3/4: DOF2 Y — axial rotation (ZXY)
 %   TXlat Joint(11) all tasks: DOF1 X — lateral tilt (+ = toward the right),
 %                   middle angle of ZXY (small, no gimbal lock) ; range on the
-%                   SIGNED angle like TX (getRangeCycleTH), not part of the
-%                   percentages
+%                   SIGNED angle like TX, not part of the percentages
 %
-% HG_max/GH_max/ST_max : peak angle reached (mean of each cycle's
-% max |angle|, same cycle-averaging convention as HG_range etc., but max
-% instead of max-min) - NOT the same as *_range, which is an amplitude
-% (max-min). No thorax peak: the thorax flexion crosses zero during the
-% movement, so max |angle| would mix rest flexion and peak extension ;
-% TX_range is max - min of the SIGNED angle (getRangeCycleTH).
+% Sign convention (Orientation.m, November 2026) : no abs(). Every curve is
+% the SIGNED angle in the right-side anatomical convention ; values are
+% computed on the curve oriented in the direction of motion
+% (Orientation.sens), so they are positive and never folded.
+% *_range : amplitude, max - min on the selected cycle (BestCycle.range).
+% HG_max/GH_max/ST_max : peak reached in the direction of motion
+% (BestCycle.peak) - NOT the same as *_range. No thorax peak ; TX_range on
+% the signed angle.
 %
-% HG_curve/GH_curve/ST_curve/TX_curve : curve of the angle on the selected
-% cycle (BestCycle.curve, same cycle as the values) vs % cycle (0-100%),
-% same number of points as the cycle
-% normalisation done by CutCycles.m. Used for the PRE/POST plot in
-% PlotHGContributionsCurves. TX uses getCurveCycleTH (not getCurveCycle)
-% for the same reason TX_range uses getRangeCycleTH : joint 11 (thorax) is
-% a single shared joint, not duplicated per side like HG/GH/ST, so it can
-% need the R/L cycField fallback.
+% HG_curve/GH_curve/ST_curve/TX_curve : signed anatomical curve on the
+% selected cycle (BestCycle.curve) vs % cycle (0-100%), used for the
+% PRE/POST plot in PlotHGContributionsCurves. The thorax (joint 11, shared)
+% uses the R/L cycField fallback of BestCycle.raw.
 %
 % Inputs  : Trial (struct array) all trials from runProtocol01/MAIN_Protocol_01
 % Outputs : Contrib (struct array, one row per task found x side 'R'/'L')
@@ -450,8 +392,6 @@ Contrib = struct('task', {}, 'side', {}, 'HG_range', {}, ...
                   'TX_range', {}, 'TXlat_range', {}, ...
                   'HG_max', {}, 'GH_max', {}, 'ST_max', {}, ...
                   'HG_curve', {}, 'GH_curve', {}, 'ST_curve', {}, 'TX_curve', {}, ...
-                  'ST_raw', {}, 'ST_rangeRaw', {}, 'ST_peakExc', {}, 'ST_excSign', {}, ...
-                  'TX_raw', {}, 'TX_rangeRaw', {}, 'TX_peakExc', {}, 'TX_excSign', {}, ...
                   'cycleIdx', {}, 'cycleAlert', {});
 
 % DOF task-dependant pour GH uniquement (HG et ST/TX sont fixes quelle que
@@ -487,138 +427,56 @@ for iT = 1:numel(taskDOF)
         % Cycle retenu (meilleur des cycles valides, voir BestCycle.m),
         % le même pour tous les joints, en pic comme en amplitude
         sel = BestCycle.select(t, task, s.side);
-        hg = getRangeCycle(t, s.jiHG, dofHG, s.cycField, sel.idx);
-        gh = getRangeCycle(t, s.jiGH, dofGH, s.cycField, sel.idx);
-        st = getRangeCycle(t, s.jiST, dofST, s.cycField, sel.idx);
-        tx = getRangeCycleTH(t, 11, dofTX, s.cycField, sel.idx);
+        % Courbes anatomiques signées (convention du côté droit, sans abs,
+        % voir Orientation.m) ; valeurs dans le sens du mouvement
+        xHG = Orientation.anat(BestCycle.raw(t, s.jiHG, dofHG, s.cycField, false), 'HG', task, s.side);
+        xGH = Orientation.anat(BestCycle.raw(t, s.jiGH, dofGH, s.cycField, false), 'GH', task, s.side);
+        xST = Orientation.anat(BestCycle.raw(t, s.jiST, dofST, s.cycField, false), 'ST', task, s.side);
+        xTX = Orientation.anat(BestCycle.raw(t, 11, dofTX, s.cycField, true), 'TX', task, s.side);
 
         i = length(Contrib) + 1;
         Contrib(i).task     = task;
         Contrib(i).side     = s.side;
         Contrib(i).cycleIdx   = sel.idx;
         Contrib(i).cycleAlert = sel.alert;
-        Contrib(i).HG_range = hg;
-        Contrib(i).GH_range = gh;
-        Contrib(i).ST_range = st;
-        Contrib(i).TX_range = tx;
-        Contrib(i).TXlat_range = getRangeCycleTH(t, 11, taskDOF(iT).dofTXlat, s.cycField, sel.idx);
+        Contrib(i).HG_range = amplitude(xHG, 'HG', task, sel.idx);
+        Contrib(i).GH_range = amplitude(xGH, 'GH', task, sel.idx);
+        Contrib(i).ST_range = amplitude(xST, 'ST', task, sel.idx);
+        Contrib(i).TX_range = amplitude(xTX, 'TX', task, sel.idx);
+        Contrib(i).TXlat_range = BestCycle.range(BestCycle.raw(t, 11, taskDOF(iT).dofTXlat, s.cycField, true), sel.idx);
 
-        Contrib(i).HG_max = getPeakCycle(t, s.jiHG, dofHG, s.cycField, sel.idx);
-        Contrib(i).GH_max = getPeakCycle(t, s.jiGH, dofGH, s.cycField, sel.idx);
-        Contrib(i).ST_max = getPeakCycle(t, s.jiST, dofST, s.cycField, sel.idx);
+        Contrib(i).HG_max = pic(xHG, 'HG', task, sel.idx);
+        Contrib(i).GH_max = pic(xGH, 'GH', task, sel.idx);
+        Contrib(i).ST_max = pic(xST, 'ST', task, sel.idx);
 
-        Contrib(i).HG_curve = getCurveCycle(t, s.jiHG, dofHG, s.cycField, sel.idx);
-        Contrib(i).GH_curve = getCurveCycle(t, s.jiGH, dofGH, s.cycField, sel.idx);
-        Contrib(i).ST_curve = getCurveCycle(t, s.jiST, dofST, s.cycField, sel.idx);
-        Contrib(i).TX_curve = getCurveCycleTH(t, 11, dofTX, s.cycField, sel.idx);
-
-        [Contrib(i).ST_raw, Contrib(i).ST_rangeRaw, Contrib(i).ST_peakExc, Contrib(i).ST_excSign] = ...
-            getRawInfo(t, s.jiST, dofST, s.cycField, false, sel.idx);
-        [Contrib(i).TX_raw, Contrib(i).TX_rangeRaw, Contrib(i).TX_peakExc, Contrib(i).TX_excSign] = ...
-            getRawInfo(t, 11, dofTX, s.cycField, true, sel.idx);
+        Contrib(i).HG_curve = BestCycle.curve(xHG, sel.idx);
+        Contrib(i).GH_curve = BestCycle.curve(xGH, sel.idx);
+        Contrib(i).ST_curve = BestCycle.curve(xST, sel.idx);
+        Contrib(i).TX_curve = BestCycle.curve(xTX, sel.idx);
     end
 end
 
 end
 
-% Données brutes signées (sans abs) d'un DOF, pour la correction ST/TX
-% inversées (voir ApplyInversionCorrectionSTTX.m) :
-%   rawCurve : brut signé du cycle retenu idx (BestCycle.curve ; moyenne
-%              des cycles si idx = NaN)
-%   rangeRaw : amplitude du brut sur le cycle retenu idx, moyenne de 10
-%              points autour du maximum moins minimum (BestCycle.range ;
-%              indépendant de l'offset)
-%   sp       : sens de l'excursion brute par rapport au repos (moyenne
-%              début/fin du cycle retenu), +1/-1
-%   peakExc  : max(sp*(brut - repos)) sur le cycle retenu (BestCycle.peak)
-% shared = joint 11 (thorax), repli R/L comme getRangeCycleTH.
-function [rawCurve, rangeRaw, peakExc, sp] = getRawInfo(t, ji, dof, cycField, shared, idx)
-rawCurve = []; rangeRaw = NaN; peakExc = NaN; sp = NaN;
-if length(t.Joint) < ji, return; end
-cf = cycField;
-if shared && isempty(t.Joint(ji).Euler.(cf))
-    if strcmp(cf, 'rcycle'), cf = 'lcycle'; else, cf = 'rcycle'; end
-end
-if isempty(t.Joint(ji).Euler.(cf)), return; end
-cyc = squeeze(t.Joint(ji).Euler.(cf)(1, dof, :, :));
-if isvector(cyc), cyc = cyc(:); end
-cycAll = cyc;                                  % indices de cycles inchangés (cycle retenu idx)
-cyc = cyc(:, any(~isnan(cyc), 1));
-if isempty(cyc), return; end
-rawCurve = BestCycle.curve(cycAll, idx);
-rangeRaw = BestCycle.range(cycAll, idx);
-base     = mean(rawCurve([1 end]));
-[~, ip]  = max(abs(rawCurve - base));
-sp       = sign(rawCurve(ip) - base);
-if sp == 0, sp = 1; end
-peakExc  = BestCycle.peak(sp * (cycAll - base), idx);
+% Amplitude (max - min) d'une courbe anatomique dans le sens du mouvement,
+% sur le cycle retenu (fenêtre autour du pic, voir BestCycle.range) ; sans
+% sens fixe (thorax en rotation), sur la courbe telle quelle
+function r = amplitude(x, art, task, idx)
+s = Orientation.sens(art, task); if isnan(s), s = 1; end
+r = BestCycle.range(s * x, idx);
 end
 
-% Amplitude de |angle| sur le cycle retenu idx : moyenne de 10 points autour
-% du maximum moins minimum brut (BestCycle.range)
-function r = getRangeCycle(t, ji, dof, cycField, idx)
-r = NaN;
-if length(t.Joint) < ji || isempty(t.Joint(ji).Euler.(cycField)), return; end
-data = abs(squeeze(t.Joint(ji).Euler.(cycField)(1, dof, :, :)));
-if isvector(data), data = data(:); end
-r = BestCycle.range(data, idx);
+% Pic dans le sens du mouvement, cycle retenu : élévations = valeur atteinte
+% (BestCycle.peak) ; rotations (ANALYTIC3/4) = rotation réalisée depuis la
+% position de départ (BestCycle.rotation), indépendante de l'angle de départ
+% (ST en protraction, HG proche du blocage de cardan bras le long du corps)
+function p = pic(x, art, task, idx)
+s = Orientation.sens(art, task); if isnan(s), s = 1; end
+if any(strcmp(task, {'ANALYTIC3', 'ANALYTIC4'}))
+    p = BestCycle.rotation(s * x, idx);
+else
+    p = BestCycle.peak(s * x, idx);
 end
-
-function r = getRangeCycleTH(t, ji, dof, cycField, idx)
-r = NaN;
-if length(t.Joint) < ji, return; end
-cf = cycField;
-if isempty(t.Joint(ji).Euler.(cf))
-    if strcmp(cf,'rcycle'), cf = 'lcycle'; else, cf = 'rcycle'; end
-end
-if isempty(t.Joint(ji).Euler.(cf)), return; end
-% Thorax : amplitude sur le signal SIGNÉ (max - min), pas sur abs() : la
-% flexion du thorax passe souvent par zéro pendant le geste (fléchi au
-% repos, redressé au pic), et abs() replie alors la courbe et sous-estime
-% l'amplitude (ex. -15.5 à +6 deg : 21.5 deg réels, 15.5 deg avec abs).
-% Cycle retenu idx : moyenne de 10 points autour du maximum moins minimum brut (BestCycle.range)
-data = squeeze(t.Joint(ji).Euler.(cf)(1, dof, :, :));
-if isvector(data), data = data(:); end
-r = BestCycle.range(data, idx);
-end
-
-function r = getPeakCycle(t, ji, dof, cycField, idx)
-% Peak angle reached on the selected cycle idx (BestCycle.select) : mean of
-% 10 points around the max |angle| (BestCycle.peak) - same cycle as
-% getRangeCycle.
-r = NaN;
-if length(t.Joint) < ji || isempty(t.Joint(ji).Euler.(cycField)), return; end
-data = abs(squeeze(t.Joint(ji).Euler.(cycField)(1, dof, :, :)));
-if isvector(data), data = data(:); end
-r = BestCycle.peak(data, idx);
-end
-
-
-function c = getCurveCycle(t, ji, dof, cycField, idx)
-% Curve of the angle on the selected cycle idx (BestCycle.curve ; mean
-% across cycles if idx = NaN), already normalised to % cycle by CutCycles.m
-% (same number of points across all cycles/patients).
-c = [];
-if length(t.Joint) < ji || isempty(t.Joint(ji).Euler.(cycField)), return; end
-data = abs(squeeze(t.Joint(ji).Euler.(cycField)(1, dof, :, :)));
-if isvector(data), data = data(:); end
-c = BestCycle.curve(data, idx);
-end
-
-function c = getCurveCycleTH(t, ji, dof, cycField, idx)
-% Same as getCurveCycle, with the R/L cycField fallback also used by
-% getRangeCycleTH (joint 11 = thorax, single shared joint, not duplicated
-% per side like HG/GH/ST).
-c = [];
-if length(t.Joint) < ji, return; end
-cf = cycField;
-if isempty(t.Joint(ji).Euler.(cf))
-    if strcmp(cf,'rcycle'), cf = 'lcycle'; else, cf = 'rcycle'; end
-end
-if isempty(t.Joint(ji).Euler.(cf)), return; end
-data = abs(squeeze(t.Joint(ji).Euler.(cf)(1, dof, :, :)));
-if isvector(data), data = data(:); end
-c = BestCycle.curve(data, idx);
 end
 
 % =========================================================================

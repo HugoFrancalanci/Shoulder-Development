@@ -224,11 +224,9 @@ depuis octobre 2026 : sans objet en rotation, et recalculables depuis les
 `HT_*_deg` est l'amplitude du signal signé et `HT_*_max_deg` la rotation
 réalisée depuis la position de départ.
 
-**Thorax (TX)** : le range est `max - min` de l'angle **signé** (pas de
-`abs()`), car la flexion du thorax passe souvent par zéro pendant le geste
-(fléchi au repos, redressé au pic) et `abs()` replierait la courbe
-(amplitude sous-estimée : 85 % des sessions en flexion passent par zéro,
-écart médian -4.5°). Pas de pic pour le thorax (`max |angle|` mélangerait la
+**Thorax (TX)** : le range est `max - min` de l'angle **signé** (voir
+« Convention de signe des courbes »), car la flexion du thorax passe souvent
+par zéro pendant le geste. Pas de pic pour le thorax (`max |angle|` mélangerait la
 flexion au repos et l'extension au pic) : le thorax est décrit par son range
 et par la flexion signée (`ComputePostureFromDatabase.m`).
 
@@ -238,7 +236,7 @@ et par la flexion signée (`ComputePostureFromDatabase.m`).
 de cardan ni saut de ±180°), en plus de TX (flexion / extension). En scaption,
 c'est surtout par l'inclinaison latérale que le tronc compense : r(HG moins HT,
 ROM latéral) = 0.54 en POST contre 0.13 pour la flexion / extension. Hors
-pourcentages et hors correction des courbes inversées.
+pourcentages.
 
 Elle extrait aussi `HT_curve`/`GH_curve`/`ST_curve`/`TX_curve` (angle vs % cycle),
 accumulées à part dans `Curves` (avec le `Task` d'origine) et tracées par la
@@ -275,68 +273,79 @@ HG_POST_max_deg, ..., Cycle_PRE, CycleAlert_PRE, ...` (plus de colonnes `_pct`)
 (export Excel, feuille `Functional_Contributions` ; thorax : range signé, pas
 de pic, comme ci-dessus).
 
-## Correction des courbes ST et TX « inversées » (clinical + functional)
+## Convention de signe des courbes (`Multi/Core/Orientation.m`, novembre 2026)
 
-`Multi/Core/ApplyInversionCorrectionSTTX.m`, appelée par
-`ComputeClinicalContributionsFromDatabase` (dénominateur HT) et
-`ComputeFunctionalContributionsFromDatabase` (dénominateur HG) avant l'export
-Excel.
+Remplace `abs()` et la correction des courbes ST et TX « inversées »
+(`ApplyInversionCorrectionSTTX.m`, `InversionReference.m` et
+`InversionReference_STTX.csv`, retirés le 26.11.2026). Utilisée par les
+contributions cliniques et fonctionnelles, l'éligibilité controlatérale, la
+qualité des courbes, le contrôle des courbes, les courbes moyennes et l'export
+SHR.
 
-**Problème.** L'angle de repos de ST (et de TX) diffère fortement selon les
-patients : par exemple environ -10° pour la majorité des ST, +20° à +50° pour
-d'autres, avec un mouvement de même sens et d'amplitude proche. `abs()` retourne
-les courbes négatives en cloche mais pas les positives, qui restent en U et vont
-à l'opposé de la moyenne. Le range (max-min) n'est pas touché quand le brut ne
-traverse pas zéro ; la courbe et le max le sont. Cause du décalage de repos ST
-non identifiée (hypothèse : construction du repère scapulaire à partir des
-repères IA/RS/AA, `DefineSegments.m`/`AddACMLandmarks.m`) ; non vérifiée.
+**Problème.** `abs()` replie toute courbe qui passe par zéro : thorax en
+flexion qui va de −10° à +5° (forme en W), ST qui part d'un repos positif, bras
+qui démarre légèrement derrière zéro. Amplitudes sous-estimées, formes
+inversées, et le sens biomécanique est perdu (toutes les courbes montent, ST
+compris). La correction des courbes inversées compensait en partie, avec une
+référence de cohorte et un repos remplacé par celui de la cohorte.
 
-**Détection.** Par tâche et par métrique (ST, TX ; PRE/POST/côtés confondus), la
-courbe `abs` (moyenne des cycles, 101 points) est corrélée (Pearson signé) à la
-courbe moyenne du groupe, recalculée sans les courbes inversées (2 passes).
-Corrélation < `CorrThresh` (0) = inversée. Même règle que
-`ComputeCurveQualityFromDatabase.m` (la rugosité n'entre pas ici dans le choix
-de la référence).
+**Constat (207 épaules, 414 courbes par tâche, cycle retenu).** Le sens du
+mouvement du DOF principal est fixé par l'articulation, la tâche et le côté :
 
-**Correction** (courbes inversées uniquement), `repos` = moyenne du début et de
-la fin du cycle du patient, `sp` = sens de l'excursion brute du patient (+1/-1),
-`repos_cohorte` = repos de la courbe moyenne du groupe :
+| Articulation | Flexion | Scaption | Rot. externe | Rot. interne | Courbes dans ce sens |
+|---|---|---|---|---|---|
+| HG | − | − | − | + | élévations 99 %, aucune ne passe par zéro |
+| HT | droite +, gauche − | − | − | + | 99 à 100 % |
+| GH | + | − | − | + | 96 à 99 % |
+| ST | − | − | − | + | 99 à 100 % |
+| TX | + | + | variable | variable | élévations 95 à 98 % |
 
-* courbe : `sp * (brut - repos) + repos_cohorte`
-* `_deg` (range) : max - min du brut sur le cycle retenu (`BestCycle.m` ;
-  indépendant du signe et de l'offset)
-* `_max_deg` : `max(sp * (brut - repos))` sur le cycle retenu + `repos_cohorte`
+Les exceptions sont des sauts de cardan (n°118, 177, 45, 105, 30), des
+élévations quasi nulles (n°12, 84, 34, 3, 171) ou un vrai mouvement inverse
+du thorax (n°4, 5, 14, 170, 203).
 
-Colonnes `ST_PRE_corrected`, `ST_POST_corrected`, `TX_PRE_corrected`,
-`TX_POST_corrected` (0/1) dans l'Excel : valeurs corrigées. Compte par tâche
-affiché en console. Quatrième argument optionnel des deux fonctions :
-`struct('ApplyInvCorr', false)` pour retrouver les valeurs non corrigées,
-`struct('CorrThresh', ...)` pour changer le seuil.
+**Méthode.**
+* Courbe anatomique `x = Miroir(côté) × brut` : convention du côté droit pour
+  les deux côtés ; seul HT en flexion (DOF3 Z) change de signe à gauche.
+  Jamais repliée, signe biomécanique conservé : ST < 0 = rotation latérale,
+  thorax > 0 = extension, HT et GH > 0 en flexion et < 0 en abduction, HG < 0 à
+  l'élévation.
+* Sens du mouvement `s = Orientation.sens(articulation, tâche)` (+1, −1 ; NaN
+  pour le thorax en rotation axiale).
+* Amplitude `*_deg` = max − min de `s × x` sur le cycle retenu
+  (`BestCycle.range`) ; pic `*_max_deg` = valeur atteinte dans le sens du
+  mouvement (`BestCycle.peak` de `s × x`) : grandeurs positives, comme avant.
+* Une courbe dont l'excursion va contre `s` n'est plus « corrigée » : elle est
+  gardée et signalée par les contrôles (alerte de `BestCycle.shape`, verdict
+  `Inversee` de la qualité des courbes, « sens opposé » du contrôle des
+  courbes).
 
-**Réserve TX.** L'angle du thorax reflète en partie la posture réelle du
-patient ; remplacer son niveau de repos par celui de la cohorte efface cette
-information (le range est conservé). À interpréter avec précaution.
+Les colonnes `ST_*_corrected` et `TX_*_corrected` disparaissent des Excels et
+du registre. Toute modification de la table recalcule les sections en cache
+qui l'utilisent (dépendance `OrientationFile` dans MAIN).
 
-Cinquième argument optionnel de `ApplyInversionCorrectionSTTX` : les
-conditions à traiter (`{'PRE','POST'}` par défaut ; `{'ASYM'}` pour les
-épaules asymptomatiques, voir section suivante).
+En rotation (ANALYTIC3/4), le pic de HT, GH, ST et HG est la rotation réalisée
+depuis la position de départ (`BestCycle.rotation`, déjà la règle de HT) : la
+valeur ne dépend plus de l'angle de départ (ST en protraction, HG proche du
+blocage de cardan bras le long du corps).
 
-**Référence figée (novembre 2026).** La courbe moyenne et `repos_cohorte`
-dépendent des épaules présentes dans le run : un `_max_deg` corrigé vaut
-l'excursion propre de l'épaule plus le repos de la cohorte, donc il changeait
-quand la cohorte changeait (11 pics ST de Data_posture décalés de −0,181° en
-ANALYTIC1 et −0,196° en ANALYTIC2 entre 182 et 206 épaules) et il aurait été
-différent dans chaque projet. La référence est donc calculée une fois sur la
-cohorte complète et gardée dans `Multi/InversionReference_STTX.csv` (une ligne
-par analyse Clinique/Fonctionnel, population Operees/Asymptomatiques, tâche et
-métrique : N, repos, 101 points), lue par `Core/InversionReference.m`. Sixième
-argument de `ApplyInversionCorrectionSTTX` : cette référence (une seule passe,
-plus de minimum de 3 courbes) ; troisième sortie : la référence utilisée. Les
-deux fonctions lisent le fichier par défaut (`Opts.InversionReference`, `''`
-ou fichier absent = référence du groupe comme avant). Pour la recalculer :
-`BuildInversionReference = true` dans `userCommands_Multi.m`, sur un run de la
-cohorte complète uniquement. Sur la cohorte qui a servi à la figer, les deux
-modes donnent les mêmes valeurs.
+**Validation (26.11.2026, 207 épaules, run COHORTE, avant contre après).**
+* Élévations : seules les valeurs des courbes qui passent par zéro changent
+  (HT amplitude : 49 examens pré et 38 post, +3,7° en médiane, jusqu'à +18° ;
+  GH et ST : une centaine chacun, +3 à +6° en médiane). HG : inchangé sauf
+  n°172 (excursion inverse). Thorax : amplitude inchangée (déjà signée), courbe
+  dépliée (moyenne de −9° à +5° au lieu d'un W plat autour de 11°).
+* Pics : HT inchangé sauf 5 courbes de sens inverse ou à saut de cardan ; les
+  11 pics ST décalés par la référence de la correction (n°45, 53, 72, 75, 81,
+  93, 117, 124, 142) retrouvent leur valeur propre.
+* Rotations : HT inchangé ; GH, ST et HG passent de l'angle absolu au pic à la
+  rotation depuis le départ. HG en rotation externe garde 52 courbes sur 411
+  avec un saut de ±180° (blocage de cardan) : valeurs à ne pas utiliser.
+* Data_posture (E02_01, 189 épaules) : thorax, posture et cycles identiques ;
+  ROM HT en flexion plus grand pour 43 examens pré et 31 post ; HG inchangé
+  sauf n°172.
+* SHR (TPC2_SHR, 182 épaules) : TestSHRFormulas donne exactement les mêmes
+  résultats (il orientait déjà lui-même les courbes signées).
 
 ## Épaules asymptomatiques (courbes vertes, clinical + functional)
 
@@ -369,17 +378,14 @@ en vert transparent et leur moyenne en vert gras (`n` en légende), à côté de
 courbes PRE (rouge) et POST (bleu) des patients, par tâche. Les courbes des
 patients (côté de `PatientSelection`, PRE/POST) ne changent pas.
 
-**Correction ST/TX.** Les courbes asymptomatiques passent par
-`ApplyInversionCorrectionSTTX` dans un appel **séparé** (condition `'ASYM'`,
-référence = moyenne des asymptomatiques seules), pour ne pas modifier la
-référence ni les résultats des patients.
+**Signes.** Même convention que les patients (`Orientation.m`), côté de
+l'épaule asymptomatique.
 
 **Export.** Feuille séparée dans chaque Excel (`Clinical_Asymptomatic`,
 `Functional_Asymptomatic`), une ligne par épaule/tâche pour la seule condition
 retenue : `Numero, PatientID, Side, Task, Condition, HT_ASYM_deg` (ou
 `HG_ASYM_deg`), `GH/ST/TX_ASYM_deg`, `*_ASYM_max_deg` (sauf
-thorax), et
-`ST/TX_ASYM_corrected` (0/1) si la correction est active. Les feuilles
+thorax). Les feuilles
 principales (`Clinical_Contributions`, `Functional_Contributions`) sont
 inchangées.
 
@@ -500,7 +506,7 @@ tracées, ex. `PlotMeanCurvesFromDatabase(Curves, '', {'HG', 'HT', 'TX'})`.
 populations, joints, DOF et conventions que `PlotMeanCurvesFromDatabase`, mais
 tous les cycles, les 3 DOF et le signal signé sont gardés. Contrôles par
 épaule x session x tâche x mesure : saut > 90° entre deux échantillons (angle
-qui franchit ±180°), repli créé par la valeur absolue, forme inversée ou
+qui franchit ±180°), excursion de sens opposé au mouvement attendu, forme inversée ou
 atypique (r avec la moyenne du groupe), ROM extrême (z robuste), cycles
 dispersés, écart entre l'angle d'Euler et l'élévation 3D de HT et GH
 (acos(cos DOF1 cos DOF3), indépendante de la séquence, avec l'angle du milieu
@@ -564,7 +570,7 @@ comparaisons multiples (3 tâches x 3 groupes).
 
 - `Multi/Core/PlotArticleFigures.m` : figures de l'article, une par fichier et par tâche (flexion, scaption), textes en anglais sans tiret, 8.5 cm de large, Arial 8 pt, palette Okabe-Ito (PRE orange, POST bleu), export PDF vectoriel, SVG et PNG 600 dpi dans `ArticleFigureFolder` (`Figures_article`, à côté de `Data_posture.xlsx`). Toutes les comparaisons portent sur l'amplitude (max moins min, colonnes `_ROM_` de la feuille `Cinematique` ; le terme ROM n'apparaît plus dans les figures) : `Fig2` amplitude du thorax (flexion / extension et inclinaison latérale), PRE et POST ; `Fig3` part du thorax dans l'amplitude HG (amplitude du thorax / amplitude HG x 100, indicatif), PRE et POST : médiane et IC 95 % bootstrap, tableau affiché dans la console (deuxième sortie `Share`, pas d'Excel) ; `Fig4` amplitude du thorax x amplitude HG ; `Fig5` contribution du thorax à épaule égale (régression HG ~ HT + thorax flexion / extension + thorax inclinaison latérale, figure de régression partielle de la composante principale, coefficient [IC 95 %] et p sur la figure, tableau `Decomp` dans la console : R² épaule seule et complet, coefficients) ; `Fig6` inclinaison debout PRE x amplitude HG, un fichier PRE et un fichier POST. Renvoie une table des n, moyennes, r, p et pentes affichés.
 
-**SHR (scoping review, novembre 2026).** Depuis le 26.11.2026, `SHR_Curves.xlsx` est écrit par le registre (`Registre_Epaule/shr_curves.py`, projet `TPC2_SHR` : critères du projet E02_01 et aucun saut de cardan GH ni ST, bouton « Générer » SHR_Curves.xlsx) dans `SHRDataFolder` (`05_Ressources/01_Data/01_Etudes/TPC2_SHR_calculation_rTSA`), sans relire les .mat ; même fichier que la fonction ci-dessous (vérifié sur 189 épaules, écart au plus 0,00005°, arrondi du registre). MAIN ne lance plus que `TestSHRFormulas(SHRDataFolder, ...)`. `Multi/Core/ExportSHRCurvesFromDatabase.m` (contrôle) : courbes HT, GH et ST point par point (101 points, 0 à 100 % du cycle), PRE et POST, flexion (ANALYTIC1) et scaption (ANALYTIC2), pour les patients et le côté retenu de `PostureDataFile` (mêmes lignes que la feuille `Cinematique`). Aucun recalcul : ce sont les courbes de `ComputeClinicalContributionsFromDatabase` (cycle retenu `BestCycle`, `abs()`, ST inversées corrigées), obtenues avec `Opts.Export = false` et `Opts.Plot = false` (troisième sortie `Curves`). Excel `SHRCurvesOutputFile` (`SHR_Curves.xlsx`) : une feuille par tâche et articulation (`analytic1_Humerothoracique`...) et une feuille `Cycle_retenu` (cycle, alerte, correction ST). Renvoie `SHR.ANALYTIC1/2` (matrices patients x 101), l'entrée des formules de SHR.
+**SHR (scoping review, novembre 2026).** Depuis le 26.11.2026, `SHR_Curves.xlsx` est écrit par le registre (`Registre_Epaule/shr_curves.py`, projet `TPC2_SHR` : critères du projet E02_01 et aucun saut de cardan GH ni ST, bouton « Générer » SHR_Curves.xlsx) dans `SHRDataFolder` (`05_Ressources/01_Data/01_Etudes/TPC2_SHR_calculation_rTSA`), sans relire les .mat ; même fichier que la fonction ci-dessous (vérifié sur 189 épaules, écart au plus 0,00005°, arrondi du registre). MAIN ne lance plus que `TestSHRFormulas(SHRDataFolder, ...)`. `Multi/Core/ExportSHRCurvesFromDatabase.m` (contrôle) : courbes HT, GH et ST point par point (101 points, 0 à 100 % du cycle), PRE et POST, flexion (ANALYTIC1) et scaption (ANALYTIC2), pour les patients et le côté retenu de `PostureDataFile` (mêmes lignes que la feuille `Cinematique`). Aucun recalcul : ce sont les courbes de `ComputeClinicalContributionsFromDatabase` (cycle retenu `BestCycle`, angle signé, voir « Convention de signe des courbes »), obtenues avec `Opts.Export = false` et `Opts.Plot = false` (troisième sortie `Curves`). Excel `SHRCurvesOutputFile` (`SHR_Curves.xlsx`) : une feuille par tâche et articulation (`analytic1_Humerothoracique`...) et une feuille `Cycle_retenu` (cycle, alerte). Renvoie `SHR.ANALYTIC1/2` (matrices patients x 101), l'entrée des formules de SHR.
 `Multi/Core/TestSHRFormulas.m` lit le `SHR_Curves.xlsx` validé dans `SHRAbstractFolder` (dossier de l'abstract ISB 2027) et calcule, sur la montée du bras (repos = 3 premiers points, pic = 10 points autour du maximum de HT, mêmes points pour HT, GH et ST), une formule par famille : A GH:ST = ΔGH / ΔST, B TH:ST = ΔHT / ΔST, C TH:GH au pic = HT_pic / GH_pic (GH mesuré directement ; ratio vide si |dénominateur| < 1°). GH est pris **signé et orienté** (feuille `*_Glenohumerale_signe` de l'export, sens fixé par tâche et par côté = sens majoritaire de la cohorte) : `abs()` repliait GH quand l'angle de repos est du côté de zéro opposé au mouvement (16 des 18 GH:ST négatifs). ST est aussi pris **signé et orienté** (feuille `*_ST_signe`, brut `ST_<C>_raw` de Clinical, non corrigé) : en scaption il diminue chez tous les patients mais part légèrement positif et traverse zéro dans 77 sessions sur 326, ce qui réduisait ΔST avec `abs()` (B négatifs à 60°). HT reste en `abs()` comme `Data_posture`. Sessions exclues si HT monte de moins de 15° (`Opts.MinElevation`). Plages d'élévation `Opts.Ranges` ([début fin] en HT, NaN = repos / maximum individuel) : rest–individual max, rest–90°, rest–120°, 20–90° et 20–120° pour A et B (colonnes `_rest_max`, `_rest_90`, `_rest_120`, `_20_90`, `_20_120`), C au pic ; à un angle, GH et ST sont pris quand HT franchit l'angle sur la montée, vide si HT part au-dessus de l'angle de début ou n'atteint pas l'angle de fin ; la figure montre une position par plage avec le nombre de patients appariés PRE / POST. Intervalles d'analyse sur la montée rest–individual max (`shrIntervals`) : pente de régression (GH sur ST, HT sur ST) et moyenne des incréments de 10° (colonnes `_reg`, `_incmean`, dans le tableau et les figures) ; fenêtre fixe 30–90° (plage `_30_90`) ; incréments de 10° (`Opts.IncEdges`), brackets de 30° (`Opts.Brackets`), cumulatif depuis le repos et courbe continue (rapport des dérivées de polynômes de degré 3 de GH(HT) et ST(HT), vide si |dST/dHT| < 0.1) aux angles `Opts.Grid` : feuilles `Intervalles` (une ligne par session, intervalle, famille et angle) et `Intervalles_resume` (n, moyenne, IC 95 %, médiane, quartiles), figure `SHR_Formulas_intervalles` (moyenne et IC 95 % en fonction de HT, n ≥ 10). PNG à 300 dpi : MATLAB R2026a superpose parfois les chiffres d'un libellé d'axe selon sa position en pixels, préférer le PDF pour le diapo. Tests (feuille `Tests`, colonnes ajoutées à `Tableau_abstract`) : PRE vs POST par Wilcoxon signé apparié (exact si n ≤ 50 sans ex aequo, sinon approximation normale, comme `scipy.stats.wilcoxon` par défaut), correction de Holm sur toutes les colonnes de la tâche ; rho de Spearman entre chaque méthode et la référence rest–individual max de sa famille, par condition (descriptif) ; méthode vs référence, statut ignoré (différence méthode − référence moyennée par patient sur ses sessions PRE et POST, différence moyenne [IC 95 %] et Wilcoxon sur les valeurs par patient, Holm sur les 14 comparaisons ; comparaison sur les mêmes patients, non biaisée par la sélection des plages à angle fixe) ; fonctions locales `wilcoxonSigned`, `avgRank`, `spearmanRho`, `holm`, sans Statistics Toolbox. Figures écrites dans `Opts.FigureFolder` (`SHRFigureFolder` = `Abstract 3/Figures` depuis MAIN ; tableaux Word dans `SHRTableFolder` = `Abstract 3/Tables`). Feuille `Resume` avec IC 95 % de la moyenne (t de Student via `betaincinv`, sans Statistics Toolbox), feuille `Tableau_abstract` (une ligne par famille et plage : moyenne [IC 95 %] et n en PRE et en POST) et figure `SHR_Formulas_moyenne_IC` (moyenne et IC 95 % par famille et plage, pour le diapo). `ComputeClinicalContributionsFromDatabase` fournit pour cela `Curves.GH_<C>_signed`, non utilisé ailleurs. Sortie `SHR_Formulas.xlsx` dans le même dossier : feuilles `SHR` (mêmes lignes que le template), `Composantes` (repos et pic) et `Resume` (médiane, quartiles, moyenne, écart-type), et figure `SHR_Formulas.png` / `.pdf` (un panneau par famille, PRE / POST, points, médiane, Q1-Q3, repère 2:1 d'Inman). Scaption (ANALYTIC2) seule par défaut pour l'abstract (`Opts.Tasks`) : la flexion est écartée (GH ZXY peu fiable) et le `SHR_Curves.xlsx` du dossier de l'abstract ne contient plus que les feuilles `analytic2`.
 
 Épaules asymptomatiques : avec `Opts.AsymptomaticSelection` (passé par
@@ -642,9 +648,10 @@ corrigées en vert, moyenne tiretée recalculée avec elles). Une figure
 interactive ANALYTIC2 (un patient à la fois, `a` = suivant, `q` = précédent,
 cliquer d'abord sur la figure) et sa figure « Diagnostic patient » (brut, `abs`
 et 4 corrections candidates avec `r` et ROM, et sens de l'excursion brute par
-rapport à la cohorte). Ces corrections ne modifient que les figures ; la même
-correction est appliquée aux Excel clinical/functional par
-`ApplyInversionCorrectionSTTX.m` (voir section précédente).
+rapport à la cohorte). Ces corrections ne modifient que les figures (diagnostic historique). Depuis
+le 26.11.2026 les courbes scorées sont orientées dans le sens du mouvement
+(`Orientation.oriente`, sans abs) : `Inversee` ne relève plus qu'un vrai
+mouvement de sens opposé.
 
 ## Autre reporting : éligibilité de l'épaule controlatérale
 
