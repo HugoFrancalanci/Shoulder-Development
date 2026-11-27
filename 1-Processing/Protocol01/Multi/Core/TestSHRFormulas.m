@@ -127,8 +127,14 @@ angLbl     = arrayfun(@(a) sprintf('_%d', a), angles, 'UniformOutput', false);
 famCol     = [strcat('A_GHST', allSfx), strcat('B_THST', allSfx), {'C_THGH'}];
 nPts       = 101;
 
-% Côté de chaque patient (sens du GH signé propre au côté)
-cyc = readtable(inFile, 'Sheet', 'Cycle_retenu');
+% Côté de chaque patient (sens du GH signé propre au côté) : feuille
+% Cycle_retenu (ancien format) ou colonne Côté des feuilles de courbes du
+% fichier de sortie du registre (voir readCurves)
+if any(strcmp(sheetnames(inFile), 'Cycle_retenu'))
+    cyc = readtable(inFile, 'Sheet', 'Cycle_retenu');
+else
+    cyc = sidesRegistre(inFile, tasks{1});
+end
 
 % -------------------------------------------------------------------------
 % CALCUL
@@ -845,8 +851,19 @@ if abs(den) < minDelta, r = NaN; else, r = num / den; end
 end
 
 % Courbes d'une feuille de SHR_Curves.xlsx : Numero, matrice [patients x
-% 2*nPts] (Pre puis Post) et colonne A complète (lignes du template)
+% 2*nPts] (Pre puis Post) et colonne A complète (lignes du template).
+% Fichier de sortie du registre (carte « Fichiers de sortie », depuis le
+% 27.11.2026) : une feuille par courbe Clinique du cycle retenu, nommée
+% <TÂCHE>_<ART>_Clinique (signée) ou _Clinique_oriente (x sens du
+% mouvement), colonnes Numéro, ID dossier, Côté, PRE_000 à PRE_100, POST_000
+% à POST_100, sans ligne vide : feuille de l'ancien format -> feuille du
+% registre (Humerothoracique, Glenohumerale, Scapulothoracique = orientées ;
+% Glenohumerale_signe, ST_signe = signées)
 function [numeros, M, rowNum] = readCurves(file, sheet, nPts)
+if ~any(strcmp(sheetnames(file), sheet))
+    [numeros, M, rowNum] = readCurvesRegistre(file, sheet, nPts);
+    return;
+end
 C = readcell(file, 'Sheet', sheet);
 head = C(1, :);
 if numel(head) ~= 1 + 2 * nPts || ~endsWith(head{2}, '_Pre_000') || ~endsWith(head{2 + nPts}, '_Post_000')
@@ -861,6 +878,45 @@ vals = C(isNum, 2:end);
 ok   = cellfun(@(x) isnumeric(x) && isscalar(x), vals);
 M    = NaN(size(vals));
 M(ok) = cell2mat(vals(ok));
+end
+
+% Feuille de courbes du fichier de sortie du registre (voir readCurves) ;
+% rowNum = [NaN ; numéros] (ligne d'en-tête puis une ligne par épaule)
+function [numeros, M, rowNum] = readCurvesRegistre(file, sheet, nPts)
+nom = containers.Map({'Humerothoracique', 'Glenohumerale', 'Scapulothoracique', 'Glenohumerale_signe', 'ST_signe'}, ...
+                     {'HT_Clinique_oriente', 'GH_Clinique_oriente', 'ST_Clinique_oriente', 'GH_Clinique', 'ST_Clinique'});
+k = strfind(sheet, '_');
+tache = sheet(1:k(1) - 1); art = sheet(k(1) + 1:end);
+if ~isKey(nom, art), error('TestSHRFormulas:format', 'Feuille %s : articulation inconnue', sheet); end
+reg = [upper(tache), '_', nom(art)];
+if ~any(strcmp(sheetnames(file), reg))
+    error('TestSHRFormulas:format', 'Feuille %s (ou %s du registre) absente de %s', sheet, reg, file);
+end
+C = readcell(file, 'Sheet', reg);
+head = C(1, :);
+if numel(head) ~= 3 + 2 * nPts || ~strcmp(head{4}, 'PRE_000') || ~strcmp(head{4 + nPts}, 'POST_000')
+    error('TestSHRFormulas:format', 'Colonnes inattendues dans la feuille %s', reg);
+end
+isNum = cellfun(@(x) isnumeric(x) && isscalar(x) && ~isnan(x), C(:, 1));
+isNum(1) = false;
+numeros = cell2mat(C(isNum, 1));
+vals = C(isNum, 4:end);
+ok   = cellfun(@(x) isnumeric(x) && isscalar(x), vals);
+M    = NaN(size(vals));
+M(ok) = cell2mat(vals(ok));
+rowNum = [NaN; numeros];
+end
+
+% Côté de chaque épaule dans le fichier du registre (colonne Côté, G / D ->
+% L / R), lu sur la courbe HT orientée de la première tâche
+function cyc = sidesRegistre(file, tache)
+C = readcell(file, 'Sheet', [upper(tache), '_HT_Clinique_oriente']);
+isNum = cellfun(@(x) isnumeric(x) && isscalar(x) && ~isnan(x), C(:, 1));
+isNum(1) = false;
+Numero = cell2mat(C(isNum, 1));
+Side = cellfun(@(c) char(string(c)), C(isNum, 3), 'UniformOutput', false);
+Side(strcmp(Side, 'G')) = {'L'}; Side(strcmp(Side, 'D')) = {'R'};
+cyc = table(Numero, Side);
 end
 
 % Quantiles (type 7, interpolation linéaire, comme R / numpy par défaut),

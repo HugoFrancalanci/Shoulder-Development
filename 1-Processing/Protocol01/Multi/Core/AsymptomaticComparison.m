@@ -440,7 +440,7 @@ end
 %  LECTURE EXCEL (mêmes règles que CorrelatePostureROM.m)
 % =========================================================================
 function T = readSheet(DataFile, sheet)
-T = readtable(DataFile, 'Sheet', sheet, 'VariableNamingRule', 'preserve');
+T = ReadPostureSheet(DataFile, sheet);   % ancien format ou fichier de sortie du registre
 T = T(~isnan(getCol(T, 'Numero')), :);
 end
 

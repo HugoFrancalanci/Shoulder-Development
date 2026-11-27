@@ -376,9 +376,9 @@ CurveQualityOutputFile = fullfile(ResultsFolder, 'CurveQuality_Summary.xlsx');
 % gardée pour contrôle : le registre écrit le même fichier
 SHRCurvesOutputFile = fullfile(ResultsFolder, 'SHR_Curves.xlsx');
 % SHRDataFolder : données du projet TPC2_SHR_calculation_rTSA (abstract ISB).
-% SHR_Curves.xlsx y est écrit par le registre (projet TPC2_SHR, bouton
-% « Générer » SHR_Curves.xlsx de la carte Exports : courbes du cycle retenu
-% des épaules retenues, sans relire les .mat) ; TestSHRFormulas y lit les
+% SHR_Curves.xlsx y est écrit par le registre (projet TPC2_SHR, fichier de
+% sortie de la carte « Fichiers de sortie » : courbes HT, GH, ST du cycle
+% retenu, une feuille par courbe, sans relire les .mat) ; TestSHRFormulas y lit les
 % courbes et y écrit SHR_Formulas.xlsx. Chemins relatifs au profil Windows
 % pour fonctionner sur les deux machines
 SHRDataFolder   = fullfile(getenv('USERPROFILE'), 'OneDrive - Université de Genève', 'PhD Hugo', ...
@@ -395,9 +395,10 @@ PostureOutputFile = fullfile(ResultsFolder, 'Posture_Summary.xlsx');
 % PostureDataFile : données de l'article E02_01 (feuilles Posture, Cinematique...
 % et _Asym), entrée de CorrelatePostureROM, InclinationClassification,
 % AsymptomaticComparison, PlotMeanCurvesFromDatabase, CheckCurvesFromDatabase
-% et ExportSHRCurvesFromDatabase. Généré par le registre (projet E02_01,
-% bouton « Générer » de la carte Exports : épaules retenues par les critères
-% du projet) et rangé dans le dossier de données de l'étude sur OneDrive
+% et ExportSHRCurvesFromDatabase, lu par Core/ReadPostureSheet.m (ancien
+% format ou feuille Analyse du registre). Généré par le registre (projet
+% E02_01, fichier de sortie de la carte « Fichiers de sortie » : épaules
+% retenues par les critères du projet) et rangé dans le dossier de données de l'étude sur OneDrive
 % (hors du dépôt GitHub). 26.11.2026 : 189 épaules (prothèse primaire, SCoRE
 % OK et sans saut de cardan en pré et en post), remplace l'ancien fichier
 % à 173 épaules trié à la main. Chemin relatif au profil Windows pour

@@ -54,7 +54,7 @@ end
 % Lit une feuille (en-têtes préservés) et retire les lignes vides
 % (Numero vide ou non numérique : lignes d'espacement entre les valeurs).
 function T = readSheet(DataFile, sheet)
-T = readtable(DataFile, 'Sheet', sheet, 'VariableNamingRule', 'preserve');
+T = ReadPostureSheet(DataFile, sheet);   % ancien format ou fichier de sortie du registre
 T = T(~isnan(PostureUtils.getCol(T, 'Numero')), :);
 end
 

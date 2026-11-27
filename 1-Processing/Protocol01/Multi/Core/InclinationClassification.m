@@ -469,7 +469,7 @@ if c, out = a; else, out = b; end
 end
 
 function T = readSheet(DataFile, sheet)
-T = readtable(DataFile, 'Sheet', sheet, 'VariableNamingRule', 'preserve');
+T = ReadPostureSheet(DataFile, sheet);   % ancien format ou fichier de sortie du registre
 T = T(~isnan(getCol(T, 'Numero')), :);
 end
 

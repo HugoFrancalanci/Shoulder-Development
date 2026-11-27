@@ -77,12 +77,20 @@ nPts       = 101;
 [Res, ~, Cur] = ComputeClinicalContributionsFromDatabase(DatabaseFile, '', '', ...
     struct('Export', false, 'Plot', false));
 
-% Template : lignes (Numero en colonne A, lignes vides comprises) et côté
-colA = readcell(PostureDataFile, 'Sheet', 'Cinematique', 'Range', 'A:A');
-isNum = cellfun(@(x) isnumeric(x) && isscalar(x) && ~isnan(x), colA);
-rowNum = NaN(size(colA));
-rowNum(isNum) = cell2mat(colA(isNum));
-side = readtable(PostureDataFile, 'Sheet', 'Cote_retenu');
+% Template : lignes (Numero en colonne A, lignes vides comprises) et côté ;
+% fichier de sortie du registre (feuille Analyse, sans lignes vides) lu par
+% ReadPostureSheet : une ligne par épaule
+if any(strcmp(sheetnames(PostureDataFile), 'Cinematique'))
+    colA = readcell(PostureDataFile, 'Sheet', 'Cinematique', 'Range', 'A:A');
+    isNum = cellfun(@(x) isnumeric(x) && isscalar(x) && ~isnan(x), colA);
+    rowNum = NaN(size(colA));
+    rowNum(isNum) = cell2mat(colA(isNum));
+else
+    K = ReadPostureSheet(PostureDataFile, 'Cinematique');
+    rowNum = [NaN; K.Numero(:)];
+    isNum = ~isnan(rowNum);
+end
+side = ReadPostureSheet(PostureDataFile, 'Cote_retenu');
 numeros = rowNum(isNum);
 fprintf('Template : %d patients (%s)\n', numel(numeros), PostureDataFile);
 

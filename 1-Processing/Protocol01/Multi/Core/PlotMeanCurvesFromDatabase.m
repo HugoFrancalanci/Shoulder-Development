@@ -93,9 +93,9 @@ if isempty(fileList)
 end
 
 % Populations : patients retenus (feuille Posture) et épaules saines
-P  = readtable(DataFile, 'Sheet', 'Posture', 'VariableNamingRule', 'preserve');
+P  = ReadPostureSheet(DataFile, 'Posture');
 nums = P.Numero(~isnan(P.Numero));
-Pa = readtable(DataFile, 'Sheet', 'Posture_Asym', 'VariableNamingRule', 'preserve');
+Pa = ReadPostureSheet(DataFile, 'Posture_Asym');
 Pa = Pa(~isnan(Pa.Numero), :);
 
 Curves = struct();

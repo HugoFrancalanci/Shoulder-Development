@@ -59,7 +59,7 @@ if ~isfolder(OutputFolder), mkdir(OutputFolder); end
 % -------------------------------------------------------------------------
 % PATIENT
 % -------------------------------------------------------------------------
-P = readtable(DataFile, 'Sheet', 'Posture', 'VariableNamingRule', 'preserve');
+P = ReadPostureSheet(DataFile, 'Posture');
 P = P(~isnan(P.Numero), :);
 if isempty(Numero)
     inc = P.Inclinaison_thoracique_Pre; sir = P.Rotation_scapulaire_interne_Pre;

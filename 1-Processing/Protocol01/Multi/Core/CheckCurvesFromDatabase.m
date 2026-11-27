@@ -313,9 +313,9 @@ if isempty(fileList)
     error('CheckCurvesFromDatabase:noDatabase', ...
         'PatientDatabase.mat introuvable (%s, ni fichiers _partXofY correspondants).', DatabaseFile);
 end
-P  = readtable(DataFile, 'Sheet', 'Posture', 'VariableNamingRule', 'preserve');
+P  = ReadPostureSheet(DataFile, 'Posture');
 nums = P.Numero(~isnan(P.Numero));
-Pa = readtable(DataFile, 'Sheet', 'Posture_Asym', 'VariableNamingRule', 'preserve');
+Pa = ReadPostureSheet(DataFile, 'Posture_Asym');
 Pa = Pa(~isnan(Pa.Numero), :);
 mets = {'HG', 'HT', 'GH', 'ST', 'TX'};
 Cycles = struct('grp', {}, 'num', {}, 'side', {}, 'cond', {}, 'task', {}, ...
@@ -411,7 +411,7 @@ for i = 1:height(Q)
     tk = lower(Q.Task{i});
     for k = 1:2
         if ~isKey(cache, sh{k})
-            try cache(sh{k}) = readtable(DataFile, 'Sheet', sh{k}, 'VariableNamingRule', 'preserve');
+            try cache(sh{k}) = ReadPostureSheet(DataFile, sh{k});
             catch, cache(sh{k}) = table(); end
         end
         D = cache(sh{k});

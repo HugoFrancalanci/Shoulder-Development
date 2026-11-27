@@ -467,14 +467,25 @@ Ces colonnes, et `<tâche>_ROM_ThoraciqueLateral_<Pre|Post|Asym>`, sont aussi
 dans `Data_posture.xlsx` (feuilles `Cinematique`, `Cinematique_thorax` et leurs
 versions `_Asym`).
 
-**Génération de `Data_posture.xlsx`** : par le registre (`Registre_Epaule`,
-`data_posture.py`, bouton « Générer » de la carte Exports d'un projet), pour
-les épaules retenues par le projet. Remplit toutes les feuilles (`Posture`,
-`Cinematique`, `Cinematique_pics`, `Cinematique_thorax`, leurs versions `_Asym`,
-`Controle_cycles` et `Cote_retenu`) à partir de `ClinicalContributions_Summary`,
-`FunctionalContributions_Summary` et `Posture_Summary` du dossier `Valeurs\`
-du projet. L'ancien script `build_data_posture.py` (OneDrive) est supprimé
-(26.11.2026).
+**Génération de `Data_posture.xlsx`** (depuis le 27.11.2026) : fichier de
+sortie libre du projet E02_01 dans le registre (`Registre_Epaule`, carte
+« Fichiers de sortie », écrit dans le dossier de l'article) : une feuille
+`Analyse`, une ligne par épaule retenue (Numéro, ID dossier, Côté, Dans la
+cohorte) et une colonne par variable choisie (`HT_deg_ANALYTIC1_PRE`,
+`TXflex_Change_ANALYTIC2_POST`, `Inclination_deg_ASYM_ANALYTIC2_PRE`...),
+plus les épaules opérées hors cohorte dont l'épaule saine sert de référence
+(n°164). Seules les variables lues par les analyses sont choisies (posture
+pré, amplitudes HG HT GH ST thorax et inclinaison latérale, pics HG HT GH ST,
+départ et variation de la flexion du thorax, variation latérale, et les mêmes
+pour l'épaule saine) ; AtPeak, Min, Max, nCycles du thorax, `Controle_cycles`
+et `Dans_cohorte_175` ne sont plus exportés. Les analyses lisent les feuilles
+de l'ancien format par `Core/ReadPostureSheet.m`, qui les reconstruit à partir
+de la feuille `Analyse` (ancien fichier lu tel quel) : sorties identiques à
+l'arrondi du registre près (6 chiffres significatifs, écart relatif < 1e-3,
+vérifié le 27.11.2026 sur Correlation_Posture_ROM, Inclination_Classification,
+Asymptomatic_Comparison et SHR_Formulas). `SHR_Curves.xlsx` (projet TPC2_SHR)
+de même : une feuille par courbe (`ANALYTIC2_HT_Clinique_oriente`,
+`ANALYTIC2_GH_Clinique`...), lue par `readCurves` de `TestSHRFormulas.m`.
 
 **Épaules asymptomatiques vs rTSA** (`Multi/Core/AsymptomaticComparison.m`,
 section dédiée de `MAIN`, sortie `AsymptomaticOutputFile`) : lit les feuilles
