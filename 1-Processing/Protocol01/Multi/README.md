@@ -92,11 +92,23 @@ Projets_epaule\<CODE>\
   Valeurs\                     tous les Excels de sortie du projet
   Valeurs\Cache\               sorties des fonctions ...FromDatabase
   Valeurs\Controle_courbes\    CheckCurvesFromDatabase (CurveCheckFolder)
-  projet.json                  date, commit du code, réglages du centre de
+  projet.json                  date, commit du code, code modifié non commité,
+                               version de MATLAB, réglages du centre de
                                rotation, replis sur Rab, épaules, erreurs
                                (IO/WriteProjectSummary.m)
+  Valeurs\Registre\run.json    export vers le registre : date, commit, code
+                               modifié non commité, version de MATLAB
+                               (IO/ExportRegistre.m)
   progress.mat                 reprise automatique
 ```
+
+**Archivage (27.11.2026)** : un seul calcul, `COHORTE`, sert tous les projets du
+registre ; `projet.json` (traitement C3D vers .mat) et `run.json` (résultats) en
+sont la recette, archivée avec chaque projet dans le dossier de son article
+(registre, page Archivage). Commiter le code avant le calcul qui servira à
+clôturer un projet : une recette avec du code modifié non commité est
+incomplète. Un dossier `Projets_epaule\<CODE>` propre à un projet reste possible
+mais n'est plus nécessaire.
 
 Les fonctions `...FromDatabase` acceptent le dossier `Patients\` comme
 `DatabaseFile`. Dans les sections de résultats de MAIN, `Core/CachedCompute.m`

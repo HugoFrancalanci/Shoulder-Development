@@ -28,8 +28,10 @@
 %                  Les sources « ...Asym » et « Eligibilite » concernent
 %                  l'épaule controlatérale : le registre les rattache à
 %                  l'épaule opérée par numéro et ID patient.
-%                  - run.json : date, machine, commit Git du code, taille
-%                    de la cohorte, sources exportées.
+%                  - run.json : date, machine, commit Git du code, code
+%                    modifié non commité, version de MATLAB, taille de la
+%                    cohorte, sources exportées (recette des résultats,
+%                    archivée avec chaque projet du registre).
 %                Puis prévient le site (POST <URL>/api/matlab/run). Si le
 %                site ne répond pas (fermé, autre machine), le pipeline
 %                continue : le site relira le dossier à sa mise à jour.
@@ -130,14 +132,20 @@ fclose(fid);
 % -------------------------------------------------------------------------
 % run.json
 % -------------------------------------------------------------------------
-commit = '';
+% Recette du calcul des résultats (archive des projets du registre) : commit,
+% code modifié non commité (le commit seul ne suffit pas alors à refaire les
+% valeurs) et version de MATLAB
+commit = ''; modifie = true;
 try
     [st, out] = system(sprintf('git -C "%s" rev-parse --short HEAD', Infos.CodeFolder));
     if st == 0, commit = strtrim(out); end
+    [st, out] = system(sprintf('git -C "%s" status --porcelain', Infos.CodeFolder));
+    modifie = st ~= 0 || ~isempty(strtrim(out));
 catch
 end
 Run = struct('date', char(datetime('now', 'Format', 'yyyy-MM-dd''T''HH:mm:ss')), ...
-    'machine', getenv('COMPUTERNAME'), 'commit', commit, 'nb_epaules', Infos.NbEpaules, ...
+    'machine', getenv('COMPUTERNAME'), 'commit', commit, 'code_modifie_non_commite', modifie, ...
+    'matlab', ['R', version('-release'), ' (', version, ')'], 'nb_epaules', Infos.NbEpaules, ...
     'sources_resultats', {fieldnames(Tables)'}, 'sources_courbes', {fieldnames(Courbes)'}, ...
     'nb_valeurs', nValeurs, 'nb_courbes', nCourbes, 'dossier', Dossier);
 fid = fopen(fullfile(Dossier, 'run.json'), 'w', 'n', 'UTF-8');
